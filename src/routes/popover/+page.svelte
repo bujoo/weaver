@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { get } from 'svelte/store';
 	import { sortedSessions, statusSummary, sessions as sessionsStore, initializeSessionListeners } from '$lib/stores/sessions';
 	import { openSession, getSessions } from '$lib/api';
@@ -15,6 +15,20 @@
 
 	// Pixel grid state
 	let trackWidth = $state(0);
+	let isSweeping = $state(false);
+	let prevSummaryKey = $state('');
+	let summaryKey = $derived(`${summary.working}-${summary.permission}-${summary.input}`);
+
+	$effect(() => {
+		const currentKey = summaryKey;
+		const previousKey = untrack(() => prevSummaryKey);
+		if (previousKey !== '' && currentKey !== previousKey) {
+			isSweeping = true;
+			setTimeout(() => { isSweeping = false; }, 6000);
+		}
+		prevSummaryKey = currentKey;
+	});
+
 	let columns = $derived(Math.max(1, Math.floor((trackWidth - 6) / 10)));
 	let statusArray = $derived.by(() => {
 		const total = totalSessions;
@@ -133,8 +147,8 @@
 
 	<div class="pixel-grid" class:empty={totalSessions === 0} bind:clientWidth={trackWidth}>
 		<div class="grid-inner" style="grid-template-columns: repeat({columns}, 1fr);">
-			{#each statusArray as status}
-				<div class="block {status}"></div>
+			{#each statusArray as status, i}
+				<div class="block {status}" class:sweeping={isSweeping} style="animation-delay: {i * 20}ms; transition-delay: {i * 50}ms"></div>
 			{/each}
 		</div>
 	</div>
@@ -242,12 +256,23 @@
 	.block {
 		background: rgba(255, 255, 255, 0.06);
 		border-radius: 1px;
-		transition: background-color var(--transition-normal);
+		transition: background-color 0.4s, box-shadow 0.4s;
 	}
 
-	.block.working   { background-color: var(--status-working);    box-shadow: 0 0 3px var(--status-working-glow); }
-	.block.permission { background-color: var(--status-permission); box-shadow: 0 0 3px var(--status-permission-glow); }
-	.block.input     { background-color: var(--status-input);       box-shadow: 0 0 3px var(--status-input-glow); }
+	.block.sweeping {
+		animation: monitor-sweep 2s ease-out forwards;
+	}
+
+	@keyframes monitor-sweep {
+		0%   { transform: scale(1);    filter: brightness(1); }
+		20%  { transform: scale(0.95); filter: brightness(1.1); }
+		40%  { transform: scale(1.1);  filter: brightness(1.4) drop-shadow(0 0 2px currentColor); }
+		100% { transform: scale(1);    filter: brightness(1); }
+	}
+
+	.block.working    { background-color: var(--status-working);    color: var(--status-working);    box-shadow: 0 0 3px var(--status-working-glow); }
+	.block.permission { background-color: var(--status-permission); color: var(--status-permission); box-shadow: 0 0 3px var(--status-permission-glow); }
+	.block.input      { background-color: var(--status-input);      color: var(--status-input);      box-shadow: 0 0 3px var(--status-input-glow); }
 
 	.popover-content {
 		flex: 1;
