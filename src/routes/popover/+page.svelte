@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
-	import { get } from 'svelte/store';
 	import { sortedSessions, statusSummary, sessions as sessionsStore, initializeSessionListeners } from '$lib/stores/sessions';
-	import { openSession, getSessions } from '$lib/api';
+	import { openSession } from '$lib/api';
 	import { SessionStatus } from '$lib/types';
 	import type { Session } from '$lib/types';
 	import { invoke } from '@tauri-apps/api/core';
@@ -71,20 +70,16 @@
 				}
 			}
 
-			const ul1 = await listen('tauri://focus', async () => {
+			const ul1 = await listen('tauri://focus', () => {
 				// Re-sync demo mode state on every focus — user may have toggled it
 				// in the main window since the last time this panel was shown.
 				const demo = loadDemoDataIfActive();
 				if (demo) return;
 
-				// Demo is off — ensure isDemoMode store is cleared and fetch real sessions
+				// Demo is off — ensure isDemoMode store is cleared.
+				// Don't fetch sessions independently; the poller is the single source
+				// of truth and will emit sessions-updated within 3.5s.
 				isDemoMode.set(false);
-				try {
-					const freshSessions = await getSessions();
-					sessionsStore.set(freshSessions);
-				} catch (error) {
-					console.error('Failed to refresh sessions:', error);
-				}
 			});
 
 			if (cancelled) {
