@@ -568,4 +568,47 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_truncate_string_no_truncation() {
+        assert_eq!(truncate_string("hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_truncate_string_exact_boundary() {
+        assert_eq!(truncate_string("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_truncate_string_over_boundary() {
+        assert_eq!(truncate_string("hello world", 5), "hello...");
+    }
+
+    #[test]
+    fn test_truncate_string_empty() {
+        assert_eq!(truncate_string("", 10), "");
+    }
+
+    #[test]
+    fn test_truncate_string_zero_max() {
+        assert_eq!(truncate_string("hello", 0), "...");
+    }
+
+    #[test]
+    fn test_truncate_string_utf8_accented() {
+        // "héllo" has 5 chars — truncating to 3 gives "hél..."
+        assert_eq!(truncate_string("héllo", 3), "hél...");
+    }
+
+    #[test]
+    fn test_truncate_string_utf8_cjk() {
+        // Each CJK char is 1 Unicode scalar value
+        assert_eq!(truncate_string("你好世界", 2), "你好...");
+    }
+
+    #[test]
+    fn test_truncate_string_utf8_emoji() {
+        // Emoji counts as 1 char in .chars()
+        assert_eq!(truncate_string("Hello 👋 World", 7), "Hello 👋...");
+    }
 }
