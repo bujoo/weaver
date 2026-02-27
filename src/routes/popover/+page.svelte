@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { sortedSessions, statusSummary, sessions as sessionsStore, initializeSessionListeners } from '$lib/stores/sessions';
-	import { openSession } from '$lib/api';
+	import { openSession, getSessions } from '$lib/api';
 	import { SessionStatus } from '$lib/types';
 	import type { Session } from '$lib/types';
 	import { invoke } from '@tauri-apps/api/core';

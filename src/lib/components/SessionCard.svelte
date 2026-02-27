@@ -26,7 +26,7 @@
 	let isWorking = $derived(session.status === SessionStatus.Working);
 
 	let isEditingTitle = $state(false);
-	let tempTitle = $state(session.customTitle || session.summary || session.firstPrompt);
+	let tempTitle = $state('');
 	let terminalTitleHint = $state<string | null>(null);
 	let optimisticTitle = $state<string | null>(null);
 
