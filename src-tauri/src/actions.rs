@@ -812,6 +812,8 @@ mod tests {
         assert_eq!(get_app_name("sublime_text"), Some("Sublime Text"));
         assert_eq!(get_app_name("subl"), Some("Sublime Text"));
         assert_eq!(get_app_name("atom"), Some("Atom"));
+        assert_eq!(get_app_name("code helper"), Some("Visual Studio Code"));
+        assert_eq!(get_app_name("electron"), Some("Visual Studio Code"));
     }
 
     #[test]
@@ -936,6 +938,9 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn test_get_app_name_ce_ordering_guard() {
+        // Without this ordering guard, a path containing "IntelliJ IDEA CE.app"
+        // would match the "intellij idea.app" check first (since CE path is a superset),
+        // incorrectly returning "IntelliJ IDEA" instead of "IntelliJ IDEA CE".
         assert_eq!(
             get_app_name("/Applications/IntelliJ IDEA CE.app/Contents/MacOS/idea"),
             Some("IntelliJ IDEA CE")
