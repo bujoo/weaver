@@ -279,11 +279,31 @@ pub fn run() {
             // ── Polling loop ────────────────────────────────────
             start_polling(app.handle().clone(), sessions_tx, notifications_tx);
 
+            // ── Main window: hide on close instead of destroying ──────────────
+            // This allows "Open Dashboard" from the popover to re-show it.
+            // Without this, closing the window destroys it and show() is a no-op.
+            #[cfg(not(mobile))]
+            if let Some(main_win) = app.get_webview_window("main") {
+                let main_win_clone = main_win.clone();
+                main_win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = main_win_clone.hide();
+                    }
+                });
+            }
+
             // ── Popover panel: convert NSWindow to NSPanel for fullscreen support ──
             // NSPanel can appear above fullscreen apps, unlike regular NSWindow.
             #[cfg(target_os = "macos")]
             if let Some(popover) = app.get_webview_window("popover") {
-                let panel = popover.to_panel::<PopoverPanel>().unwrap();
+                let panel = match popover.to_panel::<PopoverPanel>() {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("[c9watch] Failed to convert popover to NSPanel: {e}. Fullscreen support unavailable.");
+                        return Ok(());
+                    }
+                };
 
                 // Status level (25) = same as macOS menu bar
                 panel.set_level(PanelLevel::Status.value());
@@ -315,8 +335,6 @@ pub fn run() {
                     }
                 });
                 panel.set_event_handler(Some(handler.as_ref()));
-
-                eprintln!("[c9watch] Popover converted to NSPanel with fullscreen support");
             }
 
             // ── Tray icon ───────────────────────────────────────
