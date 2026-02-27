@@ -134,4 +134,14 @@ mod tests {
         titles.set("session-123".to_string(), "New Title".to_string());
         assert_eq!(titles.get("session-123"), Some(&"New Title".to_string()));
     }
+
+    #[test]
+    fn test_custom_titles_multiple_sessions() {
+        let mut titles = CustomTitles::default();
+        titles.set("session-a".to_string(), "Fix the bug".to_string());
+        titles.set("session-b".to_string(), "Add feature".to_string());
+        assert_eq!(titles.get("session-a"), Some(&"Fix the bug".to_string()));
+        assert_eq!(titles.get("session-b"), Some(&"Add feature".to_string()));
+        assert_eq!(titles.get("session-c"), None);
+    }
 }
