@@ -22,8 +22,14 @@
 		const currentKey = summaryKey;
 		const previousKey = untrack(() => prevSummaryKey);
 		if (previousKey !== '' && currentKey !== previousKey) {
-			isSweeping = true;
-			setTimeout(() => { isSweeping = false; }, 6000);
+			isSweeping = false;
+			// Force a microtask gap so Svelte re-applies the class before setting it back,
+			// allowing the CSS animation to replay even for rapid back-to-back changes.
+			setTimeout(() => {
+				isSweeping = true;
+				// Last block starts at (columns-1)*20ms, animation runs 2s → ~2500ms max.
+				setTimeout(() => { isSweeping = false; }, 2500);
+			}, 0);
 		}
 		prevSummaryKey = currentKey;
 	});

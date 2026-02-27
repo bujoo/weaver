@@ -297,44 +297,44 @@ pub fn run() {
             // NSPanel can appear above fullscreen apps, unlike regular NSWindow.
             #[cfg(target_os = "macos")]
             if let Some(popover) = app.get_webview_window("popover") {
-                let panel = match popover.to_panel::<PopoverPanel>() {
-                    Ok(p) => p,
+                match popover.to_panel::<PopoverPanel>() {
                     Err(e) => {
                         eprintln!("[c9watch] Failed to convert popover to NSPanel: {e}. Fullscreen support unavailable.");
-                        return Ok(());
+                        // Do not return early — tray icon setup must still proceed below.
                     }
-                };
+                    Ok(panel) => {
+                        // Status level (25) = same as macOS menu bar
+                        panel.set_level(PanelLevel::Status.value());
 
-                // Status level (25) = same as macOS menu bar
-                panel.set_level(PanelLevel::Status.value());
+                        // NonactivatingPanel: won't steal focus from the fullscreen app
+                        panel.set_style_mask(StyleMask::empty().nonactivating_panel().into());
 
-                // NonactivatingPanel: won't steal focus from the fullscreen app
-                panel.set_style_mask(StyleMask::empty().nonactivating_panel().into());
+                        // Allow in all Spaces including fullscreen
+                        panel.set_collection_behavior(
+                            CollectionBehavior::new()
+                                .full_screen_auxiliary()
+                                .can_join_all_spaces()
+                                .stationary()
+                                .into(),
+                        );
 
-                // Allow in all Spaces including fullscreen
-                panel.set_collection_behavior(
-                    CollectionBehavior::new()
-                        .full_screen_auxiliary()
-                        .can_join_all_spaces()
-                        .stationary()
-                        .into(),
-                );
+                        // Don't hide when app is deactivated (when fullscreen app is active)
+                        panel.set_hides_on_deactivate(false);
 
-                // Don't hide when app is deactivated (when fullscreen app is active)
-                panel.set_hides_on_deactivate(false);
+                        // Rounded corners at the native window level
+                        panel.set_corner_radius(10.0);
 
-                // Rounded corners at the native window level
-                panel.set_corner_radius(10.0);
-
-                // Click-outside dismiss: hide panel when it loses key window status
-                let handler = PopoverEventHandler::new();
-                let handle = app.handle().clone();
-                handler.window_did_resign_key(move |_notification| {
-                    if let Ok(p) = handle.get_webview_panel("popover") {
-                        p.hide();
+                        // Click-outside dismiss: hide panel when it loses key window status
+                        let handler = PopoverEventHandler::new();
+                        let handle = app.handle().clone();
+                        handler.window_did_resign_key(move |_notification| {
+                            if let Ok(p) = handle.get_webview_panel("popover") {
+                                p.hide();
+                            }
+                        });
+                        panel.set_event_handler(Some(handler.as_ref()));
                     }
-                });
-                panel.set_event_handler(Some(handler.as_ref()));
+                }
             }
 
             // ── Tray icon ───────────────────────────────────────
@@ -392,8 +392,14 @@ pub fn run() {
                                 if popover.is_visible().unwrap_or(false) {
                                     let _ = popover.hide();
                                 } else {
-                                    let pos = rect.position.to_physical::<f64>(1.0);
-                                    let size = rect.size.to_physical::<f64>(1.0);
+                                    let scale = popover
+                                        .current_monitor()
+                                        .ok()
+                                        .flatten()
+                                        .map(|m| m.scale_factor())
+                                        .unwrap_or(1.0);
+                                    let pos = rect.position.to_physical::<f64>(scale);
+                                    let size = rect.size.to_physical::<f64>(scale);
                                     let popover_physical_width = popover
                                         .outer_size()
                                         .map(|s| s.width as f64)
@@ -441,6 +447,8 @@ pub fn run() {
             // Prevent the app from exiting when all windows are closed.
             // This is essential for tray/menu bar apps — the app stays alive
             // in the background with the tray icon even when no windows are visible.
+            // Guard for desktop only: on mobile the OS controls the app lifecycle.
+            #[cfg(not(mobile))]
             if let tauri::RunEvent::ExitRequested { api, .. } = event {
                 api.prevent_exit();
             }
