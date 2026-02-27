@@ -71,6 +71,12 @@ Expand any card to see the full conversation history with formatted code, tool u
 
 ![Conversation viewer](docs/screenshots/conversation-view.png)
 
+### Tray popover -- monitor sessions without opening the dashboard
+
+A quick-glance overlay showing all active sessions and their status directly from the menu bar.
+
+![Tray popover](docs/screenshots/tray-popover.jpeg)
+
 ## Features
 
 - **Zero-integration setup** -- Works with any terminal or IDE, no plugins or extensions required
@@ -79,7 +85,9 @@ Expand any card to see the full conversation history with formatted code, tool u
 - **Conversation viewer** -- Expand any session to view the full conversation with formatted markdown and code blocks
 - **Session control** -- Stop sessions, open their parent terminal/IDE, or rename them for easier tracking
 - **Multi-project view** -- Sessions grouped by project with git branch info
-- **Menu bar integration** -- Quick access from the macOS tray icon
+- **Tray popover** -- Click the menu bar icon for a quick-glance overlay with session status indicators and latest messages
+- **Status notifications** -- Get a native macOS notification when a session needs your attention
+- **Mobile/Web client** -- Connect from any browser or mobile device via WebSocket; scan the QR code to monitor sessions remotely
 
 ## How it works
 
@@ -161,6 +169,7 @@ Thanks to these wonderful people who have contributed to c9watch:
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/minchenlee"><img src="https://github.com/minchenlee.png?s=100" width="100px;" alt="Min-Chen Lee"/><br /><sub><b>Min-Chen Lee</b></sub></a><br /><a href="#code-minchenlee" title="Code">💻</a> <a href="#doc-minchenlee" title="Documentation">📖</a> <a href="#design-minchenlee" title="Design">🎨</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/cynaptic"><img src="https://github.com/cynaptic.png?s=100" width="100px;" alt="Ray Lee"/><br /><sub><b>Ray Lee</b></sub></a><br /><a href="#code-cynaptic" title="Code">💻</a> <a href="#platform-cynaptic" title="Platform">📦</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/grimmerk"><img src="https://github.com/grimmerk.png?s=100" width="100px;" alt="Grimmer Kang"/><br /><sub><b>Grimmer Kang</b></sub></a><br /><a href="#code-grimmerk" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/stanimir93"><img src="https://github.com/stanimir93.png?s=100" width="100px;" alt="Stanimir"/><br /><sub><b>Stanimir</b></sub></a><br /><a href="#code-stanimir93" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
