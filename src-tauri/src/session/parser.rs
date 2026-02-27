@@ -565,4 +565,222 @@ mod tests {
         assert!(entry.is_ok(), "Progress entries should parse as Unknown");
         assert!(matches!(entry.unwrap(), SessionEntry::Unknown));
     }
+
+    fn make_base(ts: &str) -> SessionEntryBase {
+        SessionEntryBase {
+            uuid: "test-uuid".to_string(),
+            timestamp: ts.to_string(),
+            session_id: None,
+            cwd: None,
+            version: None,
+            git_branch: None,
+            parent_uuid: None,
+            is_sidechain: None,
+            slug: None,
+        }
+    }
+
+    #[test]
+    fn test_extract_messages_empty() {
+        assert_eq!(extract_messages(&[]), vec![]);
+    }
+
+    #[test]
+    fn test_extract_messages_user_message() {
+        let entries = vec![SessionEntry::User {
+            base: make_base("2026-01-01T00:00:00Z"),
+            message: UserMessage {
+                role: "user".to_string(),
+                content: "Hello Claude".to_string(),
+                is_tool_result: false,
+            },
+        }];
+        let result = extract_messages(&entries);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].1, MessageType::User);
+        assert_eq!(result[0].2, "Hello Claude");
+        assert_eq!(result[0].0, "2026-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn test_extract_messages_tool_result_user_entry() {
+        let entries = vec![SessionEntry::User {
+            base: make_base("2026-01-01T00:00:00Z"),
+            message: UserMessage {
+                role: "user".to_string(),
+                content: "tool output here".to_string(),
+                is_tool_result: true,
+            },
+        }];
+        let result = extract_messages(&entries);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].1, MessageType::ToolResult);
+        assert_eq!(result[0].2, "tool output here");
+    }
+
+    #[test]
+    fn test_extract_messages_assistant_text() {
+        let entries = vec![SessionEntry::Assistant {
+            base: make_base("2026-01-01T00:00:00Z"),
+            message: AssistantMessage {
+                model: "claude-opus-4-5-20251101".to_string(),
+                id: "msg_1".to_string(),
+                role: "assistant".to_string(),
+                content: vec![MessageContent::Text {
+                    text: "I can help with that.".to_string(),
+                }],
+                stop_reason: Some("end_turn".to_string()),
+                stop_sequence: None,
+                usage: None,
+            },
+        }];
+        let result = extract_messages(&entries);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].1, MessageType::Assistant);
+        assert_eq!(result[0].2, "I can help with that.");
+    }
+
+    #[test]
+    fn test_extract_messages_assistant_thinking() {
+        let entries = vec![SessionEntry::Assistant {
+            base: make_base("2026-01-01T00:00:00Z"),
+            message: AssistantMessage {
+                model: "claude-opus-4-5-20251101".to_string(),
+                id: "msg_1".to_string(),
+                role: "assistant".to_string(),
+                content: vec![MessageContent::Thinking {
+                    thinking: "Let me reason through this...".to_string(),
+                    signature: None,
+                }],
+                stop_reason: None,
+                stop_sequence: None,
+                usage: None,
+            },
+        }];
+        let result = extract_messages(&entries);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].1, MessageType::Thinking);
+        assert_eq!(result[0].2, "Let me reason through this...");
+    }
+
+    #[test]
+    fn test_extract_messages_assistant_tool_use() {
+        let entries = vec![SessionEntry::Assistant {
+            base: make_base("2026-01-01T00:00:00Z"),
+            message: AssistantMessage {
+                model: "claude-opus-4-5-20251101".to_string(),
+                id: "msg_1".to_string(),
+                role: "assistant".to_string(),
+                content: vec![MessageContent::ToolUse {
+                    id: "toolu_abc".to_string(),
+                    name: "Read".to_string(),
+                    input: serde_json::json!({"file_path": "/test/file.txt"}),
+                }],
+                stop_reason: Some("tool_use".to_string()),
+                stop_sequence: None,
+                usage: None,
+            },
+        }];
+        let result = extract_messages(&entries);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].1, MessageType::ToolUse);
+        assert!(result[0].2.starts_with("[Read] toolu_abc - "));
+        assert!(result[0].2.contains("file_path"));
+    }
+
+    #[test]
+    fn test_extract_messages_assistant_tool_result_success() {
+        let entries = vec![SessionEntry::Assistant {
+            base: make_base("2026-01-01T00:00:00Z"),
+            message: AssistantMessage {
+                model: "claude-opus-4-5-20251101".to_string(),
+                id: "msg_1".to_string(),
+                role: "assistant".to_string(),
+                content: vec![MessageContent::ToolResult {
+                    tool_use_id: "toolu_abc".to_string(),
+                    content: "file contents here".to_string(),
+                    is_error: Some(false),
+                }],
+                stop_reason: None,
+                stop_sequence: None,
+                usage: None,
+            },
+        }];
+        let result = extract_messages(&entries);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].1, MessageType::ToolResult);
+        assert_eq!(result[0].2, "[Result] toolu_abc: file contents here");
+    }
+
+    #[test]
+    fn test_extract_messages_assistant_tool_result_error() {
+        let entries = vec![SessionEntry::Assistant {
+            base: make_base("2026-01-01T00:00:00Z"),
+            message: AssistantMessage {
+                model: "claude-opus-4-5-20251101".to_string(),
+                id: "msg_1".to_string(),
+                role: "assistant".to_string(),
+                content: vec![MessageContent::ToolResult {
+                    tool_use_id: "toolu_abc".to_string(),
+                    content: "command not found".to_string(),
+                    is_error: Some(true),
+                }],
+                stop_reason: None,
+                stop_sequence: None,
+                usage: None,
+            },
+        }];
+        let result = extract_messages(&entries);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].1, MessageType::ToolResult);
+        assert_eq!(result[0].2, "[Error] toolu_abc: command not found");
+    }
+
+    #[test]
+    fn test_extract_messages_unknown_entries_skipped() {
+        let entries = vec![
+            SessionEntry::Unknown,
+            SessionEntry::User {
+                base: make_base("2026-01-01T00:00:00Z"),
+                message: UserMessage {
+                    role: "user".to_string(),
+                    content: "hi".to_string(),
+                    is_tool_result: false,
+                },
+            },
+            SessionEntry::Unknown,
+        ];
+        let result = extract_messages(&entries);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].1, MessageType::User);
+    }
+
+    #[test]
+    fn test_extract_messages_mixed_content_in_one_assistant_message() {
+        let entries = vec![SessionEntry::Assistant {
+            base: make_base("2026-01-01T00:00:00Z"),
+            message: AssistantMessage {
+                model: "claude-opus-4-5-20251101".to_string(),
+                id: "msg_1".to_string(),
+                role: "assistant".to_string(),
+                content: vec![
+                    MessageContent::Text {
+                        text: "Let me read that file.".to_string(),
+                    },
+                    MessageContent::ToolUse {
+                        id: "toolu_xyz".to_string(),
+                        name: "Read".to_string(),
+                        input: serde_json::json!({}),
+                    },
+                ],
+                stop_reason: Some("tool_use".to_string()),
+                stop_sequence: None,
+                usage: None,
+            },
+        }];
+        let result = extract_messages(&entries);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].1, MessageType::Assistant);
+        assert_eq!(result[1].1, MessageType::ToolUse);
+    }
 }
