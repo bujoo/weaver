@@ -616,6 +616,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].1, MessageType::ToolResult);
         assert_eq!(result[0].2, "tool output here");
+        assert_eq!(result[0].0, "2026-01-01T00:00:00Z");
     }
 
     #[test]
@@ -734,6 +735,30 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].1, MessageType::ToolResult);
         assert_eq!(result[0].2, "[Error] toolu_abc: command not found");
+    }
+
+    #[test]
+    fn test_extract_messages_assistant_tool_result_no_error_flag() {
+        let entries = vec![SessionEntry::Assistant {
+            base: make_base("2026-01-01T00:00:00Z"),
+            message: AssistantMessage {
+                model: "claude-opus-4-5-20251101".to_string(),
+                id: "msg_1".to_string(),
+                role: "assistant".to_string(),
+                content: vec![MessageContent::ToolResult {
+                    tool_use_id: "toolu_abc".to_string(),
+                    content: "ok".to_string(),
+                    is_error: None,
+                }],
+                stop_reason: None,
+                stop_sequence: None,
+                usage: None,
+            },
+        }];
+        let result = extract_messages(&entries);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].1, MessageType::ToolResult);
+        assert_eq!(result[0].2, "[Result] toolu_abc: ok");
     }
 
     #[test]
