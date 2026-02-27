@@ -232,7 +232,7 @@ pub fn read_last_n_lines<P: AsRef<Path>>(path: P, n: usize) -> Result<Vec<String
         let reader = BufReader::new(file);
         let lines: Vec<String> = reader
             .lines()
-            .filter_map(|line| line.ok())
+            .map_while(Result::ok)
             .filter(|line| !line.trim().is_empty())
             .collect();
 
@@ -251,7 +251,7 @@ pub fn read_last_n_lines<P: AsRef<Path>>(path: P, n: usize) -> Result<Vec<String
     let reader = BufReader::new(file);
     let lines: Vec<String> = reader
         .lines()
-        .filter_map(|line| line.ok())
+        .map_while(Result::ok)
         .filter(|line| !line.trim().is_empty())
         .collect();
 
@@ -284,7 +284,7 @@ pub fn parse_all_entries<P: AsRef<Path>>(path: P) -> Result<Vec<SessionEntry>, S
     let reader = BufReader::new(file);
     let lines: Vec<String> = reader
         .lines()
-        .filter_map(|line| line.ok())
+        .map_while(Result::ok)
         .filter(|line| !line.trim().is_empty())
         .collect();
 

@@ -53,7 +53,7 @@ impl SessionDetector {
                 RefreshKind::new().with_processes(
                     ProcessRefreshKind::new()
                         .with_exe(UpdateKind::OnlyIfNotSet)
-                        .with_cwd(UpdateKind::OnlyIfNotSet)
+                        .with_cwd(UpdateKind::OnlyIfNotSet),
                 ),
             ),
             claude_projects_dir,
@@ -112,7 +112,7 @@ impl SessionDetector {
                     let path = entry.path();
 
                     // Check if it's a JSONL file (UUID format, not subagent files)
-                    if path.is_file() && path.extension().map_or(false, |ext| ext == "jsonl") {
+                    if path.is_file() && path.extension().is_some_and(|ext| ext == "jsonl") {
                         // Skip files that don't look like UUIDs (e.g., agent-*.jsonl)
                         if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                             if stem.starts_with("agent-") {
@@ -192,7 +192,7 @@ impl SessionDetector {
 
             // Encode the process cwd for matching
             let cwd_str = proc_cwd.to_string_lossy();
-            let encoded_cwd = cwd_str.replace('/', "-").replace('_', "-");
+            let encoded_cwd = cwd_str.replace(['/', '_'], "-");
 
             // Helper closure to check if a session matches the process path
             let path_matches =

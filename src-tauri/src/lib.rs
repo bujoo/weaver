@@ -1,3 +1,7 @@
+// The tauri_nspanel macro expands panel_event! in a way that requires `-> ()` syntax,
+// which clippy flags as unused_unit. Suppress it since we cannot change the macro invocation.
+#![cfg_attr(target_os = "macos", allow(clippy::unused_unit))]
+
 // Desktop-only modules
 #[cfg(not(mobile))]
 pub mod actions;

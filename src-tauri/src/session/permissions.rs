@@ -14,7 +14,7 @@ pub struct Permissions {
 }
 
 /// Cached permissions for quick lookup
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PermissionChecker {
     allowed_patterns: Vec<AllowPattern>,
 }
@@ -84,8 +84,8 @@ impl PermissionChecker {
             let inner = &pattern[5..pattern.len() - 1];
 
             // Check for wildcard
-            if inner.ends_with(":*") {
-                let prefix = inner[..inner.len() - 2].to_string();
+            if let Some(prefix) = inner.strip_suffix(":*") {
+                let prefix = prefix.to_string();
                 Some(AllowPattern::Bash {
                     prefix,
                     wildcard: true,
@@ -203,14 +203,6 @@ impl PermissionChecker {
             }
         }
         false
-    }
-}
-
-impl Default for PermissionChecker {
-    fn default() -> Self {
-        Self {
-            allowed_patterns: Vec::new(),
-        }
     }
 }
 

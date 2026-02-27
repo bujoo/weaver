@@ -97,17 +97,14 @@ pub fn start_polling(
                                 for session in &sessions {
                                     if let Some(prev_status) = prev_status_map.get(&session.id) {
                                         // Check for notification-worthy transitions
-                                        let should_notify = match (prev_status, &session.status) {
+                                        let should_notify = matches!(
+                                            (prev_status, &session.status),
                                             (
                                                 SessionStatus::Working,
-                                                SessionStatus::NeedsPermission,
-                                            ) => true,
-                                            (
-                                                SessionStatus::Working,
-                                                SessionStatus::WaitingForInput,
-                                            ) => true,
-                                            _ => false,
-                                        };
+                                                SessionStatus::NeedsPermission
+                                                    | SessionStatus::WaitingForInput,
+                                            )
+                                        );
 
                                         if should_notify {
                                             // Check cooldown to prevent duplicate notifications
@@ -121,13 +118,17 @@ pub fn start_polling(
                                                 fire_notification(
                                                     &app_handle,
                                                     &notifications_tx,
-                                                    &session.id,
-                                                    &session.first_prompt,
-                                                    &session.session_name,
-                                                    &session.status,
-                                                    session.pending_tool_name.as_deref(),
-                                                    session.pid,
-                                                    &session.project_path,
+                                                    NotificationParams {
+                                                        session_id: &session.id,
+                                                        first_prompt: &session.first_prompt,
+                                                        session_name: &session.session_name,
+                                                        status: &session.status,
+                                                        pending_tool_name: session
+                                                            .pending_tool_name
+                                                            .as_deref(),
+                                                        pid: session.pid,
+                                                        project_path: &session.project_path,
+                                                    },
                                                 );
                                                 last_notification_time
                                                     .insert(session.id.clone(), Instant::now());
@@ -195,13 +196,15 @@ fn is_file_recently_modified(path: &Path, seconds: u64) -> bool {
 
 /// Detect sessions and enrich them with status and conversation data
 pub fn detect_and_enrich_sessions() -> Result<Vec<Session>, String> {
-    let mut detector = SessionDetector::new()
-        .map_err(|e| format!("Failed to create session detector: {}", e))?;
+    let mut detector =
+        SessionDetector::new().map_err(|e| format!("Failed to create session detector: {}", e))?;
     detect_and_enrich_sessions_with_detector(&mut detector)
 }
 
 /// Detect sessions using an existing detector (avoids recreating System each call)
-fn detect_and_enrich_sessions_with_detector(detector: &mut SessionDetector) -> Result<Vec<Session>, String> {
+fn detect_and_enrich_sessions_with_detector(
+    detector: &mut SessionDetector,
+) -> Result<Vec<Session>, String> {
     let detected_sessions = detector
         .detect_sessions()
         .map_err(|e| format!("Failed to detect sessions: {}", e))?;
@@ -347,26 +350,22 @@ fn get_first_prompt_from_jsonl(path: &Path) -> Option<String> {
     let file = File::open(path).ok()?;
     let reader = BufReader::new(file);
 
-    for line in reader.lines().take(50) {
-        if let Ok(line) = line {
-            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
-                // Check if this is a user message
-                if value.get("type").and_then(|t| t.as_str()) == Some("user") {
-                    // Try to get the message content
-                    if let Some(message) = value.get("message") {
-                        if let Some(content) = message.get("content") {
-                            // Content can be a string or array
-                            if let Some(text) = content.as_str() {
-                                return Some(truncate_string(text, 100));
-                            } else if let Some(arr) = content.as_array() {
-                                // Find the first text block
-                                for item in arr {
-                                    if item.get("type").and_then(|t| t.as_str()) == Some("text") {
-                                        if let Some(text) =
-                                            item.get("text").and_then(|t| t.as_str())
-                                        {
-                                            return Some(truncate_string(text, 100));
-                                        }
+    for line in reader.lines().map_while(Result::ok).take(50) {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
+            // Check if this is a user message
+            if value.get("type").and_then(|t| t.as_str()) == Some("user") {
+                // Try to get the message content
+                if let Some(message) = value.get("message") {
+                    if let Some(content) = message.get("content") {
+                        // Content can be a string or array
+                        if let Some(text) = content.as_str() {
+                            return Some(truncate_string(text, 100));
+                        } else if let Some(arr) = content.as_array() {
+                            // Find the first text block
+                            for item in arr {
+                                if item.get("type").and_then(|t| t.as_str()) == Some("text") {
+                                    if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
+                                        return Some(truncate_string(text, 100));
                                     }
                                 }
                             }
@@ -440,7 +439,7 @@ fn count_messages_in_jsonl(path: &Path) -> u32 {
     let reader = BufReader::new(file);
     let mut count = 0u32;
 
-    for line in reader.lines().flatten() {
+    for line in reader.lines().map_while(Result::ok) {
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
             if let Some(msg_type) = value.get("type").and_then(|t| t.as_str()) {
                 if msg_type == "user" || msg_type == "assistant" {
@@ -464,18 +463,32 @@ struct NotificationMetadata {
     title: String,
 }
 
+/// Parameters for firing a notification
+struct NotificationParams<'a> {
+    session_id: &'a str,
+    first_prompt: &'a str,
+    session_name: &'a str,
+    status: &'a SessionStatus,
+    pending_tool_name: Option<&'a str>,
+    pid: u32,
+    project_path: &'a str,
+}
+
 /// Fire a notification for a status transition
 fn fire_notification(
     app_handle: &AppHandle,
     notifications_tx: &tokio::sync::broadcast::Sender<String>,
-    session_id: &str,
-    first_prompt: &str,
-    session_name: &str,
-    status: &SessionStatus,
-    pending_tool_name: Option<&str>,
-    pid: u32,
-    project_path: &str,
+    params: NotificationParams<'_>,
 ) {
+    let NotificationParams {
+        session_id,
+        first_prompt,
+        session_name,
+        status,
+        pending_tool_name,
+        pid,
+        project_path,
+    } = params;
     // Truncate title to 60 characters
     let title = truncate_string(first_prompt, 60);
 

@@ -71,11 +71,18 @@ pub fn open_session(pid: u32, project_path: String) -> Result<(), String> {
 #[cfg(target_os = "macos")]
 fn get_process_tty(pid: u32) -> Option<String> {
     let output = Command::new("ps")
-        .arg("-o").arg("tty=")
-        .arg("-p").arg(pid.to_string())
-        .output().ok()?;
+        .arg("-o")
+        .arg("tty=")
+        .arg("-p")
+        .arg(pid.to_string())
+        .output()
+        .ok()?;
     let tty = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if tty.is_empty() || tty == "??" { None } else { Some(tty) }
+    if tty.is_empty() || tty == "??" {
+        None
+    } else {
+        Some(tty)
+    }
 }
 
 /// Walk up the process tree to find a tty (Claude may be a child process)
@@ -87,12 +94,19 @@ fn get_session_tty(pid: u32) -> Option<String> {
             return Some(tty);
         }
         let ppid_output = Command::new("ps")
-            .arg("-o").arg("ppid=")
-            .arg("-p").arg(current_pid.to_string())
-            .output().ok()?;
+            .arg("-o")
+            .arg("ppid=")
+            .arg("-p")
+            .arg(current_pid.to_string())
+            .output()
+            .ok()?;
         let ppid: u32 = String::from_utf8_lossy(&ppid_output.stdout)
-            .trim().parse().ok()?;
-        if ppid <= 1 { break; }
+            .trim()
+            .parse()
+            .ok()?;
+        if ppid <= 1 {
+            break;
+        }
         current_pid = ppid;
     }
     None
@@ -181,7 +195,11 @@ pub fn get_iterm2_session_title(pid: u32) -> Option<String> {
         .ok()?;
 
     let title = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if title.is_empty() { None } else { Some(title) }
+    if title.is_empty() {
+        None
+    } else {
+        Some(title)
+    }
 }
 
 /// Platform-specific fallback to activate/focus an application
