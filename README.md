@@ -85,7 +85,9 @@ A quick-glance overlay showing all active sessions and their status directly fro
 - **Conversation viewer** -- Expand any session to view the full conversation with formatted markdown and code blocks
 - **Session control** -- Stop sessions, open their parent terminal/IDE, or rename them for easier tracking
 - **Multi-project view** -- Sessions grouped by project with git branch info
-- **Menu bar integration** -- Quick access from the macOS tray icon
+- **Tray popover** -- Click the menu bar icon for a quick-glance overlay with session status indicators and latest messages
+- **Status notifications** -- Get a native macOS notification when a session needs your attention
+- **Mobile/Web client** -- Connect from any browser or mobile device via WebSocket; scan the QR code to monitor sessions remotely
 
 ## How it works
 
