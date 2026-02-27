@@ -78,3 +78,60 @@ impl CustomTitles {
         self.titles.insert(session_id, title);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_custom_names_get_missing_key() {
+        let names = CustomNames::default();
+        assert_eq!(names.get("nonexistent-session-id"), None);
+    }
+
+    #[test]
+    fn test_custom_names_set_and_get() {
+        let mut names = CustomNames::default();
+        names.set("session-123".to_string(), "My Project".to_string());
+        assert_eq!(names.get("session-123"), Some(&"My Project".to_string()));
+    }
+
+    #[test]
+    fn test_custom_names_overwrite() {
+        let mut names = CustomNames::default();
+        names.set("session-123".to_string(), "Old Name".to_string());
+        names.set("session-123".to_string(), "New Name".to_string());
+        assert_eq!(names.get("session-123"), Some(&"New Name".to_string()));
+    }
+
+    #[test]
+    fn test_custom_names_multiple_sessions() {
+        let mut names = CustomNames::default();
+        names.set("session-a".to_string(), "Project A".to_string());
+        names.set("session-b".to_string(), "Project B".to_string());
+        assert_eq!(names.get("session-a"), Some(&"Project A".to_string()));
+        assert_eq!(names.get("session-b"), Some(&"Project B".to_string()));
+        assert_eq!(names.get("session-c"), None);
+    }
+
+    #[test]
+    fn test_custom_titles_get_missing_key() {
+        let titles = CustomTitles::default();
+        assert_eq!(titles.get("nonexistent-session-id"), None);
+    }
+
+    #[test]
+    fn test_custom_titles_set_and_get() {
+        let mut titles = CustomTitles::default();
+        titles.set("session-123".to_string(), "Fix the bug".to_string());
+        assert_eq!(titles.get("session-123"), Some(&"Fix the bug".to_string()));
+    }
+
+    #[test]
+    fn test_custom_titles_overwrite() {
+        let mut titles = CustomTitles::default();
+        titles.set("session-123".to_string(), "Old Title".to_string());
+        titles.set("session-123".to_string(), "New Title".to_string());
+        assert_eq!(titles.get("session-123"), Some(&"New Title".to_string()));
+    }
+}
