@@ -19,6 +19,7 @@ We appreciate all contributions, big and small. Thank you to the following peopl
 - **Ray Lee** ([@cynaptic](https://github.com/cynaptic)) - Added mobile web client support via WebSocket ([#6](https://github.com/minchenlee/c9watch/pull/6))
 - **Grimmer Kang** ([@grimmerk](https://github.com/grimmerk)) - Added iTerm2 tab focusing via TTY matching ([#5](https://github.com/minchenlee/c9watch/pull/5))
 - **Grimmer Kang** ([@grimmerk](https://github.com/grimmerk)) - Show iTerm2 tab title as hint when renaming session ([#9](https://github.com/minchenlee/c9watch/pull/9))
+- **Stanimir** ([@stanimir93](https://github.com/stanimir93)) - Added JetBrains IDE support for open session ([#26](https://github.com/minchenlee/c9watch/pull/26))
 
 ### Performance
 

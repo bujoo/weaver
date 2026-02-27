@@ -169,6 +169,7 @@ Thanks to these wonderful people who have contributed to c9watch:
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/minchenlee"><img src="https://github.com/minchenlee.png?s=100" width="100px;" alt="Min-Chen Lee"/><br /><sub><b>Min-Chen Lee</b></sub></a><br /><a href="#code-minchenlee" title="Code">💻</a> <a href="#doc-minchenlee" title="Documentation">📖</a> <a href="#design-minchenlee" title="Design">🎨</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/cynaptic"><img src="https://github.com/cynaptic.png?s=100" width="100px;" alt="Ray Lee"/><br /><sub><b>Ray Lee</b></sub></a><br /><a href="#code-cynaptic" title="Code">💻</a> <a href="#platform-cynaptic" title="Platform">📦</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/grimmerk"><img src="https://github.com/grimmerk.png?s=100" width="100px;" alt="Grimmer Kang"/><br /><sub><b>Grimmer Kang</b></sub></a><br /><a href="#code-grimmerk" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/stanimir93"><img src="https://github.com/stanimir93.png?s=100" width="100px;" alt="Stanimir"/><br /><sub><b>Stanimir</b></sub></a><br /><a href="#code-stanimir93" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
