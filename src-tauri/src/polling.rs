@@ -592,6 +592,12 @@ mod tests {
     #[test]
     fn test_truncate_string_zero_max() {
         assert_eq!(truncate_string("hello", 0), "...");
+        assert!(!truncate_string("hello", 0).contains('h'));
+    }
+
+    #[test]
+    fn test_truncate_string_single_char_limit() {
+        assert_eq!(truncate_string("hello", 1), "h...");
     }
 
     #[test]
