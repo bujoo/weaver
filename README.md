@@ -71,6 +71,12 @@ Expand any card to see the full conversation history with formatted code, tool u
 
 ![Conversation viewer](docs/screenshots/conversation-view.png)
 
+### Tray popover -- monitor sessions without opening the dashboard
+
+A quick-glance overlay showing all active sessions and their status directly from the menu bar.
+
+![Tray popover](docs/screenshots/tray-popover.jpeg)
+
 ## Features
 
 - **Zero-integration setup** -- Works with any terminal or IDE, no plugins or extensions required
