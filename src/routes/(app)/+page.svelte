@@ -248,7 +248,7 @@
 	</div>
 
 	{#if activeTab === 'history'}
-	<main class="grid-container">
+	<main class="grid-container history-main">
 		<SessionHistory />
 	</main>
 	{:else}
@@ -567,6 +567,12 @@
 		flex: 1;
 		overflow-y: auto;
 		padding: var(--space-xl);
+	}
+
+	.history-main {
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.sections-container {

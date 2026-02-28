@@ -300,7 +300,7 @@
 
 	.controls {
 		flex-shrink: 0;
-		padding: var(--space-xl) var(--space-xl) var(--space-md);
+		padding: 0 0 var(--space-md);
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-sm);
@@ -358,7 +358,7 @@
 	.list-area {
 		flex: 1;
 		overflow-y: auto;
-		padding: var(--space-md) var(--space-xl);
+		padding: var(--space-md) 0;
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-sm);
