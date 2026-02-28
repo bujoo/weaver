@@ -245,6 +245,8 @@
 			<span class="tab-icon">⌕</span>
 			<span class="tab-label">HISTORY</span>
 		</button>
+		<!-- Fills remaining tab bar space — draggable so user can move the window -->
+		<div class="tab-drag-region" data-tauri-drag-region></div>
 	</div>
 
 	{#if activeTab === 'history'}
@@ -529,6 +531,13 @@
 		/* Left padding clears the macOS traffic light buttons (~80px) on
 		   titleBarStyle: Transparent windows. Right padding matches. */
 		padding: 0 var(--space-md) 0 80px;
+	}
+
+	/* Fills the right portion of the tab bar so users can drag the window
+	   in non-fullscreen mode. Must have no-drag cleared so the drag region
+	   actually works (parent has data-tauri-drag-region). */
+	.tab-drag-region {
+		flex: 1;
 	}
 
 	.tab-btn {
@@ -915,6 +924,15 @@
 
 	.empty-header-row :global(.status-bar) {
 		flex: 1;
+	}
+
+	/* ── Fullscreen: remove traffic-light clearance ────────────── */
+	/* In macOS fullscreen the traffic lights are gone, so the 80px
+	   left padding becomes dead space. Reset it to 0 in fullscreen. */
+	@media (display-mode: fullscreen) {
+		.tab-bar {
+			padding-left: 0;
+		}
 	}
 
 	/* ── Mobile Responsive ─────────────────────────────────────── */
