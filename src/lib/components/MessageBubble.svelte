@@ -104,6 +104,14 @@
 		<span class="message-time">{formatTime(message.timestamp)}</span>
 	</div>
 
+	{#if message.images?.length}
+		<div class="message-images">
+			{#each message.images as img}
+				<img src="data:{img.mediaType};base64,{img.data}" alt="Attached screenshot" class="attached-image" />
+			{/each}
+		</div>
+	{/if}
+
 	{#if message.content}
 		<div class="message-content">
 			{#if isAssistant || isUser}
@@ -338,6 +346,20 @@
 
 	.message-content :global(a:hover) {
 		color: var(--text-primary);
+	}
+
+	.message-images {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-sm);
+		margin-bottom: var(--space-sm);
+	}
+
+	.attached-image {
+		max-width: 100%;
+		max-height: 400px;
+		border: 1px solid var(--border-default);
+		object-fit: contain;
 	}
 
 	.message-bubble.user .message-content {

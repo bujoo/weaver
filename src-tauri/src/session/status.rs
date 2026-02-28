@@ -434,6 +434,7 @@ mod tests {
                 role: "user".to_string(),
                 content: "Hello".to_string(),
                 is_tool_result: false,
+                images: vec![],
             },
         }];
         assert_eq!(determine_status(&entries), SessionStatus::Working);
@@ -722,6 +723,7 @@ mod tests {
                     role: "user".to_string(),
                     content: "Hello".to_string(),
                     is_tool_result: false,
+                    images: vec![],
                 },
             },
             SessionEntry::Unknown,
@@ -788,6 +790,7 @@ mod tests {
                 role: "user".to_string(),
                 content: "Hello".to_string(),
                 is_tool_result: false,
+                images: vec![],
             },
         }];
         assert_eq!(determine_status(&entries), SessionStatus::WaitingForInput);
@@ -925,6 +928,7 @@ mod tests {
                 role: "user".to_string(),
                 content: "Hello".to_string(),
                 is_tool_result: false,
+                images: vec![],
             },
         }];
         assert_eq!(get_pending_tool_name(&entries), None);

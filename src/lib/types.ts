@@ -62,6 +62,16 @@ export interface Session {
 export type MessageType = 'User' | 'Assistant' | 'Thinking' | 'ToolUse' | 'ToolResult';
 
 /**
+ * A base64-encoded image attached to a message
+ */
+export interface MessageImage {
+  /** MIME type, e.g. "image/png" */
+  mediaType: string;
+  /** Base64-encoded image data */
+  data: string;
+}
+
+/**
  * A message in a conversation
  */
 export interface Message {
@@ -73,6 +83,9 @@ export interface Message {
 
   /** Message content text */
   content: string;
+
+  /** Images attached to this message (screenshots pasted by the user) */
+  images?: MessageImage[];
 }
 
 /**

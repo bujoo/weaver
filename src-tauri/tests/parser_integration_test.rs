@@ -93,7 +93,7 @@ fn test_parse_real_jsonl_file() {
     println!("Extracted {} messages", messages.len());
 
     // Verify messages have timestamps and content
-    for (timestamp, msg_type, content) in messages.iter().take(3) {
+    for (timestamp, msg_type, content, _images) in messages.iter().take(3) {
         assert!(!timestamp.is_empty(), "Timestamp should not be empty");
         assert!(!content.is_empty(), "Content should not be empty");
         println!(
@@ -139,11 +139,11 @@ fn test_message_type_extraction() {
                 // Count message types
                 let user_count = messages
                     .iter()
-                    .filter(|(_, t, _)| t == &MessageType::User)
+                    .filter(|(_, t, _, _)| t == &MessageType::User)
                     .count();
                 let assistant_count = messages
                     .iter()
-                    .filter(|(_, t, _)| t == &MessageType::Assistant)
+                    .filter(|(_, t, _, _)| t == &MessageType::Assistant)
                     .count();
 
                 println!(

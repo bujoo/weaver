@@ -47,6 +47,16 @@ pub struct Conversation {
     pub messages: Vec<ConversationMessage>,
 }
 
+/// A base64-encoded image attached to a message
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageImage {
+    /// MIME type, e.g. "image/png"
+    pub media_type: String,
+    /// Base64-encoded image data
+    pub data: String,
+}
+
 /// Individual message in a conversation
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,6 +64,9 @@ pub struct ConversationMessage {
     pub timestamp: String,
     pub message_type: MessageType,
     pub content: String,
+    /// Images attached to this message (screenshots pasted by the user)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<MessageImage>,
 }
 
 // ── Desktop-only commands ───────────────────────────────────────────
@@ -96,10 +109,17 @@ pub fn get_conversation_data(session_id: &str) -> Result<Conversation, String> {
 
             let conversation_messages: Vec<ConversationMessage> = messages
                 .into_iter()
-                .map(|(timestamp, msg_type, content)| ConversationMessage {
+                .map(|(timestamp, msg_type, content, imgs)| ConversationMessage {
                     timestamp,
                     message_type: msg_type,
                     content,
+                    images: imgs
+                        .into_iter()
+                        .map(|img| MessageImage {
+                            media_type: img.media_type,
+                            data: img.data,
+                        })
+                        .collect(),
                 })
                 .collect();
 

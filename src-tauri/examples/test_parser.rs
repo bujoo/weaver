@@ -37,7 +37,7 @@ fn main() {
                         let messages = extract_messages(&entries);
                         println!("\nExtracted {} messages:", messages.len());
 
-                        for (timestamp, msg_type, content) in messages.iter().take(5) {
+                        for (timestamp, msg_type, content, _images) in messages.iter().take(5) {
                             println!("\n[{:?}] at {}", msg_type, timestamp);
                             let preview = if content.len() > 100 {
                                 format!("{}...", &content[..100])

@@ -79,12 +79,21 @@ pub struct SessionEntryBase {
 /// In Claude Code's JSONL format, user message content can be either:
 /// - A plain string (for actual user prompts)
 /// - An array of content blocks (for tool results sent back to Claude)
+/// A base64-encoded image found in a user message content array
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ImageBlock {
+    pub media_type: String,
+    pub data: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct UserMessage {
     pub role: String,
     pub content: String,
     /// Whether this user entry is a tool result rather than an actual user prompt
     pub is_tool_result: bool,
+    /// Base64-encoded images attached to this message
+    pub images: Vec<ImageBlock>,
 }
 
 impl<'de> Deserialize<'de> for UserMessage {
@@ -103,13 +112,16 @@ impl<'de> Deserialize<'de> for UserMessage {
 
         let content_value = value.get("content");
 
+        let mut images = Vec::new();
         let (content, is_tool_result) = match content_value {
             Some(Value::String(s)) => (s.clone(), false),
             Some(Value::Array(arr)) => {
                 let mut parts = Vec::new();
+                let mut has_tool_result = false;
                 for item in arr {
                     match item.get("type").and_then(|t| t.as_str()) {
                         Some("tool_result") => {
+                            has_tool_result = true;
                             if let Some(content) = item.get("content") {
                                 match content {
                                     Value::String(s) => parts.push(s.clone()),
@@ -131,15 +143,34 @@ impl<'de> Deserialize<'de> for UserMessage {
                                 parts.push(text.to_string());
                             }
                         }
+                        Some("image") => {
+                            if let Some(source) = item.get("source") {
+                                let media_type = source
+                                    .get("media_type")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("image/png")
+                                    .to_string();
+                                if let Some(data) =
+                                    source.get("data").and_then(|v| v.as_str())
+                                {
+                                    images.push(ImageBlock {
+                                        media_type,
+                                        data: data.to_string(),
+                                    });
+                                }
+                            }
+                        }
                         _ => {}
                     }
                 }
-                let text = if parts.is_empty() {
+                let text = if parts.is_empty() && !has_tool_result {
+                    String::new()
+                } else if parts.is_empty() {
                     "[tool result]".to_string()
                 } else {
                     parts.join("\n")
                 };
-                (text, true)
+                (text, has_tool_result)
             }
             _ => (String::new(), false),
         };
@@ -148,6 +179,7 @@ impl<'de> Deserialize<'de> for UserMessage {
             role,
             content,
             is_tool_result,
+            images,
         })
     }
 }
@@ -291,25 +323,29 @@ pub fn parse_all_entries<P: AsRef<Path>>(path: P) -> Result<Vec<SessionEntry>, S
     Ok(parse_jsonl_entries(lines))
 }
 
-/// Get all user and assistant messages from session entries
-pub fn extract_messages(entries: &[SessionEntry]) -> Vec<(String, MessageType, String)> {
+/// Get all user and assistant messages from session entries.
+/// Returns tuples of (timestamp, message_type, content, images).
+pub fn extract_messages(
+    entries: &[SessionEntry],
+) -> Vec<(String, MessageType, String, Vec<ImageBlock>)> {
     let mut messages = Vec::new();
 
     for entry in entries {
         match entry {
             SessionEntry::User { base, message } => {
                 if message.is_tool_result {
-                    // Tool result entries should be shown as ToolResult, not User
                     messages.push((
                         base.timestamp.clone(),
                         MessageType::ToolResult,
                         message.content.clone(),
+                        vec![],
                     ));
                 } else {
                     messages.push((
                         base.timestamp.clone(),
                         MessageType::User,
                         message.content.clone(),
+                        message.images.clone(),
                     ));
                 }
             }
@@ -321,6 +357,7 @@ pub fn extract_messages(entries: &[SessionEntry]) -> Vec<(String, MessageType, S
                                 base.timestamp.clone(),
                                 MessageType::Assistant,
                                 text.clone(),
+                                vec![],
                             ));
                         }
                         MessageContent::Thinking { thinking, .. } => {
@@ -328,6 +365,7 @@ pub fn extract_messages(entries: &[SessionEntry]) -> Vec<(String, MessageType, S
                                 base.timestamp.clone(),
                                 MessageType::Thinking,
                                 thinking.clone(),
+                                vec![],
                             ));
                         }
                         MessageContent::ToolUse { id, name, input } => {
@@ -341,6 +379,7 @@ pub fn extract_messages(entries: &[SessionEntry]) -> Vec<(String, MessageType, S
                                 base.timestamp.clone(),
                                 MessageType::ToolUse,
                                 tool_desc,
+                                vec![],
                             ));
                         }
                         MessageContent::ToolResult {
@@ -359,6 +398,7 @@ pub fn extract_messages(entries: &[SessionEntry]) -> Vec<(String, MessageType, S
                                 base.timestamp.clone(),
                                 MessageType::ToolResult,
                                 tool_desc,
+                                vec![],
                             ));
                         }
                         MessageContent::Unknown => {}
@@ -593,6 +633,7 @@ mod tests {
                 role: "user".to_string(),
                 content: "Hello Claude".to_string(),
                 is_tool_result: false,
+                images: vec![],
             },
         }];
         let result = extract_messages(&entries);
@@ -610,6 +651,7 @@ mod tests {
                 role: "user".to_string(),
                 content: "tool output here".to_string(),
                 is_tool_result: true,
+                images: vec![],
             },
         }];
         let result = extract_messages(&entries);
@@ -771,6 +813,7 @@ mod tests {
                     role: "user".to_string(),
                     content: "hi".to_string(),
                     is_tool_result: false,
+                    images: vec![],
                 },
             },
             SessionEntry::Unknown,
