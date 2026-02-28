@@ -8,3 +8,4 @@ export { default as MessageBubble } from './MessageBubble.svelte';
 
 export { default as PromptInput } from './PromptInput.svelte';
 export { default as SessionHistory } from './SessionHistory.svelte';
+export { default as HistoryCardOverlay } from './HistoryCardOverlay.svelte';

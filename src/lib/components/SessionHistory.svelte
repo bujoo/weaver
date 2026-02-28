@@ -3,6 +3,7 @@
 	import { browser } from '$app/environment';
 	import { getSessionHistory, deepSearchSessions, getConversation } from '$lib/api';
 	import type { HistoryEntry, Conversation } from '$lib/types';
+	import HistoryCardOverlay from './HistoryCardOverlay.svelte';
 
 	// ── State ────────────────────────────────────────────────────────
 	let allEntries = $state<HistoryEntry[]>([]);
@@ -19,8 +20,6 @@
 	// Conversation viewer state
 	let selectedEntry = $state<HistoryEntry | null>(null);
 	let conversation = $state<Conversation | null>(null);
-	let convLoading = $state(false);
-
 	// ── Persistence ──────────────────────────────────────────────────
 	onMount(async () => {
 		if (browser) {
@@ -117,14 +116,11 @@
 
 	async function handleSelectEntry(entry: HistoryEntry) {
 		selectedEntry = entry;
-		convLoading = true;
 		conversation = null;
 		try {
 			conversation = await getConversation(entry.sessionId);
 		} catch (e) {
 			console.error('Failed to load conversation:', e);
-		} finally {
-			convLoading = false;
 		}
 	}
 
@@ -147,10 +143,6 @@
 		return new Date(ms).toLocaleDateString();
 	}
 
-	async function copyResumeCommand(entry: HistoryEntry) {
-		const cmd = `cd "${entry.project}" && claude --resume ${entry.sessionId}`;
-		await navigator.clipboard.writeText(cmd);
-	}
 </script>
 
 <!-- ── Search bar & controls ──────────────────────────────────────── -->
@@ -245,43 +237,7 @@
 
 <!-- ── Conversation overlay ───────────────────────────────────────── -->
 {#if selectedEntry}
-	{@const entry = selectedEntry}
-	<div class="conv-overlay" role="dialog" aria-modal="true" aria-label="Conversation: {entry.projectName}">
-		<div class="conv-panel">
-			<div class="conv-header">
-				<div class="conv-meta">
-					<span class="conv-project">{entry.projectName.toUpperCase()}</span>
-					<span class="conv-time">{relativeTime(entry.timestamp)}</span>
-				</div>
-
-				<button
-					class="resume-chip"
-					onclick={() => copyResumeCommand(entry)}
-					title="Click to copy resume command"
-				>
-					<span class="resume-label">RESUME</span>
-					<code class="resume-cmd">cd "{entry.project}" && claude --resume {entry.sessionId}</code>
-				</button>
-
-				<button class="close-btn" onclick={handleCloseConversation}>✕</button>
-			</div>
-
-			<div class="conv-body">
-				{#if convLoading}
-					<div class="state-msg">Loading conversation...</div>
-				{:else if !conversation || conversation.messages.length === 0}
-					<div class="state-msg">No messages found.</div>
-				{:else}
-					{#each conversation.messages as msg}
-						<div class="msg msg-{msg.messageType.toLowerCase()}">
-							<span class="msg-type">{msg.messageType}</span>
-							<pre class="msg-content">{msg.content}</pre>
-						</div>
-					{/each}
-				{/if}
-			</div>
-		</div>
-	</div>
+	<HistoryCardOverlay entry={selectedEntry} {conversation} onclose={handleCloseConversation} />
 {/if}
 
 <style>
@@ -476,143 +432,4 @@
 		cursor: not-allowed;
 	}
 
-	/* ── Conversation overlay ── */
-	.conv-overlay {
-		position: fixed;
-		inset: 0;
-		background: var(--bg-overlay);
-		z-index: 500;
-		display: flex;
-		align-items: stretch;
-	}
-
-	.conv-panel {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-	}
-
-	.conv-header {
-		flex-shrink: 0;
-		display: flex;
-		align-items: center;
-		gap: var(--space-md);
-		padding: var(--space-md) var(--space-xl);
-		border-bottom: 1px solid var(--border-default);
-		background: var(--bg-elevated);
-	}
-
-	.conv-meta {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		flex-shrink: 0;
-	}
-
-	.conv-project {
-		font-family: var(--font-pixel);
-		font-size: 14px;
-		color: var(--text-primary);
-		letter-spacing: 0.1em;
-	}
-
-	.conv-time {
-		font-family: var(--font-mono);
-		font-size: 11px;
-		color: var(--text-muted);
-	}
-
-	.resume-chip {
-		flex: 1;
-		display: flex;
-		align-items: center;
-		gap: var(--space-sm);
-		background: rgba(255, 255, 255, 0.04);
-		border: 1px solid var(--border-default);
-		padding: var(--space-xs) var(--space-md);
-		cursor: pointer;
-		text-align: left;
-		min-width: 0;
-		transition: border-color var(--transition-fast);
-	}
-
-	.resume-chip:hover {
-		border-color: var(--accent-green);
-	}
-
-	.resume-label {
-		font-family: var(--font-pixel);
-		font-size: 9px;
-		color: var(--accent-green);
-		letter-spacing: 0.1em;
-		flex-shrink: 0;
-	}
-
-	.resume-cmd {
-		font-family: var(--font-mono);
-		font-size: 11px;
-		color: var(--text-secondary);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.close-btn {
-		flex-shrink: 0;
-		width: 32px;
-		height: 32px;
-		background: transparent;
-		border: 1px solid var(--border-default);
-		color: var(--text-muted);
-		cursor: pointer;
-		font-size: 14px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.close-btn:hover {
-		color: var(--text-primary);
-		border-color: var(--text-primary);
-	}
-
-	.conv-body {
-		flex: 1;
-		overflow-y: auto;
-		padding: var(--space-xl);
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-lg);
-	}
-
-	.msg {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-xs);
-	}
-
-	.msg-type {
-		font-family: var(--font-mono);
-		font-size: 10px;
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
-		color: var(--text-muted);
-	}
-
-	.msg-user .msg-type { color: var(--accent-green); }
-	.msg-assistant .msg-type { color: var(--accent-blue); }
-	.msg-thinking .msg-type { color: var(--accent-purple); }
-	.msg-tooluse .msg-type { color: var(--accent-amber); }
-	.msg-toolresult .msg-type { color: var(--text-muted); } /* intentionally low-visibility */
-
-	.msg-content {
-		font-family: var(--font-mono);
-		font-size: 13px;
-		color: var(--text-secondary);
-		white-space: pre-wrap;
-		word-break: break-word;
-		margin: 0;
-		line-height: 1.6;
-	}
 </style>
