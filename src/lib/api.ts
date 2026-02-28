@@ -5,7 +5,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { get } from 'svelte/store';
-import type { Session, Conversation, HistoryEntry, DeepSearchHit } from './types';
+import type { Session, Conversation, HistoryEntry, DeepSearchHit, CostData } from './types';
 import { isDemoMode } from './demo';
 import { getDemoSessions, demoConversations } from './demo/data';
 import { wsClient, useWebSocket } from './ws';
@@ -108,4 +108,14 @@ export async function deepSearchSessions(query: string): Promise<DeepSearchHit[]
 	if (get(isDemoMode)) return [];
 	if (useWebSocket()) return [];
 	return await invoke<DeepSearchHit[]>('deep_search_sessions', { query });
+}
+
+/**
+ * Get historical cost data aggregated by day, project, and model.
+ * (Desktop/Tauri only — returns null on mobile/browser)
+ */
+export async function getCostData(): Promise<CostData | null> {
+	if (get(isDemoMode)) return null;
+	if (useWebSocket()) return null;
+	return await invoke<CostData>('get_cost_data');
 }

@@ -119,3 +119,58 @@ export interface HistoryEntry {
   /** Last path segment of project, e.g. "myproject" */
   projectName: string;
 }
+
+/**
+ * Cost data for a single session.
+ */
+export interface SessionCostRecord {
+  sessionId: string;
+  project: string;
+  projectName: string;
+  /** Primary model (highest cost contributor) */
+  model: string;
+  cost: number;
+  /** ISO 8601 timestamp of earliest assistant message */
+  timestamp: string;
+  /** Date portion "YYYY-MM-DD" */
+  date: string;
+}
+
+/**
+ * Daily cost aggregate.
+ */
+export interface DailyCost {
+  date: string;
+  cost: number;
+  sessions: SessionCostRecord[];
+}
+
+/**
+ * Per-project cost aggregate.
+ */
+export interface ProjectCost {
+  project: string;
+  projectName: string;
+  totalCost: number;
+  sessions: SessionCostRecord[];
+}
+
+/**
+ * Per-model cost aggregate.
+ */
+export interface ModelCost {
+  model: string;
+  displayName: string;
+  cost: number;
+  percentage: number;
+}
+
+/**
+ * Full cost data returned by get_cost_data command.
+ */
+export interface CostData {
+  totalCost: number;
+  dailyCosts: DailyCost[];
+  projectCosts: ProjectCost[];
+  modelCosts: ModelCost[];
+}
