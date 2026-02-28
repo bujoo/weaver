@@ -212,15 +212,17 @@
 			</div>
 
 			{#if groupByProject}
-			<button class="option-btn" onclick={() => {
-				if (allCollapsed) {
-					collapsedProjects = new Set();
-				} else {
-					collapsedProjects = new Set(groups!.map(g => g.project));
-				}
-			}}>
-				{allCollapsed ? 'EXPAND ALL' : 'COLLAPSE ALL'}
-			</button>
+			<div class="sort-group">
+				<button class="option-btn" onclick={() => {
+					if (allCollapsed) {
+						collapsedProjects = new Set();
+					} else {
+						collapsedProjects = new Set(groups!.map(g => g.project));
+					}
+				}}>
+					{allCollapsed ? 'EXPAND ALL' : 'COLLAPSE ALL'}
+				</button>
+			</div>
 			{/if}
 		</div>
 	</div>
@@ -240,12 +242,16 @@
 		{:else if groupByProject && groups}
 			{#each groups as group}
 				<div class="project-group">
-					<div class="group-header">
-						<button
-							class="collapse-toggle"
-							onclick={() => toggleProjectCollapse(group.project)}
-							aria-label={collapsedProjects.has(group.project) ? 'Expand group' : 'Collapse group'}
-						>{collapsedProjects.has(group.project) ? '▶' : '▼'}</button>
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						class="group-header"
+						onclick={() => toggleProjectCollapse(group.project)}
+						role="button"
+						tabindex="0"
+						aria-label={collapsedProjects.has(group.project) ? 'Expand group' : 'Collapse group'}
+					>
+						<span class="collapse-toggle" aria-hidden="true">{collapsedProjects.has(group.project) ? '▶' : '▼'}</span>
 						<span class="group-name">{group.projectName.toUpperCase()}</span>
 						<span class="group-count">{group.entries.length}</span>
 					</div>
@@ -453,20 +459,20 @@
 		letter-spacing: 0.05em;
 	}
 
+	.group-header {
+		cursor: pointer;
+	}
+
+	.group-header:hover .group-name {
+		color: var(--text-primary);
+	}
+
 	.collapse-toggle {
-		background: transparent;
-		border: none;
 		color: var(--text-muted);
 		font-family: var(--font-mono);
 		font-size: 11px;
-		cursor: pointer;
-		padding: 0;
 		line-height: 1;
 		flex-shrink: 0;
-	}
-
-	.collapse-toggle:hover {
-		color: var(--text-primary);
 	}
 
 </style>
