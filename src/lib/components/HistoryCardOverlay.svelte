@@ -15,7 +15,6 @@
 	let { entry, conversation, onclose }: Props = $props();
 
 	let messagesContainer = $state<HTMLDivElement>(undefined!);
-	let isInitialLoad = $state(true);
 	let hasScrolledToBottom = $state(false);
 	let showTools = $state(true);
 	let showThinking = $state(true);
@@ -28,8 +27,6 @@
 	}
 
 	onMount(() => {
-		isInitialLoad = false;
-
 		const handleKeydown = (e: KeyboardEvent) => {
 			if (e.key === 'Escape') {
 				handleClose();
