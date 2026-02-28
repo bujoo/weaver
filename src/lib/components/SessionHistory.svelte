@@ -15,7 +15,8 @@
 	let groupByProject = $state(false);
 
 	let deepSearching = $state(false);
-	let deepSearchResults = $state<Set<string> | null>(null); // null = not triggered
+	let deepSearchResults = $state<Set<string> | null>(null); // null = no search run yet
+	let deepSearchTimer: ReturnType<typeof setTimeout> | undefined;
 
 	// Conversation viewer state
 	let selectedEntry = $state<HistoryEntry | null>(null);
@@ -46,10 +47,27 @@
 		if (browser) localStorage.setItem('historyGroup', String(groupByProject));
 	});
 
-	// Reset deep search when query changes
+	// Debounced deep search: fires 300ms after the query settles
 	$effect(() => {
-		const _ = query; // read query to declare reactive dependency
-		deepSearchResults = null;
+		const q = query; // declare reactive dependency
+		clearTimeout(deepSearchTimer);
+		if (!q.trim()) {
+			deepSearchResults = null;
+			deepSearching = false;
+			return;
+		}
+		deepSearchTimer = setTimeout(async () => {
+			deepSearching = true;
+			try {
+				const ids = await deepSearchSessions(q);
+				deepSearchResults = new Set(ids);
+			} catch (e) {
+				console.error('Deep search failed:', e);
+			} finally {
+				deepSearching = false;
+			}
+		}, 300);
+		return () => clearTimeout(deepSearchTimer);
 	});
 
 	// ── Filtering & sorting ──────────────────────────────────────────
@@ -82,10 +100,6 @@
 		);
 	});
 
-	let showDeepSearchButton = $derived(
-		query.trim().length > 0 && deepSearchResults === null
-	);
-
 	// ── Grouping ─────────────────────────────────────────────────────
 	let groups = $derived.by(() => {
 		if (!groupByProject) return null;
@@ -102,18 +116,6 @@
 	});
 
 	// ── Actions ──────────────────────────────────────────────────────
-	async function handleDeepSearch() {
-		deepSearching = true;
-		try {
-			const ids = await deepSearchSessions(query);
-			deepSearchResults = new Set(ids);
-		} catch (e) {
-			console.error('Deep search failed:', e);
-		} finally {
-			deepSearching = false;
-		}
-	}
-
 	async function handleSelectEntry(entry: HistoryEntry) {
 		selectedEntry = entry;
 		conversation = null;
@@ -186,6 +188,10 @@
 		</div>
 	</div>
 
+	{#if deepSearching}
+		<div class="searching-indicator">Searching...</div>
+	{/if}
+
 	<!-- ── List ──────────────────────────────────────────────────── -->
 	<div class="list-area">
 		{#if loading}
@@ -221,17 +227,6 @@
 			{/each}
 		{/if}
 
-		{#if showDeepSearchButton}
-			<div class="deep-search-row">
-				<button
-					class="deep-search-btn"
-					disabled={deepSearching}
-					onclick={handleDeepSearch}
-				>
-					{deepSearching ? 'Searching...' : 'Deep Search (scan full conversations)'}
-				</button>
-			</div>
-		{/if}
 	</div>
 </div>
 
@@ -404,32 +399,14 @@
 		color: var(--text-muted);
 	}
 
-	.deep-search-row {
-		display: flex;
-		justify-content: flex-end;
-		padding-top: var(--space-md);
-	}
-
-	.deep-search-btn {
+	.searching-indicator {
+		flex-shrink: 0;
+		padding: var(--space-xs) var(--space-xl);
 		font-family: var(--font-mono);
-		font-size: 12px;
+		font-size: 11px;
+		color: var(--text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		color: var(--accent-blue);
-		background: transparent;
-		border: 1px solid var(--accent-blue);
-		padding: var(--space-sm) var(--space-md);
-		cursor: pointer;
-		transition: background var(--transition-fast);
-	}
-
-	.deep-search-btn:hover:not(:disabled) {
-		background: rgba(0, 112, 243, 0.1);
-	}
-
-	.deep-search-btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
 	}
 
 </style>
