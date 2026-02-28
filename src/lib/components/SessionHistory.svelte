@@ -49,7 +49,7 @@
 
 	// Reset deep search when query changes
 	$effect(() => {
-		query; // reactive dependency
+		const _ = query; // read query to declare reactive dependency
 		deepSearchResults = null;
 	});
 
@@ -148,7 +148,7 @@
 	}
 
 	async function copyResumeCommand(entry: HistoryEntry) {
-		const cmd = `cd ${entry.project} && claude --resume ${entry.sessionId}`;
+		const cmd = `cd "${entry.project}" && claude --resume ${entry.sessionId}`;
 		await navigator.clipboard.writeText(cmd);
 	}
 </script>
@@ -245,21 +245,22 @@
 
 <!-- ── Conversation overlay ───────────────────────────────────────── -->
 {#if selectedEntry}
-	<div class="conv-overlay" role="dialog" aria-modal="true">
+	{@const entry = selectedEntry}
+	<div class="conv-overlay" role="dialog" aria-modal="true" aria-label="Conversation: {entry.projectName}">
 		<div class="conv-panel">
 			<div class="conv-header">
 				<div class="conv-meta">
-					<span class="conv-project">{selectedEntry.projectName.toUpperCase()}</span>
-					<span class="conv-time">{relativeTime(selectedEntry.timestamp)}</span>
+					<span class="conv-project">{entry.projectName.toUpperCase()}</span>
+					<span class="conv-time">{relativeTime(entry.timestamp)}</span>
 				</div>
 
 				<button
 					class="resume-chip"
-					onclick={() => copyResumeCommand(selectedEntry!)}
+					onclick={() => copyResumeCommand(entry)}
 					title="Click to copy resume command"
 				>
 					<span class="resume-label">RESUME</span>
-					<code class="resume-cmd">cd {selectedEntry.project} && claude --resume {selectedEntry.sessionId}</code>
+					<code class="resume-cmd">cd "{entry.project}" && claude --resume {entry.sessionId}</code>
 				</button>
 
 				<button class="close-btn" onclick={handleCloseConversation}>✕</button>
@@ -603,6 +604,7 @@
 	.msg-assistant .msg-type { color: var(--accent-blue); }
 	.msg-thinking .msg-type { color: var(--accent-purple); }
 	.msg-tooluse .msg-type { color: var(--accent-amber); }
+	.msg-toolresult .msg-type { color: var(--text-muted); } /* intentionally low-visibility */
 
 	.msg-content {
 		font-family: var(--font-mono);
