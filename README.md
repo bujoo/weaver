@@ -88,6 +88,8 @@ A quick-glance overlay showing all active sessions and their status directly fro
 - **Tray popover** -- Click the menu bar icon for a quick-glance overlay with session status indicators and latest messages
 - **Status notifications** -- Get a native macOS notification when a session needs your attention
 - **Mobile/Web client** -- Connect from any browser or mobile device via WebSocket; scan the QR code to monitor sessions remotely
+- **Session history** -- Browse and search all past sessions with instant metadata filter and deep content search, with full conversation viewer
+- **Cost tracker** -- Track Claude Code spending with daily, per-project, and per-model breakdowns using cached JSONL scanning
 
 ## How it works
 
