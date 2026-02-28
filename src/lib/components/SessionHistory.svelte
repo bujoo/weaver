@@ -175,6 +175,11 @@
 <!-- ── Search bar & controls ──────────────────────────────────────── -->
 <div class="history-container">
 	<div class="controls">
+		<div class="section-header">
+			<span class="section-title">SESSION HISTORY</span>
+			<span class="section-count">{allEntries.length}</span>
+		</div>
+
 		<div class="search-row">
 			<input
 				class="search-input"
@@ -233,10 +238,6 @@
 
 	<!-- ── List ──────────────────────────────────────────────────── -->
 	<div class="list-area">
-		<div class="section-header">
-			<span class="section-title">SESSION HISTORY</span>
-			<span class="section-count">{allEntries.length}</span>
-		</div>
 		{#if loading}
 			<div class="state-msg">Loading history...</div>
 		{:else if error}

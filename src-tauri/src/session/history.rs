@@ -42,7 +42,7 @@ pub fn parse_history_jsonl(content: &str) -> Vec<HistoryEntry> {
                 continue;
             }
             let existing = by_session.get(&raw.session_id);
-            if existing.is_none_or(|e| raw.timestamp > e.timestamp) {
+            if existing.is_none_or(|e| raw.timestamp < e.timestamp) {
                 by_session.insert(raw.session_id.clone(), raw);
             }
         }
@@ -185,8 +185,8 @@ mod tests {
         );
         let result = parse_history_jsonl(jsonl);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].display, "Second prompt");
-        assert_eq!(result[0].timestamp, 2000);
+        assert_eq!(result[0].display, "First prompt");
+        assert_eq!(result[0].timestamp, 1000);
     }
 
     #[test]
