@@ -3,29 +3,98 @@
 	import { getCostData } from '$lib/api';
 	import type { CostData } from '$lib/types';
 
+	type TimeScale = 'daily' | 'weekly' | 'monthly';
+
+	interface TimeBucket {
+		key: string;
+		label: string;
+		cost: number;
+		sessions: import('$lib/types').SessionCostRecord[];
+		subBuckets?: { label: string; cost: number; sessions: import('$lib/types').SessionCostRecord[] }[];
+	}
+
 	// ── State ────────────────────────────────────────────────────────
 	let costData = $state<CostData | null>(null);
 	let loading = $state(true);
-	let expandedDays = $state<Set<string>>(new Set());
 	let collapsedProjects = $state<Set<string>>(new Set());
+	let modelTrackWidth = $state(0);
+	let projectTrackWidth = $state(0);
+	let timeScale = $state<TimeScale>('daily');
+	let dropdownOpen = $state(false);
+	let hoveredBucket = $state<string | null>(null);
+	let expandedProjects = $state<Set<string>>(new Set());
 
 	// ── Helpers ──────────────────────────────────────────────────────
 	function formatCost(n: number): string {
 		return '$' + n.toFixed(2);
 	}
 
-	function formatDate(dateStr: string): string {
-		const today = new Date().toISOString().slice(0, 10);
-		const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+	/** Format a Date object as YYYY-MM-DD in local time */
+	function toLocalDateStr(d: Date): string {
+		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+	}
+
+	function formatDayLabel(dateStr: string): string {
+		const now = new Date();
+		const today = toLocalDateStr(now);
+		const yd = new Date(now);
+		yd.setDate(yd.getDate() - 1);
+		const yesterday = toLocalDateStr(yd);
 		if (dateStr === today) return 'TODAY';
 		if (dateStr === yesterday) return 'YESTERDAY';
 		const d = new Date(dateStr + 'T00:00:00');
 		return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
 	}
 
+	/** Get ISO week start (Monday) for a date string */
+	function getWeekStart(dateStr: string): string {
+		const d = new Date(dateStr + 'T00:00:00');
+		const day = d.getDay();
+		const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
+		const monday = new Date(d);
+		monday.setDate(diff);
+		return toLocalDateStr(monday);
+	}
+
+	function formatWeekLabel(weekStartStr: string): string {
+		const now = new Date();
+		const thisWeekStart = getWeekStart(toLocalDateStr(now));
+		const lastWeekDate = new Date(thisWeekStart + 'T00:00:00');
+		lastWeekDate.setDate(lastWeekDate.getDate() - 7);
+		const lastWeekStart = toLocalDateStr(lastWeekDate);
+
+		if (weekStartStr === thisWeekStart) return 'THIS WEEK';
+		if (weekStartStr === lastWeekStart) return 'LAST WEEK';
+
+		const start = new Date(weekStartStr + 'T00:00:00');
+		const end = new Date(start.getTime() + 6 * 86400000);
+		const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
+		return `${fmt(start)}–${fmt(end)}`;
+	}
+
+	function formatMonthLabel(monthKey: string): string {
+		const now = new Date();
+		const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+		const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+		const lastMonth = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`;
+
+		if (monthKey === thisMonth) return 'THIS MONTH';
+		if (monthKey === lastMonth) return 'LAST MONTH';
+
+		const d = new Date(monthKey + '-01T00:00:00');
+		return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase();
+	}
+
 	function formatTime(timestamp: string): string {
 		const d = new Date(timestamp);
 		return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+	}
+
+	function formatDateTime(timestamp: string): string {
+		const d = new Date(timestamp);
+		const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
+		const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+		return `${date} ${time}`;
 	}
 
 	function modelDisplayName(model: string): string {
@@ -35,43 +104,234 @@
 		return model;
 	}
 
-	function modelColor(model: string): string {
-		if (model.startsWith('claude-sonnet')) return 'var(--accent-blue)';
-		if (model.startsWith('claude-opus')) return 'var(--accent-amber)';
-		return 'var(--text-muted)';
+	/** Returns the date range [startInclusive, endExclusive) for current time scale window */
+	function getTimeWindow(): { start: string; end: string } | null {
+		const now = new Date();
+		const todayStr = toLocalDateStr(now);
+
+		if (timeScale === 'daily') {
+			const tomorrow = new Date(now);
+			tomorrow.setDate(tomorrow.getDate() + 1);
+			return { start: todayStr, end: toLocalDateStr(tomorrow) };
+		}
+		if (timeScale === 'weekly') {
+			const weekStart = getWeekStart(todayStr);
+			const weekEnd = new Date(weekStart + 'T00:00:00');
+			weekEnd.setDate(weekEnd.getDate() + 7);
+			return { start: weekStart, end: toLocalDateStr(weekEnd) };
+		}
+		// monthly
+		const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+		const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+		return { start: monthStart, end: toLocalDateStr(nextMonth) };
 	}
 
 	// ── Derived ──────────────────────────────────────────────────────
-	let dailyCosts = $derived.by(() => {
+	let timeBuckets = $derived.by((): TimeBucket[] => {
 		if (!costData) return [];
-		return costData.dailyCosts.filter(d => d.cost > 0).slice(0, 14);
+		const days = costData.dailyCosts.filter(d => d.cost > 0);
+		const today = toLocalDateStr(new Date());
+
+		if (timeScale === 'daily') {
+			return days.slice(0, 14).map(d => ({
+				key: d.date,
+				label: formatDayLabel(d.date),
+				cost: d.cost,
+				sessions: d.sessions
+			}));
+		}
+
+		if (timeScale === 'weekly') {
+			// Build data map from actual sessions
+			const weekMap = new Map<string, { cost: number; sessions: typeof days[0]['sessions']; dayBuckets: Map<string, { cost: number; sessions: typeof days[0]['sessions'] }> }>();
+			for (const d of days) {
+				const wk = getWeekStart(d.date);
+				if (!weekMap.has(wk)) weekMap.set(wk, { cost: 0, sessions: [], dayBuckets: new Map() });
+				const entry = weekMap.get(wk)!;
+				entry.cost += d.cost;
+				entry.sessions.push(...d.sessions);
+				entry.dayBuckets.set(d.date, { cost: d.cost, sessions: d.sessions });
+			}
+			// Generate last 8 weeks anchored to today, newest→oldest
+			const thisWeek = getWeekStart(today);
+			return Array.from({ length: 8 }, (_, i) => {
+				const d = new Date(thisWeek + 'T00:00:00');
+				d.setDate(d.getDate() - i * 7);
+				return toLocalDateStr(d);
+			}).map(wk => {
+				const data = weekMap.get(wk);
+				return {
+					key: wk,
+					label: formatWeekLabel(wk),
+					cost: data?.cost ?? 0,
+					sessions: data?.sessions ?? [],
+					subBuckets: data ? Array.from(data.dayBuckets.entries())
+						.sort(([a], [b]) => b.localeCompare(a))
+						.map(([date, d]) => ({ label: formatDayLabel(date), cost: d.cost, sessions: d.sessions })) : []
+				};
+			});
+		}
+
+		// monthly
+		const monthMap = new Map<string, { cost: number; sessions: typeof days[0]['sessions']; weekBuckets: Map<string, { cost: number; sessions: typeof days[0]['sessions'] }> }>();
+		for (const d of days) {
+			const mk = d.date.slice(0, 7);
+			if (!monthMap.has(mk)) monthMap.set(mk, { cost: 0, sessions: [], weekBuckets: new Map() });
+			const entry = monthMap.get(mk)!;
+			entry.cost += d.cost;
+			entry.sessions.push(...d.sessions);
+			const wk = getWeekStart(d.date);
+			if (!entry.weekBuckets.has(wk)) entry.weekBuckets.set(wk, { cost: 0, sessions: [] });
+			const wEntry = entry.weekBuckets.get(wk)!;
+			wEntry.cost += d.cost;
+			wEntry.sessions.push(...d.sessions);
+		}
+		// Generate last 6 months anchored to this month, newest→oldest
+		const now = new Date();
+		return Array.from({ length: 6 }, (_, i) => {
+			const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+			return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+		}).map(mk => {
+			const data = monthMap.get(mk);
+			return {
+				key: mk,
+				label: formatMonthLabel(mk),
+				cost: data?.cost ?? 0,
+				sessions: data?.sessions ?? [],
+				subBuckets: data ? Array.from(data.weekBuckets.entries())
+					.sort(([a], [b]) => b.localeCompare(a))
+					.map(([wk, w]) => ({ label: formatWeekLabel(wk), cost: w.cost, sessions: w.sessions })) : []
+			};
+		});
 	});
 
-	let maxDailyCost = $derived.by(() => {
-		if (dailyCosts.length === 0) return 0;
-		return Math.max(...dailyCosts.map(d => d.cost));
+	/** Chronological order (oldest → newest) for the bar chart */
+	let chronoBuckets = $derived([...timeBuckets].reverse());
+
+	let maxBucketCost = $derived.by(() => {
+		if (timeBuckets.length === 0) return 0;
+		return Math.max(...timeBuckets.map(b => b.cost));
+	});
+
+	let scaleLabel = $derived(
+		timeScale === 'daily' ? 'DAILY' : timeScale === 'weekly' ? 'WEEKLY' : 'MONTHLY'
+	);
+
+	let scaleSectionTitle = $derived(
+		timeScale === 'daily' ? 'DAILY COST' : timeScale === 'weekly' ? 'WEEKLY COST' : 'MONTHLY COST'
+	);
+
+	/** Model costs filtered to the active time window */
+	let filteredModelCosts = $derived.by((): Array<{ model: string; displayName: string; cost: number; percentage: number }> => {
+		if (!costData) return [];
+		const tw = getTimeWindow();
+
+		// Collect all sessions within the time window
+		const sessions = costData.dailyCosts
+			.filter(d => !tw || (d.date >= tw.start && d.date < tw.end))
+			.flatMap(d => d.sessions);
+
+		// Aggregate by model
+		const modelMap = new Map<string, number>();
+		for (const s of sessions) {
+			modelMap.set(s.model, (modelMap.get(s.model) || 0) + s.cost);
+		}
+
+		const totalCost = Array.from(modelMap.values()).reduce((a, b) => a + b, 0);
+		return Array.from(modelMap.entries())
+			.map(([model, cost]) => ({
+				model,
+				displayName: modelDisplayName(model),
+				cost,
+				percentage: totalCost > 0 ? (cost / totalCost) * 100 : 0
+			}))
+			.sort((a, b) => b.cost - a.cost);
+	});
+
+	/** Project costs filtered to the active time window */
+	let filteredProjectCosts = $derived.by(() => {
+		if (!costData) return [];
+		const tw = getTimeWindow();
+		if (!tw) return costData.projectCosts;
+
+		const projMap = new Map<string, { project: string; projectName: string; totalCost: number; sessions: import('$lib/types').SessionCostRecord[] }>();
+		for (const proj of costData.projectCosts) {
+			const filtered = proj.sessions.filter(s => s.date >= tw.start && s.date < tw.end);
+			if (filtered.length === 0) continue;
+			const cost = filtered.reduce((sum, s) => sum + s.cost, 0);
+			projMap.set(proj.project, { project: proj.project, projectName: proj.projectName, totalCost: cost, sessions: filtered });
+		}
+		return Array.from(projMap.values()).sort((a, b) => b.totalCost - a.totalCost);
+	});
+
+	/** Total cost filtered to the active time window */
+	let filteredTotalCost = $derived.by(() => {
+		if (!costData) return 0;
+		const tw = getTimeWindow();
+		if (!tw) return costData.totalCost;
+		return costData.dailyCosts
+			.filter(d => d.date >= tw.start && d.date < tw.end)
+			.reduce((sum, d) => sum + d.cost, 0);
 	});
 
 	let allCollapsed = $derived(
-		costData !== null &&
-		costData.projectCosts.length > 0 &&
-		costData.projectCosts.every(p => collapsedProjects.has(p.project))
+		filteredProjectCosts.length > 0 &&
+		filteredProjectCosts.every(p => collapsedProjects.has(p.project))
 	);
 
 	let maxProjectCost = $derived.by(() => {
-		if (!costData || costData.projectCosts.length === 0) return 0;
-		return Math.max(...costData.projectCosts.map(p => p.totalCost));
+		if (filteredProjectCosts.length === 0) return 0;
+		return Math.max(...filteredProjectCosts.map(p => p.totalCost));
 	});
 
-	// ── Actions ──────────────────────────────────────────────────────
-	function toggleDay(date: string) {
-		const next = new Set(expandedDays);
-		if (next.has(date)) {
-			next.delete(date);
-		} else {
-			next.add(date);
+	// Grid-block helpers for inline bars
+	let modelBarColumns = $derived(Math.max(1, Math.floor((modelTrackWidth - 6) / 10)));
+	let projectBarColumns = $derived(Math.max(1, Math.floor((projectTrackWidth - 6) / 10)));
+
+	/** Combined model bar: allocates blocks proportionally like StatusBar */
+	let modelStatusArray = $derived.by(() => {
+		if (filteredModelCosts.length === 0) return Array(modelBarColumns).fill('empty');
+
+		const models = filteredModelCosts;
+		const percentages = models.map(mc => (mc.percentage / 100) * modelBarColumns);
+		const integerParts = percentages.map(p => Math.floor(p));
+		const remainders = percentages.map((p, i) => p - integerParts[i]);
+		const result = [...integerParts];
+		let allocated = result.reduce((a, b) => a + b, 0);
+
+		while (allocated < modelBarColumns) {
+			let maxR = -1, maxI = -1;
+			for (let i = 0; i < remainders.length; i++) {
+				if (remainders[i] > maxR) { maxR = remainders[i]; maxI = i; }
+			}
+			if (maxI === -1) break;
+			result[maxI]++;
+			remainders[maxI] = -1;
+			allocated++;
 		}
-		expandedDays = next;
+
+		const arr: string[] = [];
+		for (let i = 0; i < models.length; i++) {
+			const cls = models[i].model.startsWith('claude-opus') ? 'opus' : models[i].model.startsWith('claude-sonnet') ? 'sonnet' : 'haiku';
+			for (let j = 0; j < result[i]; j++) arr.push(cls);
+		}
+		while (arr.length < modelBarColumns) arr.push('empty');
+		return arr;
+	});
+
+	/** Build grid blocks: `filled` blocks of given color class, rest `empty` */
+	function buildBarBlocks(fillPct: number, totalCols: number, colorClass: string): Array<{ type: string }> {
+		const filled = Math.round((fillPct / 100) * totalCols);
+		const arr: Array<{ type: string }> = [];
+		for (let i = 0; i < filled; i++) arr.push({ type: colorClass });
+		while (arr.length < totalCols) arr.push({ type: 'empty' });
+		return arr;
+	}
+
+	// ── Actions ──────────────────────────────────────────────────────
+	function setTimeScale(scale: TimeScale) {
+		timeScale = scale;
+		collapsedProjects = new Set();
 	}
 
 	function toggleProjectCollapse(project: string) {
@@ -87,18 +347,24 @@
 	function toggleAllProjects() {
 		if (allCollapsed) {
 			collapsedProjects = new Set();
-		} else if (costData) {
-			collapsedProjects = new Set(costData.projectCosts.map(p => p.project));
+		} else {
+			collapsedProjects = new Set(filteredProjectCosts.map(p => p.project));
 		}
 	}
+
+	// ── Click-outside to close dropdown ─────────────────────────────
+	$effect(() => {
+		if (!dropdownOpen) return;
+		const close = () => { dropdownOpen = false; };
+		document.addEventListener('click', close);
+		return () => document.removeEventListener('click', close);
+	});
 
 	// ── Lifecycle ────────────────────────────────────────────────────
 	onMount(async () => {
 		try {
 			costData = await getCostData();
-			if (costData) {
-				collapsedProjects = new Set(costData.projectCosts.map(p => p.project));
-			}
+			collapsedProjects = new Set();
 		} catch (e) {
 			console.error('Failed to load cost data:', e);
 		} finally {
@@ -109,11 +375,31 @@
 
 <div class="cost-container">
 	<!-- ── Header ─────────────────────────────────────────────────── -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="section-header">
 		<span class="section-title">COST TRACKER</span>
 		{#if costData}
-			<span class="section-total">{formatCost(costData.totalCost)}</span>
+			<span class="section-total">{formatCost(filteredTotalCost)}</span>
 		{/if}
+		<div class="scale-dropdown" onclick={(e) => e.stopPropagation()}>
+			<button class="scale-trigger" onclick={() => dropdownOpen = !dropdownOpen}>
+				{scaleLabel} ▾
+			</button>
+			{#if dropdownOpen}
+				<div class="scale-menu">
+					{#each ['daily', 'weekly', 'monthly'] as scale}
+						<button
+							class="scale-option"
+							class:active={timeScale === scale}
+							onclick={() => { setTimeScale(scale as TimeScale); dropdownOpen = false; }}
+						>
+							{scale.toUpperCase()}
+						</button>
+					{/each}
+				</div>
+			{/if}
+		</div>
 	</div>
 
 	{#if loading}
@@ -122,43 +408,64 @@
 		<div class="state-msg">No cost data available.</div>
 	{:else}
 		<div class="list-area">
-			<!-- ── DAILY COST ─────────────────────────────────────── -->
-			<div class="cost-section">
-				<div class="sub-header">DAILY COST</div>
+			<!-- ── BY MODEL ───────────────────────────────────────── -->
+			<div class="model-status-bar">
+				<div class="sub-header">BY MODEL</div>
 
-				{#each dailyCosts as day (day.date)}
-					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div
-						class="day-row"
-						onclick={() => toggleDay(day.date)}
-						role="button"
-						tabindex="0"
-						aria-label={expandedDays.has(day.date) ? 'Collapse day' : 'Expand day'}
-					>
-						<span class="day-label">{formatDate(day.date)}</span>
-						<div class="bar-track">
-							<div
-								class="bar-fill bar-amber"
-								style="width: {maxDailyCost > 0 ? (day.cost / maxDailyCost) * 100 : 0}%"
-							></div>
-						</div>
-						<span class="day-cost">{formatCost(day.cost)}</span>
+				<div class="progress-track" bind:clientWidth={modelTrackWidth}>
+					<div class="grid-container" style="grid-template-columns: repeat({modelBarColumns}, 1fr);">
+						{#each modelStatusArray as status, i}
+							<div class="rect {status}"></div>
+						{/each}
 					</div>
+				</div>
 
-					{#if expandedDays.has(day.date)}
-						<div class="day-sessions">
-							{#each day.sessions as session (session.sessionId)}
-								<div class="session-detail">
-									<span class="detail-project">{session.projectName}</span>
-									<span class="detail-time">{formatTime(session.timestamp)}</span>
-									<span class="detail-model">{modelDisplayName(session.model)}</span>
-									<span class="detail-cost">{formatCost(session.cost)}</span>
-								</div>
-							{/each}
+				<div class="model-legend">
+					{#each filteredModelCosts as mc (mc.model)}
+						<div class="model-legend-item">
+							<span class="dot {mc.model.startsWith('claude-opus') ? 'opus' : mc.model.startsWith('claude-sonnet') ? 'sonnet' : 'haiku'}"></span>
+							<span class="model-legend-label">{mc.displayName.toUpperCase()}</span>
+							<span class="model-legend-cost">{formatCost(mc.cost)}</span>
+							<span class="model-legend-pct">{mc.percentage.toFixed(0)}%</span>
 						</div>
-					{/if}
-				{/each}
+					{/each}
+				</div>
+
+				<div class="deco-mesh"></div>
+			</div>
+
+			<!-- ── TIME-BASED COST ────────────────────────────────── -->
+			<div class="cost-section">
+				<div class="sub-header">{scaleSectionTitle}</div>
+
+				<div class="vchart-area">
+					{#each chronoBuckets as bucket (bucket.key)}
+						<div
+							class="vchart-col"
+							onmouseenter={() => hoveredBucket = bucket.key}
+							onmouseleave={() => hoveredBucket = null}
+							role="img"
+							aria-label="{bucket.label}: {formatCost(bucket.cost)}"
+						>
+							{#if hoveredBucket === bucket.key}
+								<div class="vchart-tooltip">
+									<span class="vchart-tooltip-label">{bucket.label}</span>
+									<span class="vchart-tooltip-cost">{formatCost(bucket.cost)}</span>
+								</div>
+							{/if}
+							<div class="vchart-bar-wrap">
+								<div
+									class="vchart-bar"
+									class:vchart-bar-empty={bucket.cost === 0}
+									style="height: {maxBucketCost > 0 ? (bucket.cost / maxBucketCost) * 100 : 0}%"
+								></div>
+							</div>
+							<span class="vchart-label">
+								{bucket.label}
+							</span>
+						</div>
+					{/each}
+				</div>
 			</div>
 
 			<!-- ── BY PROJECT ─────────────────────────────────────── -->
@@ -172,7 +479,7 @@
 					</div>
 				</div>
 
-				{#each costData.projectCosts as proj (proj.project)}
+				{#each filteredProjectCosts as proj (proj.project)}
 					<div class="project-group">
 						<!-- svelte-ignore a11y_click_events_have_key_events -->
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -189,47 +496,40 @@
 						</div>
 
 						{#if !collapsedProjects.has(proj.project)}
-							<div class="project-bar-track">
-								<div
-									class="bar-fill bar-amber"
-									style="width: {maxProjectCost > 0 ? (proj.totalCost / maxProjectCost) * 100 : 0}%"
-								></div>
+							<div class="grid-bar-track" bind:clientWidth={projectTrackWidth}>
+								<div class="grid-container" style="grid-template-columns: repeat({projectBarColumns}, 1fr);">
+									{#each buildBarBlocks(maxProjectCost > 0 ? (proj.totalCost / maxProjectCost) * 100 : 0, projectBarColumns, 'amber') as block}
+										<div class="rect {block.type}"></div>
+									{/each}
+								</div>
 							</div>
 
-							{#each proj.sessions.slice(0, 5) as session (session.sessionId)}
+							{#each expandedProjects.has(proj.project) ? proj.sessions : proj.sessions.slice(0, 5) as session (session.sessionId)}
 								<div class="session-detail">
 									<span class="detail-project">{session.projectName}</span>
-									<span class="detail-time">{formatTime(session.timestamp)}</span>
+									<span class="detail-session-id" title={session.sessionId}>{session.sessionId.slice(0, 8)}</span>
+									<span class="detail-time">{formatDateTime(session.timestamp)}</span>
 									<span class="detail-model">{modelDisplayName(session.model)}</span>
 									<span class="detail-cost">{formatCost(session.cost)}</span>
 								</div>
 							{/each}
 
 							{#if proj.sessions.length > 5}
-								<div class="more-sessions">
-									{proj.sessions.length - 5} more sessions
+								<!-- svelte-ignore a11y_click_events_have_key_events -->
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<div class="more-sessions" onclick={() => {
+									const next = new Set(expandedProjects);
+									if (next.has(proj.project)) {
+										next.delete(proj.project);
+									} else {
+										next.add(proj.project);
+									}
+									expandedProjects = next;
+								}}>
+									{expandedProjects.has(proj.project) ? 'Show less' : `${proj.sessions.length - 5} more sessions`}
 								</div>
 							{/if}
 						{/if}
-					</div>
-				{/each}
-			</div>
-
-			<!-- ── BY MODEL ───────────────────────────────────────── -->
-			<div class="cost-section">
-				<div class="sub-header">BY MODEL</div>
-
-				{#each costData.modelCosts as mc (mc.model)}
-					<div class="model-row">
-						<span class="model-label">{mc.displayName}</span>
-						<div class="bar-track">
-							<div
-								class="bar-fill"
-								style="width: {mc.percentage}%; background: {modelColor(mc.model)}"
-							></div>
-						</div>
-						<span class="model-cost">{formatCost(mc.cost)}</span>
-						<span class="model-pct">{mc.percentage.toFixed(0)}%</span>
 					</div>
 				{/each}
 			</div>
@@ -290,7 +590,7 @@
 
 	.sub-header {
 		font-family: var(--font-pixel);
-		font-size: 14px;
+		font-size: 16px;
 		text-transform: uppercase;
 		color: var(--text-secondary);
 		letter-spacing: 0.1em;
@@ -313,60 +613,279 @@
 		text-align: center;
 	}
 
-	/* ── Daily cost rows ──────────────────────────────────────────── */
-	.day-row {
+	.scale-dropdown {
+		position: relative;
+	}
+
+	.scale-trigger {
+		font-family: var(--font-pixel);
+		font-size: 11px;
+		letter-spacing: 0.05em;
+		padding: 4px var(--space-sm);
+		background: transparent;
+		border: 1px solid var(--border-default);
+		color: var(--text-secondary);
+		cursor: pointer;
+		text-transform: uppercase;
+	}
+
+	.scale-trigger:hover {
+		border-color: var(--text-muted);
+		color: var(--text-primary);
+	}
+
+	.scale-menu {
+		position: absolute;
+		top: 100%;
+		right: 0;
+		margin-top: 2px;
+		background: var(--bg-card, var(--bg-surface));
+		border: 1px solid var(--border-default);
+		z-index: 10;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.scale-option {
+		font-family: var(--font-pixel);
+		font-size: 11px;
+		letter-spacing: 0.05em;
+		padding: 6px var(--space-md);
+		background: transparent;
+		border: none;
+		color: var(--text-muted);
+		cursor: pointer;
+		text-align: left;
+		white-space: nowrap;
+	}
+
+	.scale-option:hover {
+		background: rgba(255, 255, 255, 0.1);
+		color: var(--text-primary);
+	}
+
+	.scale-option.active {
+		color: var(--text-primary);
+	}
+
+	/* ── Model status bar (StatusBar-style card) ────────────────── */
+	.model-status-bar {
+		position: relative;
+		background: var(--bg-card);
+		border: 1px solid var(--border-default);
+		padding: var(--space-lg) var(--space-xl);
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-md);
+		overflow: hidden;
+		transition: border-color var(--transition-fast);
+		flex-shrink: 0;
+	}
+
+	.model-status-bar:hover {
+		border-color: var(--text-muted);
+	}
+
+	/* Scanline effect */
+	.model-status-bar::after {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		background: linear-gradient(
+			to bottom,
+			transparent 50%,
+			rgba(0, 0, 0, 0.1) 51%,
+			transparent 52%
+		);
+		background-size: 100% 4px;
+		pointer-events: none;
+		z-index: 10;
+		opacity: 0.3;
+	}
+
+	.progress-track {
+		height: 16px;
+		background: var(--bg-surface);
+		border: 1px solid var(--border-default);
+		position: relative;
+		overflow: hidden;
+		padding: 3px;
+	}
+
+	.grid-container {
+		display: grid;
+		grid-template-rows: 1fr;
+		gap: 2px;
+		height: 100%;
+	}
+
+	.rect {
+		width: 100%;
+		height: 100%;
+		background: rgba(255, 255, 255, 0.05);
+		border-radius: 1px;
+	}
+
+	.rect.opus { background-color: var(--accent-amber); box-shadow: 0 0 4px color-mix(in srgb, var(--accent-amber) 30%, transparent); }
+	.rect.sonnet { background-color: var(--accent-purple); box-shadow: 0 0 4px color-mix(in srgb, var(--accent-purple) 30%, transparent); }
+	.rect.haiku { background-color: var(--accent-pink); box-shadow: 0 0 4px color-mix(in srgb, var(--accent-pink) 30%, transparent); }
+	.rect.amber { background-color: var(--accent-amber); box-shadow: 0 0 4px color-mix(in srgb, var(--accent-amber) 30%, transparent); }
+
+	.model-legend {
+		display: flex;
+		gap: var(--space-xl);
+	}
+
+	.model-legend-item {
 		display: flex;
 		align-items: center;
-		gap: var(--space-md);
-		padding: var(--space-xs) var(--space-sm);
-		cursor: pointer;
-		transition: background var(--transition-fast, 150ms);
+		gap: var(--space-sm);
 	}
 
-	.day-row:hover {
-		background: rgba(255, 255, 255, 0.03);
+	.model-legend-item .dot {
+		width: 8px;
+		height: 8px;
 	}
 
-	.day-label {
+	.model-legend-item .dot.opus { background: var(--accent-amber); }
+	.model-legend-item .dot.sonnet { background: var(--accent-purple); }
+	.model-legend-item .dot.haiku { background: var(--accent-pink); }
+
+	.model-legend-label {
+		font-family: var(--font-mono);
+		font-size: 14px;
+		color: var(--text-secondary);
+		letter-spacing: 0.1em;
+	}
+
+	.model-legend-cost {
+		font-family: var(--font-pixel);
+		font-size: 16px;
+		color: var(--text-primary);
+	}
+
+	.model-legend-pct {
 		font-family: var(--font-mono);
 		font-size: 12px;
 		color: var(--text-muted);
-		min-width: 80px;
-		flex-shrink: 0;
 	}
 
-	.bar-track {
-		flex: 1;
-		height: 4px;
-		background: rgba(255, 255, 255, 0.05);
-		overflow: hidden;
-	}
-
-	.bar-fill {
+	.deco-mesh {
+		position: absolute;
+		top: 0;
+		right: 0;
+		width: 100px;
 		height: 100%;
-		transition: width 300ms ease;
+		pointer-events: none;
+		opacity: 0.05;
+		background-image:
+			radial-gradient(var(--text-muted) 1px, transparent 1px);
+		background-size: 4px 4px;
 	}
 
-	.bar-amber {
-		background: var(--accent-amber);
+	/* ── Grid bar track (for project inline bars) ────────────────── */
+	.grid-bar-track {
+		flex: 1;
+		height: 10px;
+		background: var(--bg-surface);
+		border: 1px solid var(--border-default);
+		overflow: hidden;
+		padding: 1px;
 	}
 
-	.day-cost {
-		font-family: var(--font-mono);
-		font-size: 12px;
-		color: var(--text-secondary);
-		min-width: 60px;
-		text-align: right;
-		flex-shrink: 0;
+	/* ── Vertical bar chart ──────────────────────────────────────── */
+	.vchart-area {
+		display: flex;
+		align-items: flex-end;
+		gap: 8px;
+		height: 180px;
+		padding: var(--space-sm) 0;
 	}
 
-	/* ── Expanded day sessions ────────────────────────────────────── */
-	.day-sessions {
+	.vchart-col {
+		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-xs);
-		padding-left: var(--space-xl);
-		margin-bottom: var(--space-sm);
+		align-items: center;
+		height: 100%;
+		position: relative;
+	}
+
+	.vchart-bar-wrap {
+		flex: 1;
+		width: 100%;
+		display: flex;
+		align-items: flex-end;
+		justify-content: center;
+	}
+
+	.vchart-bar {
+		width: 100%;
+		min-height: 2px;
+		background: var(--accent-amber);
+		background-image: repeating-linear-gradient(
+			0deg,
+			transparent,
+			transparent 3px,
+			rgba(0, 0, 0, 0.2) 3px,
+			rgba(0, 0, 0, 0.2) 4px
+		);
+		box-shadow: 0 0 4px color-mix(in srgb, var(--accent-amber) 30%, transparent);
+		transition: height 300ms ease;
+	}
+
+	.vchart-col:hover .vchart-bar {
+		box-shadow: 0 0 8px color-mix(in srgb, var(--accent-amber) 50%, transparent);
+	}
+
+	.vchart-bar-empty {
+		background: var(--border-default);
+		background-image: none;
+		box-shadow: none;
+		opacity: 0.4;
+		min-height: 2px;
+	}
+
+	.vchart-label {
+		font-family: var(--font-mono);
+		font-size: 11px;
+		color: var(--text-primary);
+		margin-top: 4px;
+		white-space: nowrap;
+		text-align: center;
+	}
+
+
+	.vchart-tooltip {
+		position: absolute;
+		bottom: 100%;
+		left: 50%;
+		transform: translateX(-50%);
+		background: var(--bg-card, var(--bg-surface));
+		border: 1px solid var(--border-default);
+		padding: 4px var(--space-sm);
+		white-space: nowrap;
+		z-index: 10;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 2px;
+		pointer-events: none;
+	}
+
+	.vchart-tooltip-label {
+		font-family: var(--font-pixel);
+		font-size: 9px;
+		color: var(--text-muted);
+	}
+
+	.vchart-tooltip-cost {
+		font-family: var(--font-mono);
+		font-size: 11px;
+		color: var(--text-primary);
 	}
 
 	.session-detail {
@@ -375,7 +894,7 @@
 		gap: var(--space-md);
 		padding: var(--space-xs) var(--space-sm);
 		font-family: var(--font-mono);
-		font-size: 11px;
+		font-size: 13px;
 	}
 
 	.detail-project {
@@ -384,6 +903,13 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.detail-session-id {
+		color: var(--text-muted);
+		flex-shrink: 0;
+		font-size: 12px;
+		opacity: 0.6;
 	}
 
 	.detail-time {
@@ -449,18 +975,6 @@
 		flex-shrink: 0;
 	}
 
-	.project-bar-track {
-		height: 4px;
-		background: rgba(255, 255, 255, 0.05);
-		overflow: hidden;
-		margin-bottom: var(--space-xs);
-	}
-
-	.project-bar-track .bar-fill {
-		height: 100%;
-		transition: width 300ms ease;
-	}
-
 	.more-sessions {
 		font-family: var(--font-mono);
 		font-size: 11px;
@@ -495,37 +1009,4 @@
 		background: rgba(255, 255, 255, 0.1);
 	}
 
-	/* ── Model rows ───────────────────────────────────────────────── */
-	.model-row {
-		display: flex;
-		align-items: center;
-		gap: var(--space-md);
-		padding: var(--space-xs) var(--space-sm);
-	}
-
-	.model-label {
-		font-family: var(--font-mono);
-		font-size: 12px;
-		color: var(--text-primary);
-		min-width: 60px;
-		flex-shrink: 0;
-	}
-
-	.model-cost {
-		font-family: var(--font-mono);
-		font-size: 12px;
-		color: var(--text-secondary);
-		min-width: 60px;
-		text-align: right;
-		flex-shrink: 0;
-	}
-
-	.model-pct {
-		font-family: var(--font-mono);
-		font-size: 11px;
-		color: var(--text-muted);
-		min-width: 35px;
-		text-align: right;
-		flex-shrink: 0;
-	}
 </style>
