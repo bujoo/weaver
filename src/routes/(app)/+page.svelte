@@ -599,6 +599,11 @@
 		user-select: none;
 		line-height: 1;
 		pointer-events: none;
+		transition: opacity var(--transition-fast);
+	}
+
+	.tab-drag-region:hover .drag-dots {
+		opacity: 0.85;
 	}
 
 	.tab-btn {
