@@ -21,6 +21,7 @@
 	import ConnectionScreen from '$lib/components/ConnectionScreen.svelte';
 	import type { Session } from '$lib/types';
 	import { SessionStatus } from '$lib/types';
+	import SessionHistory from '$lib/components/SessionHistory.svelte';
 
 	let demoActive = $derived($isDemoMode);
 	let showQRModal = $state(false);
@@ -35,6 +36,8 @@
 	let viewMode = $state<'project' | 'all'>('project');
 
 	let isCompact = $state(false);
+
+	let activeTab = $state<'monitor' | 'history'>('monitor');
 
 	onMount(() => {
 		if (browser) {
@@ -225,8 +228,30 @@
 	<ConnectionScreen onconnected={() => (needsConnection = false)} />
 {:else}
 <div class="dashboard">
-	<div class="window-drag-handle" data-tauri-drag-region></div>
+	<div class="tab-bar" data-tauri-drag-region>
+		<button
+			class="tab-btn"
+			class:active={activeTab === 'monitor'}
+			onclick={() => (activeTab = 'monitor')}
+		>
+			<span class="tab-icon">■</span>
+			<span class="tab-label">MONITOR</span>
+		</button>
+		<button
+			class="tab-btn"
+			class:active={activeTab === 'history'}
+			onclick={() => (activeTab = 'history')}
+		>
+			<span class="tab-icon">⌕</span>
+			<span class="tab-label">HISTORY</span>
+		</button>
+	</div>
 
+	{#if activeTab === 'history'}
+	<main class="grid-container">
+		<SessionHistory />
+	</main>
+	{:else}
 	<main class="grid-container">
 		<div class="sections-container">
 			<section class="system-section">
@@ -463,6 +488,7 @@
 			{/if}
 		</div>
 	</main>
+	{/if}
 
 	{#if expandedSession}
 		<ExpandedCardOverlay
@@ -492,12 +518,49 @@
 		background: var(--bg-base);
 	}
 
-	.window-drag-handle {
+	.tab-bar {
 		height: 28px;
 		width: 100%;
 		flex-shrink: 0;
+		display: flex;
+		align-items: stretch;
 		background: transparent;
 		z-index: 1000;
+		padding: 0 var(--space-md);
+	}
+
+	.tab-btn {
+		display: flex;
+		align-items: center;
+		gap: var(--space-xs);
+		padding: 0 var(--space-md);
+		background: transparent;
+		border: none;
+		border-bottom: 2px solid transparent;
+		color: var(--text-muted);
+		cursor: pointer;
+		font-family: var(--font-pixel);
+		font-size: 10px;
+		letter-spacing: 0.08em;
+		transition: color var(--transition-fast);
+		-webkit-app-region: no-drag;
+	}
+
+	.tab-btn:hover {
+		color: var(--text-secondary);
+	}
+
+	.tab-btn.active {
+		color: var(--text-primary);
+		border-bottom-color: var(--text-primary);
+	}
+
+	.tab-icon {
+		font-size: 8px;
+	}
+
+	.tab-label {
+		font-size: 10px;
 	}
 
 	.grid-container {
@@ -848,7 +911,7 @@
 
 	/* ── Mobile Responsive ─────────────────────────────────────── */
 	@media (max-width: 768px) {
-		.window-drag-handle {
+		.tab-bar {
 			height: 0;
 			display: none;
 		}
