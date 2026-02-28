@@ -124,6 +124,21 @@ async fn get_conversation(session_id: String) -> Result<Conversation, String> {
 
 #[cfg(not(mobile))]
 #[tauri::command]
+async fn get_session_history() -> Result<Vec<session::HistoryEntry>, String> {
+    session::get_history()
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn deep_search_sessions(query: String) -> Result<Vec<String>, String> {
+    if query.trim().is_empty() {
+        return Ok(vec![]);
+    }
+    session::deep_search(&query)
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
 async fn stop_session(app: AppHandle, pid: u32) -> Result<(), String> {
     stop_session_action(pid)?;
     std::thread::sleep(Duration::from_millis(300));
@@ -432,6 +447,8 @@ pub fn run() {
             greet,
             get_sessions,
             get_conversation,
+            get_session_history,
+            deep_search_sessions,
             stop_session,
             open_session,
             rename_session,
