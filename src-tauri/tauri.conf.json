@@ -20,7 +20,7 @@
         "minHeight": 400,
         "visible": true,
         "center": true,
-        "titleBarStyle": "Transparent"
+        "titleBarStyle": "Overlay"
       },
       {
         "label": "popover",
