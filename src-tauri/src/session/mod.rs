@@ -17,3 +17,6 @@ pub use status::{
 
 pub mod history;
 pub use history::{deep_search, get_history, DeepSearchHit, HistoryEntry};
+
+pub mod cost;
+pub use cost::{get_cost_data, CostData};
