@@ -220,7 +220,9 @@
 					<div class="messages">
 						{#each conversation.messages as message, index (index)}
 							{#if (showTools || (message.messageType !== 'ToolUse' && message.messageType !== 'ToolResult')) && (showThinking || message.messageType !== 'Thinking')}
-								<MessageBubble {message} />
+								<div data-msg-index={index}>
+									<MessageBubble {message} />
+								</div>
 							{/if}
 						{/each}
 					</div>
