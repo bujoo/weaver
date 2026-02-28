@@ -16,7 +16,6 @@
 
 	let deepSearching = $state(false);
 	let deepSearchResults = $state<Set<string> | null>(null); // null = no search run yet
-	let deepSearchTimer: ReturnType<typeof setTimeout> | undefined;
 
 	// Conversation viewer state
 	let selectedEntry = $state<HistoryEntry | null>(null);
@@ -47,27 +46,33 @@
 		if (browser) localStorage.setItem('historyGroup', String(groupByProject));
 	});
 
-	// Debounced deep search: fires 300ms after the query settles
+	// Debounced deep search: fires 300ms after the query settles.
+	// deepSearching is set only after the timer fires — no spinner during the
+	// debounce window itself, which avoids flicker on every keystroke.
 	$effect(() => {
-		const q = query; // declare reactive dependency
-		clearTimeout(deepSearchTimer);
+		const q = query;
 		if (!q.trim()) {
 			deepSearchResults = null;
 			deepSearching = false;
 			return;
 		}
-		deepSearchTimer = setTimeout(async () => {
+		deepSearchResults = null; // clear stale results from the previous query immediately
+		let cancelled = false;
+		const timer = setTimeout(async () => {
 			deepSearching = true;
 			try {
 				const ids = await deepSearchSessions(q);
-				deepSearchResults = new Set(ids);
+				if (!cancelled) deepSearchResults = new Set(ids);
 			} catch (e) {
-				console.error('Deep search failed:', e);
+				if (!cancelled) console.error('Deep search failed:', e);
 			} finally {
-				deepSearching = false;
+				if (!cancelled) deepSearching = false;
 			}
 		}, 300);
-		return () => clearTimeout(deepSearchTimer);
+		return () => {
+			cancelled = true;
+			clearTimeout(timer);
+		};
 	});
 
 	// ── Filtering & sorting ──────────────────────────────────────────
