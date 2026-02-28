@@ -14,3 +14,6 @@ pub use permissions::PermissionChecker;
 pub use status::{
     determine_status, determine_status_with_context, get_pending_tool_name, SessionStatus,
 };
+
+pub mod history;
+pub use history::{deep_search, get_history, HistoryEntry};
