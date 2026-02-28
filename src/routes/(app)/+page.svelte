@@ -526,7 +526,9 @@
 		align-items: stretch;
 		background: transparent;
 		z-index: 1000;
-		padding: 0 var(--space-md);
+		/* Left padding clears the macOS traffic light buttons (~80px) on
+		   titleBarStyle: Transparent windows. Right padding matches. */
+		padding: 0 var(--space-md) 0 80px;
 	}
 
 	.tab-btn {
