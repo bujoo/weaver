@@ -46,10 +46,13 @@
 			if (!hasScrolledToBottom) {
 				tick().then(() => {
 					if (searchQuery) {
-						// Find the first message whose content matches the search query
+						// Find the first user/assistant message whose content matches.
+						// Only search User and Assistant types to match what the Rust
+						// deep search scans (it skips Thinking, ToolUse, ToolResult).
 						const queryLower = searchQuery.toLowerCase();
 						const matchIndex = conversation!.messages.findIndex(
-							(m) => m.content.toLowerCase().includes(queryLower)
+							(m) => (m.messageType === 'User' || m.messageType === 'Assistant') &&
+								m.content.toLowerCase().includes(queryLower)
 						);
 						if (matchIndex >= 0) {
 							scrollToMessageIndex(matchIndex);
@@ -67,16 +70,13 @@
 
 	function scrollToMessageIndex(index: number) {
 		if (!messagesContainer) return;
-		const bubbles = messagesContainer.querySelectorAll('.message-bubble');
-		// Count only visible bubbles (tools/thinking may be hidden)
-		// The index is from the full messages array, so we need to find the
-		// corresponding visible element. We tag each bubble with data-msg-index.
 		const target = messagesContainer.querySelector(`[data-msg-index="${index}"]`) as HTMLElement | null;
 		if (target) {
 			target.scrollIntoView({ block: 'center' });
 			target.classList.add('search-highlight');
-			setTimeout(() => target.classList.remove('search-highlight'), 2000);
-		} else if (bubbles.length > 0) {
+			// Don't remove the class — animation-fill-mode: forwards holds the
+			// end state (no box-shadow), so removing it would cause a re-render blink.
+		} else {
 			// Fallback: the matched message might be hidden (tool/thinking toggle off)
 			messagesContainer.scrollTop = messagesContainer.scrollHeight;
 		}
@@ -451,9 +451,11 @@
 		flex-direction: column;
 	}
 
-	/* Flash highlight for the matched search result message */
+	/* Flash highlight for the matched search result message.
+	   animation-fill-mode: forwards keeps the end state (no box-shadow)
+	   so removing the class isn't needed and avoids a re-render blink. */
 	.messages :global([data-msg-index].search-highlight .message-bubble) {
-		animation: search-flash 2s ease-out;
+		animation: search-flash 2s ease-out forwards;
 	}
 
 	@keyframes search-flash {

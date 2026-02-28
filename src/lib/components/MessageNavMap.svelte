@@ -50,11 +50,11 @@
 
 	async function scrollToMessage(index: number) {
 		if (!scrollContainer) return;
-		
-		const messages = scrollContainer.querySelector('.messages');
-		if (!messages) return;
-		
-		const target = messages.children[index] as HTMLElement;
+
+		// Use data-msg-index attribute to find the right element.
+		// children[index] doesn't work because hidden messages (tools/thinking
+		// toggled off) create gaps between the array index and DOM position.
+		const target = scrollContainer.querySelector(`[data-msg-index="${index}"]`) as HTMLElement | null;
 		if (target) {
 			target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 		}
