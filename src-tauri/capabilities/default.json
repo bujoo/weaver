@@ -5,6 +5,7 @@
   "windows": ["main", "popover"],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
     "opener:default",
     "updater:default",
     "updater:allow-check",

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { slide } from 'svelte/transition';
+	import { slide, fade } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
 	import { onMount } from 'svelte';
@@ -39,13 +39,11 @@
 
 	let activeTab = $state<'monitor' | 'history'>('monitor');
 
-	// Detect macOS native fullscreen to remove traffic-light padding.
-	// CSS `display-mode: fullscreen` does NOT fire for native macOS fullscreen —
-	// only for browser Fullscreen API calls. We use a resize listener instead.
+	// Detect macOS native fullscreen to switch tab-bar padding.
+	// CSS `display-mode: fullscreen` does NOT fire for native macOS fullscreen.
+	// We use Tauri's window resize event + a short delay so isFullscreen()
+	// is queried after the transition has settled (avoids stale values).
 	let isFullscreen = $state(false);
-	function checkFullscreen() {
-		isFullscreen = window.outerHeight >= window.screen.height;
-	}
 
 	onMount(() => {
 		if (browser) {
@@ -57,8 +55,33 @@
 			if (savedCompact === 'true') {
 				isCompact = true;
 			}
-			checkFullscreen();
 		}
+
+		if (!isTauri()) return;
+
+		let unlisten: (() => void) | null = null;
+		let timer: ReturnType<typeof setTimeout> | null = null;
+
+		(async () => {
+			const { getCurrentWindow } = await import('@tauri-apps/api/window');
+			const win = getCurrentWindow();
+
+			// Check once on mount
+			isFullscreen = await win.isFullscreen();
+
+			// Re-check after every resize with a delay so the transition settles
+			unlisten = await win.onResized(async () => {
+				if (timer) clearTimeout(timer);
+				timer = setTimeout(async () => {
+					isFullscreen = await win.isFullscreen();
+				}, 150);
+			});
+		})();
+
+		return () => {
+			unlisten?.();
+			if (timer) clearTimeout(timer);
+		};
 	});
 
 	$effect(() => {
@@ -231,7 +254,7 @@
 
 </script>
 
-<svelte:window on:keydown={handleKeydown} on:resize={checkFullscreen} />
+<svelte:window on:keydown={handleKeydown} />
 
 {#if needsConnection}
 	<ConnectionScreen onconnected={() => (needsConnection = false)} />
@@ -254,11 +277,12 @@
 			<span class="tab-icon">⌕</span>
 			<span class="tab-label">HISTORY</span>
 		</button>
-		<!-- Drag handle: visible dots + fills remaining space for window dragging.
-		     Hidden in fullscreen where native drag is unavailable anyway. -->
+		<!-- Drag handle: fills remaining space. The grip dots are absolutely
+		     centered in the whole tab bar so they appear at the window midpoint.
+		     Hidden in fullscreen where window dragging is unavailable. -->
 		<div class="tab-drag-region" data-tauri-drag-region>
 			{#if !isFullscreen}
-				<span class="drag-dots" data-tauri-drag-region>· · ·</span>
+				<span class="drag-dots" transition:fade={{ duration: 250 }}>⠿ ⠿ ⠿</span>
 			{/if}
 		</div>
 	</div>
@@ -542,28 +566,39 @@
 		align-items: stretch;
 		background: transparent;
 		z-index: 1000;
+		position: relative;
 		/* Left padding clears the macOS traffic light buttons (~80px) on
-		   titleBarStyle: Transparent windows. Right padding matches. */
+		   titleBarStyle: Overlay windows. Right padding matches. */
 		padding: 0 var(--space-md) 0 80px;
+		transition: padding-left 0.35s ease;
 	}
 
-	/* Fills the right portion of the tab bar — draggable window handle area */
+	/* Fills the right portion of the tab bar — draggable window handle area.
+	   Must use -webkit-app-region: drag (not just data-tauri-drag-region attr)
+	   for Tauri to actually recognize the drag zone. */
 	.tab-drag-region {
 		flex: 1;
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		-webkit-app-region: drag;
+		cursor: grab;
 	}
 
-	/* Three-dot drag indicator: subtle cue that the area is draggable */
+	/* Grip indicator — absolutely centered in the full window width.
+	   pointer-events: none so it never blocks tab button clicks. */
 	.drag-dots {
-		font-family: var(--font-mono);
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		transform: translate(-50%, -50%);
 		font-size: 14px;
-		letter-spacing: 4px;
+		letter-spacing: 3px;
 		color: var(--text-muted);
-		opacity: 0.4;
-		pointer-events: none;
+		opacity: 0.5;
 		user-select: none;
+		line-height: 1;
+		pointer-events: none;
 	}
 
 	.tab-btn {
@@ -952,13 +987,11 @@
 		flex: 1;
 	}
 
-	/* ── Fullscreen: remove traffic-light clearance ────────────── */
-	/* In macOS native fullscreen the traffic lights are gone, so the 80px
-	   left padding becomes dead space. CSS `display-mode: fullscreen` does NOT
-	   fire for native macOS fullscreen — we use a JS resize listener instead
-	   and toggle the .fullscreen class. */
+	/* ── Fullscreen: align tab padding with content padding ────── */
+	/* In macOS native fullscreen the traffic lights are gone. Replace the
+	   80px clearance with var(--space-xl) to match the grid-container padding. */
 	.tab-bar.fullscreen {
-		padding-left: 0;
+		padding-left: var(--space-xl);
 	}
 
 	/* ── Mobile Responsive ─────────────────────────────────────── */
