@@ -233,6 +233,10 @@
 
 	<!-- ── List ──────────────────────────────────────────────────── -->
 	<div class="list-area">
+		<div class="section-header">
+			<span class="section-title">SESSION HISTORY</span>
+			<span class="section-count">{allEntries.length}</span>
+		</div>
 		{#if loading}
 			<div class="state-msg">Loading history...</div>
 		{:else if error}
@@ -473,6 +477,34 @@
 		font-size: 11px;
 		line-height: 1;
 		flex-shrink: 0;
+	}
+
+	.section-header {
+		display: flex;
+		align-items: center;
+		gap: var(--space-md);
+		padding-bottom: var(--space-md);
+		border-bottom: 1px solid var(--text-primary);
+		margin-bottom: var(--space-md);
+		flex-shrink: 0;
+	}
+
+	.section-title {
+		font-family: var(--font-pixel);
+		font-size: 22px;
+		font-weight: 600;
+		color: var(--text-primary);
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		line-height: 1;
+	}
+
+	.section-count {
+		font-family: var(--font-pixel);
+		font-size: 18px;
+		font-weight: 500;
+		line-height: 1;
+		color: var(--text-secondary);
 	}
 
 </style>
