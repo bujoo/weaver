@@ -21,7 +21,6 @@
 	let isInitialLoad = $state(true);
 	let hasScrolledToBottom = $state(false);
 	let showTools = $state(true);
-	let showThinking = $state(true);
 	let navSheetOpen = $state(false);
 
 	function handleNavItemClick() {
@@ -171,20 +170,11 @@
 						</svg>
 					</button>
 					<div class="header-divider"></div>
-					<button 
-						type="button" 
-						class="header-button toggle-thinking" 
-						class:active={showThinking} 
-						onclick={() => showThinking = !showThinking} 
-						title={showThinking ? "Hide Thinking" : "Show Thinking"}
-					>
-						<span>◇</span>
-					</button>
-					<button 
-						type="button" 
-						class="header-button toggle-tools" 
-						class:active={showTools} 
-						onclick={() => showTools = !showTools} 
+					<button
+						type="button"
+						class="header-button toggle-tools"
+						class:active={showTools}
+						onclick={() => showTools = !showTools}
 						title={showTools ? "Hide Tools" : "Show Tools"}
 					>
 						<span>⚙</span>
@@ -219,7 +209,7 @@
 				{:else}
 					<div class="messages">
 						{#each conversation.messages as message, index (index)}
-							{#if (showTools || (message.messageType !== 'ToolUse' && message.messageType !== 'ToolResult')) && (showThinking || message.messageType !== 'Thinking')}
+							{#if showTools || (message.messageType !== 'ToolUse' && message.messageType !== 'ToolResult')}
 								<div data-msg-index={index}>
 									<MessageBubble {message} />
 								</div>
@@ -247,7 +237,7 @@
 
 		<!-- Desktop: sidebar nav -->
 		<div class="nav-map-side nav-desktop" in:scale={{ start: 0.95, duration: 300, easing: quintOut }}>
-			<MessageNavMap {conversation} scrollContainer={messagesContainer} bind:showTools bind:showThinking />
+			<MessageNavMap {conversation} scrollContainer={messagesContainer} bind:showTools />
 		</div>
 
 		<!-- Mobile: bottom sheet nav -->
@@ -260,7 +250,7 @@
 			<div class="nav-sheet-handle">
 				<div class="handle-bar"></div>
 			</div>
-			<MessageNavMap {conversation} scrollContainer={messagesContainer} bind:showTools bind:showThinking />
+			<MessageNavMap {conversation} scrollContainer={messagesContainer} bind:showTools />
 		</div>
 	</div>
 </div>
@@ -431,11 +421,6 @@
 	.header-button span {
 		font-family: var(--font-mono);
 		font-size: 14px;
-	}
-
-	.header-button.active.toggle-thinking {
-		color: var(--status-permission);
-		opacity: 1;
 	}
 
 	.header-button.active.toggle-tools {
