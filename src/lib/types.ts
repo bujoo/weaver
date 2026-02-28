@@ -93,10 +93,14 @@ export interface HistoryEntry {
   /** Session UUID */
   sessionId: string;
 
-  /** The user's prompt text as displayed in Claude Code */
+  /** The user's prompt text as displayed in Claude Code. May be an empty string. */
   display: string;
 
-  /** Timestamp in milliseconds since epoch */
+  /**
+   * Timestamp in milliseconds since epoch (raw integer from history.jsonl).
+   * Note: unlike other timestamps in this file which are ISO 8601 strings,
+   * this is a Unix-ms number matching the raw format Claude Code writes.
+   */
   timestamp: number;
 
   /** Full project path, e.g. /Users/you/Documents/GitHub/myproject */
