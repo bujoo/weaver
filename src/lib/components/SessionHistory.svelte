@@ -303,7 +303,7 @@
 
 <!-- ── Conversation overlay ───────────────────────────────────────── -->
 {#if selectedEntry}
-	<HistoryCardOverlay entry={selectedEntry} {conversation} onclose={handleCloseConversation} />
+	<HistoryCardOverlay entry={selectedEntry} {conversation} searchQuery={query.trim() && deepSearchResults?.has(selectedEntry.sessionId) ? query.trim() : undefined} onclose={handleCloseConversation} />
 {/if}
 
 <style>

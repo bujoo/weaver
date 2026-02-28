@@ -9,10 +9,11 @@
 	interface Props {
 		entry: HistoryEntry;
 		conversation: Conversation | null;
+		searchQuery?: string;
 		onclose: () => void;
 	}
 
-	let { entry, conversation, onclose }: Props = $props();
+	let { entry, conversation, searchQuery, onclose }: Props = $props();
 
 	let messagesContainer = $state<HTMLDivElement>(undefined!);
 	let hasScrolledToBottom = $state(false);
@@ -43,14 +44,43 @@
 	$effect(() => {
 		if (conversation && conversation.messages.length > 0 && messagesContainer) {
 			if (!hasScrolledToBottom) {
-				// Initial scroll to bottom when opening
 				tick().then(() => {
-					messagesContainer.scrollTop = messagesContainer.scrollHeight;
+					if (searchQuery) {
+						// Find the first message whose content matches the search query
+						const queryLower = searchQuery.toLowerCase();
+						const matchIndex = conversation!.messages.findIndex(
+							(m) => m.content.toLowerCase().includes(queryLower)
+						);
+						if (matchIndex >= 0) {
+							scrollToMessageIndex(matchIndex);
+						} else {
+							messagesContainer.scrollTop = messagesContainer.scrollHeight;
+						}
+					} else {
+						messagesContainer.scrollTop = messagesContainer.scrollHeight;
+					}
 					hasScrolledToBottom = true;
 				});
 			}
 		}
 	});
+
+	function scrollToMessageIndex(index: number) {
+		if (!messagesContainer) return;
+		const bubbles = messagesContainer.querySelectorAll('.message-bubble');
+		// Count only visible bubbles (tools/thinking may be hidden)
+		// The index is from the full messages array, so we need to find the
+		// corresponding visible element. We tag each bubble with data-msg-index.
+		const target = messagesContainer.querySelector(`[data-msg-index="${index}"]`) as HTMLElement | null;
+		if (target) {
+			target.scrollIntoView({ block: 'center' });
+			target.classList.add('search-highlight');
+			setTimeout(() => target.classList.remove('search-highlight'), 2000);
+		} else if (bubbles.length > 0) {
+			// Fallback: the matched message might be hidden (tool/thinking toggle off)
+			messagesContainer.scrollTop = messagesContainer.scrollHeight;
+		}
+	}
 
 	function handleClose() {
 		onclose();
@@ -159,7 +189,9 @@
 					<div class="messages">
 						{#each conversation.messages as message, index (index)}
 							{#if (showTools || (message.messageType !== 'ToolUse' && message.messageType !== 'ToolResult')) && (showThinking || message.messageType !== 'Thinking')}
-								<MessageBubble {message} />
+								<div data-msg-index={index}>
+									<MessageBubble {message} />
+								</div>
 							{/if}
 						{/each}
 					</div>
@@ -417,6 +449,20 @@
 	.messages {
 		display: flex;
 		flex-direction: column;
+	}
+
+	/* Flash highlight for the matched search result message */
+	.messages :global([data-msg-index].search-highlight .message-bubble) {
+		animation: search-flash 2s ease-out;
+	}
+
+	@keyframes search-flash {
+		0%, 15% {
+			box-shadow: inset 0 0 0 1px var(--accent-amber), 0 0 12px rgba(255, 191, 0, 0.25);
+		}
+		100% {
+			box-shadow: none;
+		}
 	}
 
 	.loading-state,
