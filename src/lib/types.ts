@@ -85,3 +85,23 @@ export interface Conversation {
   /** Array of messages in chronological order */
   messages: Message[];
 }
+
+/**
+ * A single entry from ~/.claude/history.jsonl (deduplicated by sessionId)
+ */
+export interface HistoryEntry {
+  /** Session UUID */
+  sessionId: string;
+
+  /** The user's prompt text as displayed in Claude Code */
+  display: string;
+
+  /** Timestamp in milliseconds since epoch */
+  timestamp: number;
+
+  /** Full project path, e.g. /Users/you/Documents/GitHub/myproject */
+  project: string;
+
+  /** Last path segment of project, e.g. "myproject" */
+  projectName: string;
+}
