@@ -91,17 +91,21 @@ export async function getServerInfo(): Promise<ServerInfo> {
 
 /**
  * Get all inactive session history from ~/.claude/history.jsonl
- * (Desktop/Tauri only)
+ * (Desktop/Tauri only — returns empty array on mobile/browser)
  */
 export async function getSessionHistory(): Promise<HistoryEntry[]> {
+	if (get(isDemoMode)) return [];
+	if (useWebSocket()) return [];
 	return await invoke<HistoryEntry[]>('get_session_history');
 }
 
 /**
  * Deep search session JSONL files for a query string.
  * Returns session IDs of matching sessions.
- * (Desktop/Tauri only — can be slow on first call)
+ * (Desktop/Tauri only — returns empty array on mobile/browser)
  */
 export async function deepSearchSessions(query: string): Promise<string[]> {
+	if (get(isDemoMode)) return [];
+	if (useWebSocket()) return [];
 	return await invoke<string[]>('deep_search_sessions', { query });
 }
