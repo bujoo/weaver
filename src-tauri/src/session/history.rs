@@ -42,7 +42,7 @@ pub fn parse_history_jsonl(content: &str) -> Vec<HistoryEntry> {
                 continue;
             }
             let existing = by_session.get(&raw.session_id);
-            if existing.map_or(true, |e| raw.timestamp > e.timestamp) {
+            if existing.is_none_or(|e| raw.timestamp > e.timestamp) {
                 by_session.insert(raw.session_id.clone(), raw);
             }
         }
