@@ -85,10 +85,55 @@ pub fn get_history() -> Result<Vec<HistoryEntry>, String> {
     Ok(parse_history_jsonl(&content))
 }
 
+/// A single deep-search hit: session ID + first matching snippet (truncated).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeepSearchHit {
+    pub session_id: String,
+    /// Up to 200 chars of context around the first keyword match, from the matching line.
+    pub snippet: String,
+}
+
+/// Extract a short snippet from `text` centred around the first occurrence of `query_lower`.
+/// Returns at most 200 characters with the match roughly in the middle.
+fn extract_snippet(text: &str, query_lower: &str) -> String {
+    let lower = text.to_lowercase();
+    let Some(pos) = lower.find(query_lower) else {
+        return text.chars().take(200).collect();
+    };
+    let half = 80usize;
+    let start = pos.saturating_sub(half);
+    let end = (pos + query_lower.len() + half).min(text.len());
+    // Align to char boundaries
+    let start = text
+        .char_indices()
+        .map(|(i, _)| i)
+        .filter(|&i| i <= start)
+        .last()
+        .unwrap_or(0);
+    let end = text
+        .char_indices()
+        .map(|(i, _)| i)
+        .chain(std::iter::once(text.len()))
+        .filter(|&i| i >= end)
+        .next()
+        .unwrap_or(text.len());
+
+    let mut snippet = String::new();
+    if start > 0 {
+        snippet.push('…');
+    }
+    snippet.push_str(&text[start..end]);
+    if end < text.len() {
+        snippet.push('…');
+    }
+    snippet
+}
+
 /// Search all session JSONL files under ~/.claude/projects/ for a query string.
-/// Returns session IDs of files containing the query (case-insensitive).
+/// Returns hits with session ID and a short matching snippet, case-insensitive.
 /// Runs file reads concurrently using threads.
-pub fn deep_search(query: &str) -> Result<Vec<String>, String> {
+pub fn deep_search(query: &str) -> Result<Vec<DeepSearchHit>, String> {
     let home_dir = dirs::home_dir().ok_or("Failed to get home directory")?;
     let projects_dir = home_dir.join(".claude").join("projects");
 
@@ -124,7 +169,7 @@ pub fn deep_search(query: &str) -> Result<Vec<String>, String> {
 
     // Search files concurrently using threads
     use std::sync::{Arc, Mutex};
-    let matched: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let matched: Arc<Mutex<Vec<DeepSearchHit>>> = Arc::new(Mutex::new(Vec::new()));
     let query_lower = Arc::new(query_lower);
 
     let handles: Vec<_> = candidates
@@ -134,9 +179,15 @@ pub fn deep_search(query: &str) -> Result<Vec<String>, String> {
             let query_lower = Arc::clone(&query_lower);
             std::thread::spawn(move || {
                 if let Ok(content) = std::fs::read_to_string(&path) {
-                    if content.to_lowercase().contains(query_lower.as_str()) {
+                    // Find the first line containing the query and extract a snippet
+                    let snippet = content
+                        .lines()
+                        .find(|line| line.to_lowercase().contains(query_lower.as_str()))
+                        .map(|line| extract_snippet(line, &query_lower))
+                        .unwrap_or_default();
+                    if !snippet.is_empty() {
                         let mut guard = matched.lock().unwrap();
-                        guard.push(session_id);
+                        guard.push(DeepSearchHit { session_id, snippet });
                     }
                 }
             })

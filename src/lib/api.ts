@@ -5,7 +5,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { get } from 'svelte/store';
-import type { Session, Conversation, HistoryEntry } from './types';
+import type { Session, Conversation, HistoryEntry, DeepSearchHit } from './types';
 import { isDemoMode } from './demo';
 import { getDemoSessions, demoConversations } from './demo/data';
 import { wsClient, useWebSocket } from './ws';
@@ -104,8 +104,8 @@ export async function getSessionHistory(): Promise<HistoryEntry[]> {
  * Returns session IDs of matching sessions.
  * (Desktop/Tauri only — returns empty array on mobile/browser)
  */
-export async function deepSearchSessions(query: string): Promise<string[]> {
+export async function deepSearchSessions(query: string): Promise<DeepSearchHit[]> {
 	if (get(isDemoMode)) return [];
 	if (useWebSocket()) return [];
-	return await invoke<string[]>('deep_search_sessions', { query });
+	return await invoke<DeepSearchHit[]>('deep_search_sessions', { query });
 }

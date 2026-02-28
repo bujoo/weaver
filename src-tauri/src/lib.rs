@@ -130,7 +130,7 @@ async fn get_session_history() -> Result<Vec<session::HistoryEntry>, String> {
 
 #[cfg(not(mobile))]
 #[tauri::command]
-async fn deep_search_sessions(query: String) -> Result<Vec<String>, String> {
+async fn deep_search_sessions(query: String) -> Result<Vec<session::DeepSearchHit>, String> {
     if query.trim().is_empty() {
         return Ok(vec![]);
     }

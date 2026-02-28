@@ -87,6 +87,16 @@ export interface Conversation {
 }
 
 /**
+ * A single result from the deep search command.
+ * Contains the session ID and a short snippet from the matching message.
+ */
+export interface DeepSearchHit {
+  sessionId: string;
+  /** ~200-char snippet from the first matching message line, with '…' padding if truncated. */
+  snippet: string;
+}
+
+/**
  * A single entry from ~/.claude/history.jsonl (deduplicated by sessionId)
  */
 export interface HistoryEntry {

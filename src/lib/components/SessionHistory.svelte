@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { getSessionHistory, deepSearchSessions, getConversation } from '$lib/api';
-	import type { HistoryEntry, Conversation } from '$lib/types';
+	import type { HistoryEntry, Conversation, DeepSearchHit } from '$lib/types';
 	import HistoryCardOverlay from './HistoryCardOverlay.svelte';
 
 	// ── State ────────────────────────────────────────────────────────
@@ -16,7 +16,8 @@
 	let collapsedProjects = $state<Set<string>>(new Set());
 
 	let deepSearching = $state(false);
-	let deepSearchResults = $state<Set<string> | null>(null); // null = no search run yet
+	// Map of sessionId → matching snippet. null = no search run yet.
+	let deepSearchResults = $state<Map<string, string> | null>(null);
 
 	// Conversation viewer state
 	let selectedEntry = $state<HistoryEntry | null>(null);
@@ -62,8 +63,8 @@
 		const timer = setTimeout(async () => {
 			deepSearching = true;
 			try {
-				const ids = await deepSearchSessions(q);
-				if (!cancelled) deepSearchResults = new Set(ids);
+				const hits = await deepSearchSessions(q);
+				if (!cancelled) deepSearchResults = new Map(hits.map((h) => [h.sessionId, h.snippet]));
 			} catch (e) {
 				if (!cancelled) console.error('Deep search failed:', e);
 			} finally {
@@ -157,6 +158,19 @@
 	}
 
 	// ── Helpers ──────────────────────────────────────────────────────
+
+	/** Wrap every occurrence of `kw` in `text` with <mark> tags (case-insensitive). */
+	function highlight(text: string, kw: string): string {
+		if (!kw.trim()) return escapeHtml(text);
+		const escaped = escapeHtml(text);
+		const escapedKw = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		return escaped.replace(new RegExp(escapedKw, 'gi'), (m) => `<mark>${m}</mark>`);
+	}
+
+	function escapeHtml(s: string): string {
+		return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	}
+
 	function relativeTime(ms: number): string {
 		const diff = Date.now() - ms;
 		const mins = Math.floor(diff / 60_000);
@@ -262,8 +276,9 @@
 					</div>
 					{#if !collapsedProjects.has(group.project)}
 						{#each group.entries as entry (entry.sessionId)}
-							<button class="session-row" onclick={() => handleSelectEntry(entry)}>
-								<span class="row-prompt">{entry.display || '(no prompt)'}</span>
+							{@const snippet = query.trim() ? (deepSearchResults?.get(entry.sessionId) ?? null) : null}
+							<button class="session-row" class:has-snippet={!!snippet} onclick={() => handleSelectEntry(entry)}>
+								<span class="row-prompt">{@html highlight((snippet ?? entry.display) || '(no prompt)', query)}</span>
 								<span class="row-time">{relativeTime(entry.timestamp)}</span>
 							</button>
 						{/each}
@@ -272,12 +287,13 @@
 			{/each}
 		{:else}
 			{#each filtered as entry (entry.sessionId)}
-				<button class="session-row" onclick={() => handleSelectEntry(entry)}>
+				{@const snippet = query.trim() ? (deepSearchResults?.get(entry.sessionId) ?? null) : null}
+				<button class="session-row" class:has-snippet={!!snippet} onclick={() => handleSelectEntry(entry)}>
 					<div class="row-top">
 						<span class="row-project">{entry.projectName.toUpperCase()}</span>
 						<span class="row-time">{relativeTime(entry.timestamp)}</span>
 					</div>
-					<span class="row-prompt">{entry.display || '(no prompt)'}</span>
+					<span class="row-prompt">{@html highlight((snippet ?? entry.display) || '(no prompt)', query)}</span>
 				</button>
 			{/each}
 		{/if}
@@ -423,6 +439,22 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+
+	/* When a deep-search snippet is shown, allow it to wrap for readability */
+	.session-row.has-snippet .row-prompt {
+		white-space: normal;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+	}
+
+	/* Keyword highlight inside session rows */
+	.row-prompt :global(mark) {
+		background: transparent;
+		color: var(--accent-amber);
+		font-weight: 600;
 	}
 
 	.project-group {
