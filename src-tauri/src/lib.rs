@@ -139,6 +139,12 @@ async fn deep_search_sessions(query: String) -> Result<Vec<session::DeepSearchHi
 
 #[cfg(not(mobile))]
 #[tauri::command]
+async fn get_cost_data() -> Result<session::CostData, String> {
+    session::get_cost_data()
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
 async fn stop_session(app: AppHandle, pid: u32) -> Result<(), String> {
     stop_session_action(pid)?;
     std::thread::sleep(Duration::from_millis(300));
@@ -449,6 +455,7 @@ pub fn run() {
             get_conversation,
             get_session_history,
             deep_search_sessions,
+            get_cost_data,
             stop_session,
             open_session,
             rename_session,
