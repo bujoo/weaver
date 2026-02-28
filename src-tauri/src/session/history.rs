@@ -130,6 +130,47 @@ fn extract_snippet(text: &str, query_lower: &str) -> String {
     snippet
 }
 
+/// Extract plain text content from a user or assistant JSONL line.
+/// Returns `None` for metadata lines (summary, file-history-snapshot, etc.).
+/// For user entries: returns the prompt string (skips tool-result arrays).
+/// For assistant entries: concatenates all `text` content blocks.
+fn extract_message_text(line: &str) -> Option<String> {
+    use serde_json::Value;
+    let obj: Value = serde_json::from_str(line).ok()?;
+    let msg_type = obj.get("type").and_then(|v| v.as_str())?;
+
+    match msg_type {
+        "user" => {
+            let content = obj.get("message")?.get("content")?;
+            match content {
+                Value::String(s) => Some(s.clone()),
+                // Array content = tool results — not user-typed text, skip
+                _ => None,
+            }
+        }
+        "assistant" => {
+            let blocks = obj.get("message")?.get("content")?.as_array()?;
+            let text: String = blocks
+                .iter()
+                .filter_map(|b| {
+                    if b.get("type").and_then(|t| t.as_str()) == Some("text") {
+                        b.get("text").and_then(|t| t.as_str()).map(|s| s.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            if text.is_empty() {
+                None
+            } else {
+                Some(text)
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Search all session JSONL files under ~/.claude/projects/ for a query string.
 /// Returns hits with session ID and a short matching snippet, case-insensitive.
 /// Runs file reads concurrently using threads.
@@ -179,11 +220,14 @@ pub fn deep_search(query: &str) -> Result<Vec<DeepSearchHit>, String> {
             let query_lower = Arc::clone(&query_lower);
             std::thread::spawn(move || {
                 if let Ok(content) = std::fs::read_to_string(&path) {
-                    // Find the first line containing the query and extract a snippet
+                    // Only search user/assistant message text — skip metadata entries
+                    // (summary, file-history-snapshot, etc.) which contain fields like
+                    // sessionId, cwd, gitBranch that would trivially match most queries.
                     let snippet = content
                         .lines()
-                        .find(|line| line.to_lowercase().contains(query_lower.as_str()))
-                        .map(|line| extract_snippet(line, &query_lower))
+                        .filter_map(|line| extract_message_text(line).map(|text| (line, text)))
+                        .find(|(_, text)| text.to_lowercase().contains(query_lower.as_str()))
+                        .map(|(_, text)| extract_snippet(&text, &query_lower))
                         .unwrap_or_default();
                     if !snippet.is_empty() {
                         let mut guard = matched.lock().unwrap();
@@ -273,6 +317,35 @@ mod tests {
         let jsonl = "not json at all\n{\"display\":\"ok\",\"timestamp\":1,\"project\":\"/p\",\"sessionId\":\"s1\"}";
         let result = parse_history_jsonl(jsonl);
         assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_message_text_user_prompt() {
+        let line = r#"{"type":"user","uuid":"u1","timestamp":"2025-01-01T00:00:00Z","message":{"role":"user","content":"Hello world"}}"#;
+        assert_eq!(extract_message_text(line), Some("Hello world".to_string()));
+    }
+
+    #[test]
+    fn test_extract_message_text_user_tool_result_skipped() {
+        // Tool-result arrays should be skipped (not user-typed text)
+        let line = r#"{"type":"user","uuid":"u1","timestamp":"2025-01-01T00:00:00Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"x","content":"result"}]}}"#;
+        assert_eq!(extract_message_text(line), None);
+    }
+
+    #[test]
+    fn test_extract_message_text_assistant() {
+        let line = r#"{"type":"assistant","uuid":"a1","timestamp":"2025-01-01T00:00:00Z","message":{"role":"assistant","model":"claude","id":"m1","content":[{"type":"text","text":"Sure, I can help."}]}}"#;
+        assert_eq!(
+            extract_message_text(line),
+            Some("Sure, I can help.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_message_text_metadata_skipped() {
+        // Summary/metadata lines should return None
+        let line = r#"{"type":"summary","summary":"A session","leafUuid":"x","sessionId":"abc","cwd":"/home"}"#;
+        assert_eq!(extract_message_text(line), None);
     }
 
     #[test]
