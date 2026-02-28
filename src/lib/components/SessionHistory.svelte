@@ -13,6 +13,7 @@
 	let query = $state('');
 	let sortOrder = $state<'newest' | 'oldest'>('newest');
 	let groupByProject = $state(false);
+	let collapsedProjects = $state<Set<string>>(new Set());
 
 	let deepSearching = $state(false);
 	let deepSearchResults = $state<Set<string> | null>(null); // null = no search run yet
@@ -120,6 +121,25 @@
 		return [...map.values()];
 	});
 
+	// ── Collapse state ───────────────────────────────────────────────
+	$effect(() => {
+		if (!groupByProject) collapsedProjects = new Set();
+	});
+
+	let allCollapsed = $derived(
+		groups !== null && groups.length > 0 && groups.every((g) => collapsedProjects.has(g.project))
+	);
+
+	function toggleProjectCollapse(project: string) {
+		const next = new Set(collapsedProjects);
+		if (next.has(project)) {
+			next.delete(project);
+		} else {
+			next.add(project);
+		}
+		collapsedProjects = next;
+	}
+
 	// ── Actions ──────────────────────────────────────────────────────
 	async function handleSelectEntry(entry: HistoryEntry) {
 		selectedEntry = entry;
@@ -190,6 +210,18 @@
 					onclick={() => (groupByProject = true)}
 				>BY PROJECT</button>
 			</div>
+
+			{#if groupByProject}
+			<button class="option-btn" onclick={() => {
+				if (allCollapsed) {
+					collapsedProjects = new Set();
+				} else {
+					collapsedProjects = new Set(groups!.map(g => g.project));
+				}
+			}}>
+				{allCollapsed ? 'EXPAND ALL' : 'COLLAPSE ALL'}
+			</button>
+			{/if}
 		</div>
 	</div>
 
@@ -209,15 +241,22 @@
 			{#each groups as group}
 				<div class="project-group">
 					<div class="group-header">
+						<button
+							class="collapse-toggle"
+							onclick={() => toggleProjectCollapse(group.project)}
+							aria-label={collapsedProjects.has(group.project) ? 'Expand group' : 'Collapse group'}
+						>{collapsedProjects.has(group.project) ? '▶' : '▼'}</button>
 						<span class="group-name">{group.projectName.toUpperCase()}</span>
 						<span class="group-count">{group.entries.length}</span>
 					</div>
-					{#each group.entries as entry (entry.sessionId)}
-						<button class="session-row" onclick={() => handleSelectEntry(entry)}>
-							<span class="row-prompt">{entry.display || '(no prompt)'}</span>
-							<span class="row-time">{relativeTime(entry.timestamp)}</span>
-						</button>
-					{/each}
+					{#if !collapsedProjects.has(group.project)}
+						{#each group.entries as entry (entry.sessionId)}
+							<button class="session-row" onclick={() => handleSelectEntry(entry)}>
+								<span class="row-prompt">{entry.display || '(no prompt)'}</span>
+								<span class="row-time">{relativeTime(entry.timestamp)}</span>
+							</button>
+						{/each}
+					{/if}
 				</div>
 			{/each}
 		{:else}
@@ -412,6 +451,22 @@
 		color: var(--text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
+	}
+
+	.collapse-toggle {
+		background: transparent;
+		border: none;
+		color: var(--text-muted);
+		font-family: var(--font-mono);
+		font-size: 11px;
+		cursor: pointer;
+		padding: 0;
+		line-height: 1;
+		flex-shrink: 0;
+	}
+
+	.collapse-toggle:hover {
+		color: var(--text-primary);
 	}
 
 </style>
