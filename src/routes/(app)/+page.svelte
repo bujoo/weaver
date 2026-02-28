@@ -39,6 +39,14 @@
 
 	let activeTab = $state<'monitor' | 'history'>('monitor');
 
+	// Detect macOS native fullscreen to remove traffic-light padding.
+	// CSS `display-mode: fullscreen` does NOT fire for native macOS fullscreen —
+	// only for browser Fullscreen API calls. We use a resize listener instead.
+	let isFullscreen = $state(false);
+	function checkFullscreen() {
+		isFullscreen = window.outerHeight >= window.screen.height;
+	}
+
 	onMount(() => {
 		if (browser) {
 			const saved = localStorage.getItem('sessionViewMode');
@@ -49,6 +57,7 @@
 			if (savedCompact === 'true') {
 				isCompact = true;
 			}
+			checkFullscreen();
 		}
 	});
 
@@ -222,13 +231,13 @@
 
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window on:keydown={handleKeydown} on:resize={checkFullscreen} />
 
 {#if needsConnection}
 	<ConnectionScreen onconnected={() => (needsConnection = false)} />
 {:else}
 <div class="dashboard">
-	<div class="tab-bar" data-tauri-drag-region>
+	<div class="tab-bar" class:fullscreen={isFullscreen} data-tauri-drag-region>
 		<button
 			class="tab-btn"
 			class:active={activeTab === 'monitor'}
@@ -245,8 +254,13 @@
 			<span class="tab-icon">⌕</span>
 			<span class="tab-label">HISTORY</span>
 		</button>
-		<!-- Fills remaining tab bar space — draggable so user can move the window -->
-		<div class="tab-drag-region" data-tauri-drag-region></div>
+		<!-- Drag handle: visible dots + fills remaining space for window dragging.
+		     Hidden in fullscreen where native drag is unavailable anyway. -->
+		<div class="tab-drag-region" data-tauri-drag-region>
+			{#if !isFullscreen}
+				<span class="drag-dots" data-tauri-drag-region>· · ·</span>
+			{/if}
+		</div>
 	</div>
 
 	{#if activeTab === 'history'}
@@ -533,11 +547,23 @@
 		padding: 0 var(--space-md) 0 80px;
 	}
 
-	/* Fills the right portion of the tab bar so users can drag the window
-	   in non-fullscreen mode. Must have no-drag cleared so the drag region
-	   actually works (parent has data-tauri-drag-region). */
+	/* Fills the right portion of the tab bar — draggable window handle area */
 	.tab-drag-region {
 		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	/* Three-dot drag indicator: subtle cue that the area is draggable */
+	.drag-dots {
+		font-family: var(--font-mono);
+		font-size: 14px;
+		letter-spacing: 4px;
+		color: var(--text-muted);
+		opacity: 0.4;
+		pointer-events: none;
+		user-select: none;
 	}
 
 	.tab-btn {
@@ -927,12 +953,12 @@
 	}
 
 	/* ── Fullscreen: remove traffic-light clearance ────────────── */
-	/* In macOS fullscreen the traffic lights are gone, so the 80px
-	   left padding becomes dead space. Reset it to 0 in fullscreen. */
-	@media (display-mode: fullscreen) {
-		.tab-bar {
-			padding-left: 0;
-		}
+	/* In macOS native fullscreen the traffic lights are gone, so the 80px
+	   left padding becomes dead space. CSS `display-mode: fullscreen` does NOT
+	   fire for native macOS fullscreen — we use a JS resize listener instead
+	   and toggle the .fullscreen class. */
+	.tab-bar.fullscreen {
+		padding-left: 0;
 	}
 
 	/* ── Mobile Responsive ─────────────────────────────────────── */
