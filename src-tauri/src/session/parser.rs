@@ -81,6 +81,7 @@ pub struct SessionEntryBase {
 /// - An array of content blocks (for tool results sent back to Claude)
 /// A base64-encoded image found in a user message content array
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ImageBlock {
     pub media_type: String,
     pub data: String,
