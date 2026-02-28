@@ -152,9 +152,10 @@
 				entry.sessions.push(...d.sessions);
 				entry.dayBuckets.set(d.date, { cost: d.cost, sessions: d.sessions });
 			}
-			// Generate last 8 weeks anchored to today, newest→oldest
+			// Generate last 4 weeks anchored to today, newest→oldest
+			// (Claude Code auto-deletes logs after 30 days)
 			const thisWeek = getWeekStart(today);
-			return Array.from({ length: 8 }, (_, i) => {
+			return Array.from({ length: 4 }, (_, i) => {
 				const d = new Date(thisWeek + 'T00:00:00');
 				d.setDate(d.getDate() - i * 7);
 				return toLocalDateStr(d);
@@ -186,9 +187,10 @@
 			wEntry.cost += d.cost;
 			wEntry.sessions.push(...d.sessions);
 		}
-		// Generate last 6 months anchored to this month, newest→oldest
+		// Generate last 2 months anchored to this month, newest→oldest
+		// (Claude Code auto-deletes logs after 30 days)
 		const now = new Date();
-		return Array.from({ length: 6 }, (_, i) => {
+		return Array.from({ length: 2 }, (_, i) => {
 			const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
 			return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 		}).map(mk => {
