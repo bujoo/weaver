@@ -1,12 +1,16 @@
-# c9watch
+<p align="center">
+  <img src="src-tauri/icons/icon.png" width="120" alt="c9watch icon" />
+</p>
 
-> Monitor and control all your Claude Code sessions from one place.
+<h1 align="center">c9watch</h1>
+
+<p align="center">Monitor and control all your Claude Code sessions from one place.</p>
 
 **c9watch** (short for **c**laude cod**e** watch, like k8s for Kubernetes) is a macOS desktop app that gives you a real-time dashboard of every Claude Code session running on your machine. No more switching between terminals to check which agent needs permission, which one is working, and which one is idle.
 
 ## Demo
 
-[![Watch Demo](https://img.youtube.com/vi/9PdN7joYmUk/maxresdefault.jpg)](https://youtu.be/9PdN7joYmUk)
+![Demo](docs/screenshots/demo.gif)
 
 ## Works with everything. Tied to nothing.
 
@@ -47,31 +51,25 @@ The built `.app` will be in `src-tauri/target/release/bundle/macos/`.
 
 ## Screenshots
 
-### Status view -- see what needs your attention first
+### Monitor -- see what needs your attention first
 
 Sessions grouped by status. Permission requests surface to the top so you never leave an agent stuck waiting.
 
-![Status view](docs/screenshots/status-view.png)
+![Monitor tab](docs/screenshots/monitor-tab.png)
 
-### Project view -- organize by codebase
+### History -- browse and search past sessions
 
-Sessions grouped by project, each with its own status columns. See what's happening across all your repos.
+Search all past sessions with instant metadata filter and deep content search. Click a result to view the full conversation.
 
-![Project view](docs/screenshots/project-view.png)
+![History tab](docs/screenshots/history-tab.png)
 
-### Compact view -- monitor at a glance
+### Cost -- track your spending
 
-Minimal cards for when you just need a quick status check without the details.
+Daily, per-project, and per-model spending breakdowns across all your Claude Code sessions.
 
-![Compact view](docs/screenshots/compact-view.png)
+![Cost tab](docs/screenshots/cost-tab.png)
 
-### Conversation viewer -- inspect any session
-
-Expand any card to see the full conversation history with formatted code, tool usage, and a navigation map.
-
-![Conversation viewer](docs/screenshots/conversation-view.png)
-
-### Tray popover -- monitor sessions without opening the dashboard
+### Tray popover -- monitor without opening the dashboard
 
 A quick-glance overlay showing all active sessions and their status directly from the menu bar.
 
