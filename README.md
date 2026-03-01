@@ -69,6 +69,12 @@ Daily, per-project, and per-model spending breakdowns across all your Claude Cod
 
 ![Cost tab](docs/screenshots/cost-tab.png)
 
+### Conversation viewer -- inspect any session
+
+Expand any session to see the full conversation with formatted markdown, code blocks, inline images, and a navigation sidebar.
+
+![Conversation viewer](docs/screenshots/conversation-viewer.png)
+
 ### Tray popover -- monitor without opening the dashboard
 
 A quick-glance overlay showing all active sessions and their status directly from the menu bar.
