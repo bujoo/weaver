@@ -29,7 +29,9 @@ import DotGrid from './DotGrid.astro';
   </div>
   <p class="hero-meta">macOS · MIT License · v0.4.0</p>
   <div class="hero-demo">
-    <img src="/screenshots/demo.gif" alt="c9watch demo" />
+    <video autoplay loop muted playsinline>
+      <source src="/screenshots/demo.mp4" type="video/mp4" />
+    </video>
   </div>
   </section>
 </div>
@@ -164,7 +166,7 @@ import DotGrid from './DotGrid.astro';
     100% { background-position: -100% 0; }
   }
 
-  .hero-demo img {
+  .hero-demo video {
     width: 100%;
     display: block;
   }
