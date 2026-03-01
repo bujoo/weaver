@@ -20,3 +20,6 @@ pub use history::{deep_search, get_history, DeepSearchHit, HistoryEntry};
 
 pub mod cost;
 pub use cost::{get_cost_data, CostData};
+
+pub mod memory;
+pub use memory::{get_memory_files, MemoryFile, ProjectMemory};
