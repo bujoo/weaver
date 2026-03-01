@@ -6,7 +6,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { get } from 'svelte/store';
 import type { Session, Conversation, HistoryEntry, DeepSearchHit, CostData, ProjectMemory } from './types';
-import { isDemoMode } from './demo';
+import { isDemoMode } from './demo/mode';
 import { getDemoSessions, demoConversations } from './demo/data';
 import { wsClient, useWebSocket } from './ws';
 
@@ -121,7 +121,7 @@ export async function getCostData(): Promise<CostData | null> {
 }
 
 /**
- * Get all memory files from ~/.claude/projects/*/memory/*.md
+ * Get all memory files from ~/.claude/projects/{project}/memory/*.md
  * (Desktop/Tauri only — returns empty array on mobile/browser)
  */
 export async function getMemoryFiles(): Promise<ProjectMemory[]> {

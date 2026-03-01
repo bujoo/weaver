@@ -2,21 +2,18 @@
  * Demo mode state management, toggle logic, and status simulation
  */
 
-import { writable, get } from 'svelte/store';
+import { get } from 'svelte/store';
 import { sessions } from '../stores/sessions';
 import type { Session } from '../types';
 import type { SessionStatus } from '../types';
 import { getDemoSessions, statusMessages, statusTransitions } from './data';
+import { isDemoMode, isPersistedDemoMode, persistDemoMode } from './mode';
 
-const STORAGE_KEY = 'demoMode';
+export { isDemoMode } from './mode';
+
 const SIMULATION_INTERVAL_MS = 4000;
 
 let simulationTimer: ReturnType<typeof setInterval> | null = null;
-
-/**
- * Whether demo mode is active. Persisted to localStorage.
- */
-export const isDemoMode = writable<boolean>(false);
 
 /**
  * Pick a random next status for a session based on transition rules.
@@ -77,12 +74,7 @@ export function toggleDemoMode() {
 	const current = get(isDemoMode);
 	const next = !current;
 	isDemoMode.set(next);
-
-	try {
-		localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-	} catch {
-		// localStorage not available
-	}
+	persistDemoMode(next);
 
 	if (next) {
 		sessions.set(getDemoSessions());
@@ -98,16 +90,11 @@ export function toggleDemoMode() {
  * and start the simulation. Returns true if demo mode is active.
  */
 export function loadDemoDataIfActive(): boolean {
-	try {
-		const stored = localStorage.getItem(STORAGE_KEY);
-		if (stored === 'true') {
-			isDemoMode.set(true);
-			sessions.set(getDemoSessions());
-			startSimulation();
-			return true;
-		}
-	} catch {
-		// localStorage not available
+	if (isPersistedDemoMode()) {
+		isDemoMode.set(true);
+		sessions.set(getDemoSessions());
+		startSimulation();
+		return true;
 	}
 	return false;
 }

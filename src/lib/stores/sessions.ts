@@ -7,7 +7,7 @@ import { listen } from '@tauri-apps/api/event';
 import { isPermissionGranted, requestPermission } from '@tauri-apps/plugin-notification';
 import type { Session, Conversation } from '../types';
 import { SessionStatus } from '../types';
-import { isDemoMode } from '../demo';
+import { isDemoMode } from '../demo/mode';
 import { openSession } from '../api';
 import { wsClient, useWebSocket, getStoredWsUrl, isTauri } from '../ws';
 
