@@ -1,12 +1,16 @@
-# c9watch
+<p align="center">
+  <img src="src-tauri/icons/icon.png" width="120" alt="c9watch icon" />
+</p>
 
-> Monitor and control all your Claude Code sessions from one place.
+<h1 align="center">c9watch</h1>
+
+<p align="center">Monitor and control all your Claude Code sessions from one place.</p>
 
 **c9watch** (short for **c**laude cod**e** watch, like k8s for Kubernetes) is a macOS desktop app that gives you a real-time dashboard of every Claude Code session running on your machine. No more switching between terminals to check which agent needs permission, which one is working, and which one is idle.
 
 ## Demo
 
-[![Watch Demo](https://img.youtube.com/vi/9PdN7joYmUk/maxresdefault.jpg)](https://youtu.be/9PdN7joYmUk)
+![Demo](docs/screenshots/demo.gif)
 
 ## Works with everything. Tied to nothing.
 
@@ -47,31 +51,25 @@ The built `.app` will be in `src-tauri/target/release/bundle/macos/`.
 
 ## Screenshots
 
-### Status view -- see what needs your attention first
+### Monitor -- see what needs your attention first
 
 Sessions grouped by status. Permission requests surface to the top so you never leave an agent stuck waiting.
 
-![Status view](docs/screenshots/status-view.png)
+![Monitor tab](docs/screenshots/monitor-tab.png)
 
-### Project view -- organize by codebase
+### History -- browse and search past sessions
 
-Sessions grouped by project, each with its own status columns. See what's happening across all your repos.
+Search all past sessions with instant metadata filter and deep content search. Click a result to view the full conversation.
 
-![Project view](docs/screenshots/project-view.png)
+![History tab](docs/screenshots/history-tab.png)
 
-### Compact view -- monitor at a glance
+### Cost -- track your spending
 
-Minimal cards for when you just need a quick status check without the details.
+Daily, per-project, and per-model spending breakdowns across all your Claude Code sessions.
 
-![Compact view](docs/screenshots/compact-view.png)
+![Cost tab](docs/screenshots/cost-tab.png)
 
-### Conversation viewer -- inspect any session
-
-Expand any card to see the full conversation history with formatted code, tool usage, and a navigation map.
-
-![Conversation viewer](docs/screenshots/conversation-view.png)
-
-### Tray popover -- monitor sessions without opening the dashboard
+### Tray popover -- monitor without opening the dashboard
 
 A quick-glance overlay showing all active sessions and their status directly from the menu bar.
 
@@ -82,23 +80,27 @@ A quick-glance overlay showing all active sessions and their status directly fro
 - **Zero-integration setup** -- Works with any terminal or IDE, no plugins or extensions required
 - **Auto-discovery** -- Detects all running Claude Code sessions by scanning processes at the OS level
 - **Real-time status** -- See at a glance which sessions are Working, Need Permission, or Idle
-- **Conversation viewer** -- Expand any session to view the full conversation with formatted markdown and code blocks
+- **Conversation viewer** -- Expand any session to view the full conversation with formatted markdown, code blocks, and inline images
 - **Session control** -- Stop sessions, open their parent terminal/IDE, or rename them for easier tracking
 - **Multi-project view** -- Sessions grouped by project with git branch info
 - **Tray popover** -- Click the menu bar icon for a quick-glance overlay with session status indicators and latest messages
 - **Status notifications** -- Get a native macOS notification when a session needs your attention
 - **Mobile/Web client** -- Connect from any browser or mobile device via WebSocket; scan the QR code to monitor sessions remotely
+- **Session history** -- Browse and search all past sessions with instant metadata filter and deep content search; click a result to scroll to and highlight the matching message
+- **Cost tracker** -- Track Claude Code spending with daily, per-project, and per-model breakdowns using cached JSONL scanning
 
 ## How it works
 
-1. A background thread polls every 2 seconds, scanning for running `claude` processes using `sysinfo`
-2. Each process is matched to its session file in `~/.claude/projects/` via path encoding and timestamp correlation
-3. The last N entries of each session's JSONL file are parsed to determine status:
-   - **Working** -- Claude is generating a response or executing tools
-   - **Needs Permission** -- A tool is pending that requires user approval
-   - **Idle** -- Session is waiting for your next prompt
-4. Status updates are pushed to the Svelte frontend via Tauri events
-5. The UI reactively updates, sorting sessions by priority (permission requests surface first)
+**Live monitoring** -- A background thread polls every 2 seconds, scanning for running `claude` processes using `sysinfo`. Each process is matched to its session file in `~/.claude/projects/` via path encoding and timestamp correlation. The last N entries of each session's JSONL file are parsed to determine status:
+- **Working** -- Claude is generating a response or executing tools
+- **Needs Permission** -- A tool is pending that requires user approval
+- **Idle** -- Session is waiting for your next prompt
+
+Status updates are pushed to the Svelte frontend via Tauri events. The UI reactively updates, sorting sessions by priority (permission requests surface first).
+
+**Session history** -- Reads `~/.claude/history.jsonl` for the session index, then scans individual JSONL files across all project directories for deep content search. Results link back to the full conversation viewer with scroll-to-match highlighting.
+
+**Cost tracking** -- Parses assistant message metadata from JSONL files to extract model usage and token counts. Costs are computed using per-model pricing tables and cached by file mtime to avoid re-scanning unchanged sessions.
 
 ## Tech stack
 
@@ -123,25 +125,37 @@ This starts both the Vite dev server (hot-reload for the frontend) and the Tauri
 
 ```
 c9watch/
-├── src/                    # SvelteKit frontend
-│   ├── routes/             # Pages (+page.svelte, +layout.svelte)
+├── src/                        # SvelteKit frontend
+│   ├── routes/
+│   │   ├── (app)/              # Main dashboard (monitor, history, cost tabs)
+│   │   └── popover/            # Tray popover window
 │   ├── lib/
-│   │   ├── components/     # Svelte components (SessionCard, MessageBubble, etc.)
-│   │   ├── stores/         # Reactive state management
-│   │   ├── demo/           # Demo mode with mock data
-│   │   ├── api.ts          # Tauri command wrappers
-│   │   └── types.ts        # TypeScript types
-│   └── app.css             # Global styles
-├── src-tauri/              # Rust backend (Tauri)
+│   │   ├── components/         # Svelte components
+│   │   │   ├── SessionCard     # Live session cards with status
+│   │   │   ├── SessionHistory  # History browser with search
+│   │   │   ├── CostTracker     # Spending dashboard
+│   │   │   ├── MessageBubble   # Conversation message rendering
+│   │   │   └── ...             # Overlays, nav map, status bar, etc.
+│   │   ├── stores/             # Reactive state management
+│   │   ├── demo/               # Demo mode with mock data
+│   │   ├── api.ts              # Tauri command wrappers
+│   │   └── types.ts            # TypeScript type definitions
+│   └── app.css                 # Global styles (Vercel Noir theme)
+├── src-tauri/                  # Rust backend (Tauri)
 │   └── src/
-│       ├── lib.rs          # Tauri commands and app setup
-│       ├── polling.rs      # Background session detection loop
-│       ├── actions.rs      # Stop/open session actions
+│       ├── lib.rs              # App setup, tray icon, NSPanel popover
+│       ├── polling.rs          # Background session detection loop
+│       ├── actions.rs          # Stop/open session, IDE detection
+│       ├── web_server.rs       # WebSocket server for mobile clients
+│       ├── auth.rs             # Token generation, local IP discovery
 │       └── session/
-│           ├── detector.rs # Process-to-session matching
-│           ├── status.rs   # Status determination logic
-│           ├── parser.rs   # JSONL file parsing
-│           └── permissions.rs # Auto-approval rule checking
+│           ├── parser.rs       # JSONL file parsing and message extraction
+│           ├── detector.rs     # Process-to-session matching
+│           ├── status.rs       # Status determination from JSONL entries
+│           ├── history.rs      # Session history index and deep search
+│           ├── cost.rs         # Cost aggregation with mtime caching
+│           ├── permissions.rs  # Auto-approval rule checking
+│           └── custom_names.rs # User-defined session titles
 ```
 
 ## Demo mode
