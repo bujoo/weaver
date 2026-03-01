@@ -1,0 +1,54 @@
+---
+const tools = [
+  'VS Code', 'Zed', 'iTerm2', 'Ghostty', 'tmux',
+  'Terminal.app', 'JetBrains IDEs', 'Antigravity'
+];
+---
+
+<section class="compat">
+  <p class="compat-heading">Works with everything. Tied to nothing.</p>
+  <p class="compat-sub">
+    Start Claude Code from any terminal or IDE you already use — c9watch picks them all up.
+  </p>
+  <div class="compat-strip">
+    {tools.map(name => <span class="compat-item">{name}</span>)}
+  </div>
+</section>
+
+<style>
+  .compat {
+    padding: 3rem 2rem;
+    text-align: center;
+    border-top: 1px solid var(--border-muted);
+  }
+
+  .compat-heading {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+
+  .compat-sub {
+    color: var(--text-secondary);
+    font-size: 15px;
+    margin-bottom: 2rem;
+    max-width: 520px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .compat-strip {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem;
+  }
+
+  .compat-item {
+    padding: 0.4rem 0.9rem;
+    border: 1px solid var(--border-default);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-family: var(--font-mono);
+  }
+</style>
