@@ -60,6 +60,9 @@ enum ClientMsg {
         #[serde(rename = "newName")]
         new_name: String,
     },
+
+    #[serde(rename = "getMemoryFiles")]
+    GetMemoryFiles,
 }
 
 /// Server → Client messages
@@ -83,6 +86,9 @@ enum ServerMsg {
 
     #[serde(rename = "notification")]
     Notification { data: serde_json::Value },
+
+    #[serde(rename = "memoryFiles")]
+    MemoryFiles { data: serde_json::Value },
 }
 
 // ── Server entrypoint ───────────────────────────────────────────────
@@ -284,5 +290,12 @@ async fn handle_message(msg: ClientMsg) -> ServerMsg {
                 Err(e) => ServerMsg::Error { message: e },
             }
         }
+
+        ClientMsg::GetMemoryFiles => match crate::session::get_memory_files() {
+            Ok(files) => ServerMsg::MemoryFiles {
+                data: serde_json::to_value(&files).unwrap_or_default(),
+            },
+            Err(e) => ServerMsg::Error { message: e },
+        },
     }
 }
