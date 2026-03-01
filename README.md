@@ -91,14 +91,16 @@ A quick-glance overlay showing all active sessions and their status directly fro
 
 ## How it works
 
-1. A background thread polls every 2 seconds, scanning for running `claude` processes using `sysinfo`
-2. Each process is matched to its session file in `~/.claude/projects/` via path encoding and timestamp correlation
-3. The last N entries of each session's JSONL file are parsed to determine status:
-   - **Working** -- Claude is generating a response or executing tools
-   - **Needs Permission** -- A tool is pending that requires user approval
-   - **Idle** -- Session is waiting for your next prompt
-4. Status updates are pushed to the Svelte frontend via Tauri events
-5. The UI reactively updates, sorting sessions by priority (permission requests surface first)
+**Live monitoring** -- A background thread polls every 2 seconds, scanning for running `claude` processes using `sysinfo`. Each process is matched to its session file in `~/.claude/projects/` via path encoding and timestamp correlation. The last N entries of each session's JSONL file are parsed to determine status:
+- **Working** -- Claude is generating a response or executing tools
+- **Needs Permission** -- A tool is pending that requires user approval
+- **Idle** -- Session is waiting for your next prompt
+
+Status updates are pushed to the Svelte frontend via Tauri events. The UI reactively updates, sorting sessions by priority (permission requests surface first).
+
+**Session history** -- Reads `~/.claude/history.jsonl` for the session index, then scans individual JSONL files across all project directories for deep content search. Results link back to the full conversation viewer with scroll-to-match highlighting.
+
+**Cost tracking** -- Parses assistant message metadata from JSONL files to extract model usage and token counts. Costs are computed using per-model pricing tables and cached by file mtime to avoid re-scanning unchanged sessions.
 
 ## Tech stack
 
@@ -123,25 +125,37 @@ This starts both the Vite dev server (hot-reload for the frontend) and the Tauri
 
 ```
 c9watch/
-├── src/                    # SvelteKit frontend
-│   ├── routes/             # Pages (+page.svelte, +layout.svelte)
+├── src/                        # SvelteKit frontend
+│   ├── routes/
+│   │   ├── (app)/              # Main dashboard (monitor, history, cost tabs)
+│   │   └── popover/            # Tray popover window
 │   ├── lib/
-│   │   ├── components/     # Svelte components (SessionCard, MessageBubble, etc.)
-│   │   ├── stores/         # Reactive state management
-│   │   ├── demo/           # Demo mode with mock data
-│   │   ├── api.ts          # Tauri command wrappers
-│   │   └── types.ts        # TypeScript types
-│   └── app.css             # Global styles
-├── src-tauri/              # Rust backend (Tauri)
+│   │   ├── components/         # Svelte components
+│   │   │   ├── SessionCard     # Live session cards with status
+│   │   │   ├── SessionHistory  # History browser with search
+│   │   │   ├── CostTracker     # Spending dashboard
+│   │   │   ├── MessageBubble   # Conversation message rendering
+│   │   │   └── ...             # Overlays, nav map, status bar, etc.
+│   │   ├── stores/             # Reactive state management
+│   │   ├── demo/               # Demo mode with mock data
+│   │   ├── api.ts              # Tauri command wrappers
+│   │   └── types.ts            # TypeScript type definitions
+│   └── app.css                 # Global styles (Vercel Noir theme)
+├── src-tauri/                  # Rust backend (Tauri)
 │   └── src/
-│       ├── lib.rs          # Tauri commands and app setup
-│       ├── polling.rs      # Background session detection loop
-│       ├── actions.rs      # Stop/open session actions
+│       ├── lib.rs              # App setup, tray icon, NSPanel popover
+│       ├── polling.rs          # Background session detection loop
+│       ├── actions.rs          # Stop/open session, IDE detection
+│       ├── web_server.rs       # WebSocket server for mobile clients
+│       ├── auth.rs             # Token generation, local IP discovery
 │       └── session/
-│           ├── detector.rs # Process-to-session matching
-│           ├── status.rs   # Status determination logic
-│           ├── parser.rs   # JSONL file parsing
-│           └── permissions.rs # Auto-approval rule checking
+│           ├── parser.rs       # JSONL file parsing and message extraction
+│           ├── detector.rs     # Process-to-session matching
+│           ├── status.rs       # Status determination from JSONL entries
+│           ├── history.rs      # Session history index and deep search
+│           ├── cost.rs         # Cost aggregation with mtime caching
+│           ├── permissions.rs  # Auto-approval rule checking
+│           └── custom_names.rs # User-defined session titles
 ```
 
 ## Demo mode
