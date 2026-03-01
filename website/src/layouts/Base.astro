@@ -5,9 +5,10 @@ import Nav from '../components/Nav.astro';
 interface Props {
   title: string;
   description?: string;
+  hideNav?: boolean;
 }
 
-const { title, description = 'Monitor and control all your Claude Code sessions from one place.' } = Astro.props;
+const { title, description = 'Monitor and control all your Claude Code sessions from one place.', hideNav = false } = Astro.props;
 ---
 
 <!DOCTYPE html>
@@ -20,7 +21,7 @@ const { title, description = 'Monitor and control all your Claude Code sessions 
   <link rel="icon" type="image/png" href="/icon.png" />
 </head>
 <body>
-  <Nav />
+  {!hideNav && <Nav />}
   <slot />
 </body>
 </html>

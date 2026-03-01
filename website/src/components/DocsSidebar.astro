@@ -1,0 +1,63 @@
+---
+interface Props {
+  currentPath: string;
+}
+
+const { currentPath } = Astro.props;
+
+const links = [
+  { href: '/docs/install', label: 'Install' },
+  { href: '/docs/features', label: 'Features' },
+  { href: '/docs/how-it-works', label: 'How It Works' },
+  { href: '/docs/changelog', label: 'Changelog' },
+];
+---
+
+<aside class="sidebar">
+  <nav>
+    {links.map(link => (
+      <a
+        href={link.href}
+        class:list={['sidebar-link', { active: currentPath === link.href }]}
+      >
+        {link.label}
+      </a>
+    ))}
+  </nav>
+</aside>
+
+<style>
+  .sidebar {
+    position: sticky;
+    top: 72px;
+    width: 200px;
+    flex-shrink: 0;
+    padding: 1.5rem 0;
+  }
+
+  .sidebar-link {
+    display: block;
+    padding: 0.4rem 1rem;
+    color: var(--text-secondary);
+    font-size: 14px;
+    text-decoration: none;
+    border-left: 1px solid transparent;
+    transition: color var(--transition-fast);
+  }
+
+  .sidebar-link:hover {
+    color: var(--text-primary);
+    text-decoration: none;
+  }
+
+  .sidebar-link.active {
+    color: var(--text-primary);
+    border-left-color: var(--text-primary);
+  }
+
+  @media (max-width: 768px) {
+    .sidebar {
+      display: none;
+    }
+  }
+</style>
