@@ -1,0 +1,71 @@
+---
+import Docs from '../../layouts/Docs.astro';
+---
+
+<Docs title="How It Works">
+  <h1>How It Works</h1>
+
+  <h2>Live monitoring</h2>
+  <p>
+    A background thread polls every 2 seconds, scanning for running <code>claude</code>
+    processes using <a href="https://crates.io/crates/sysinfo">sysinfo</a>. Each process is
+    matched to its session file in <code>~/.claude/projects/</code> via path encoding and
+    timestamp correlation. The last N entries of each session's JSONL file are parsed to
+    determine status:
+  </p>
+  <ul>
+    <li><strong>Working</strong> — Claude is generating a response or executing tools</li>
+    <li><strong>Needs Permission</strong> — A tool is pending that requires user approval</li>
+    <li><strong>Idle</strong> — Session is waiting for your next prompt</li>
+  </ul>
+  <p>
+    Status updates are pushed to the Svelte frontend via Tauri events. The UI reactively
+    updates, sorting sessions by priority (permission requests surface first).
+  </p>
+
+  <h2>Session history</h2>
+  <p>
+    Reads <code>~/.claude/history.jsonl</code> for the session index, then scans individual
+    JSONL files across all project directories for deep content search. Results link back to
+    the full conversation viewer with scroll-to-match highlighting.
+  </p>
+
+  <h2>Cost tracking</h2>
+  <p>
+    Parses assistant message metadata from JSONL files to extract model usage and token counts.
+    Costs are computed using per-model pricing tables and cached by file mtime to avoid
+    re-scanning unchanged sessions.
+  </p>
+
+  <h2>Tech stack</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Layer</th>
+        <th>Technology</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Desktop framework</td>
+        <td><a href="https://v2.tauri.app/">Tauri 2</a></td>
+      </tr>
+      <tr>
+        <td>Frontend</td>
+        <td><a href="https://svelte.dev/">SvelteKit</a> + <a href="https://svelte.dev/docs/svelte/overview">Svelte 5</a></td>
+      </tr>
+      <tr>
+        <td>Backend</td>
+        <td>Rust</td>
+      </tr>
+      <tr>
+        <td>Process discovery</td>
+        <td><a href="https://crates.io/crates/sysinfo">sysinfo</a></td>
+      </tr>
+      <tr>
+        <td>Design system</td>
+        <td>Vercel Noir (true black, <a href="https://vercel.com/font">Geist</a> fonts)</td>
+      </tr>
+    </tbody>
+  </table>
+</Docs>

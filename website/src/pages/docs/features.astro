@@ -1,0 +1,75 @@
+---
+import Docs from '../../layouts/Docs.astro';
+---
+
+<Docs title="Features">
+  <h1>Features</h1>
+
+  <h2>Zero-integration setup</h2>
+  <p>
+    Works with any terminal or IDE — no plugins or extensions required. Start Claude Code from
+    VS Code, Zed, iTerm2, Antigravity, or any terminal you already use, and c9watch picks them
+    all up automatically.
+  </p>
+
+  <h2>Auto-discovery</h2>
+  <p>
+    Detects all running Claude Code sessions by scanning processes at the OS level. No need to
+    launch sessions from within c9watch.
+  </p>
+
+  <h2>Real-time status</h2>
+  <p>
+    See at a glance which sessions are <strong>Working</strong>,
+    <strong>Need Permission</strong>, or <strong>Idle</strong>. Permission requests surface to
+    the top so you never leave an agent stuck waiting.
+  </p>
+  <img src="/screenshots/monitor-tab.png" alt="Monitor tab showing sessions grouped by status" />
+
+  <h2>Conversation viewer</h2>
+  <p>
+    Expand any session to view the full conversation with formatted markdown, code blocks,
+    inline images, and a navigation sidebar.
+  </p>
+  <img src="/screenshots/conversation-viewer.png" alt="Conversation viewer with formatted messages" />
+
+  <h2>Session control</h2>
+  <p>
+    Stop sessions, open their parent terminal or IDE, or rename them for easier tracking.
+  </p>
+
+  <h2>Multi-project view</h2>
+  <p>Sessions grouped by project with git branch info.</p>
+
+  <h2>Tray popover</h2>
+  <p>
+    Click the menu bar icon for a quick-glance overlay with session status indicators and
+    latest messages. Monitor without opening the full dashboard.
+  </p>
+  <img src="/screenshots/tray-popover.jpeg" alt="Tray popover showing active sessions from the menu bar" />
+
+  <h2>Status notifications</h2>
+  <p>
+    Get a native macOS notification when a session needs your attention.
+  </p>
+
+  <h2>Mobile/Web client</h2>
+  <p>
+    Connect from any browser or mobile device via WebSocket. Scan the QR code to monitor
+    sessions remotely.
+  </p>
+
+  <h2>Session history</h2>
+  <p>
+    Browse and search all past sessions with instant metadata filter and deep content search.
+    Click a result to scroll to and highlight the matching message.
+  </p>
+  <img src="/screenshots/history-tab.png" alt="History tab with search and session browsing" />
+
+  <h2>Cost tracker</h2>
+  <p>
+    Track Claude Code spending with daily, per-project, and per-model breakdowns using cached
+    JSONL scanning.
+  </p>
+  <img src="/screenshots/cost-tab.png" alt="Cost tracker with spending breakdowns" />
+</Docs>

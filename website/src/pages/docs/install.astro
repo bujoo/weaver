@@ -1,0 +1,37 @@
+---
+import Docs from '../../layouts/Docs.astro';
+---
+
+<Docs title="Install">
+  <h1>Install</h1>
+
+  <h2>Quick install</h2>
+  <p>Run this command in your terminal to install or update c9watch:</p>
+  <pre><code>curl -fsSL https://raw.githubusercontent.com/minchenlee/c9watch/main/install.sh | bash</code></pre>
+
+  <h2>Download</h2>
+  <p>
+    Grab the latest <code>.dmg</code> from the
+    <a href="https://github.com/minchenlee/c9watch/releases">Releases</a> page.
+  </p>
+
+  <h2>Build from source</h2>
+
+  <h3>Prerequisites</h3>
+  <ul>
+    <li><a href="https://rustup.rs/">Rust</a></li>
+    <li><a href="https://nodejs.org/">Node.js</a> (v18+)</li>
+    <li><a href="https://v2.tauri.app/start/prerequisites/">Tauri CLI</a></li>
+  </ul>
+
+  <h3>Commands</h3>
+  <pre><code>git clone https://github.com/minchenlee/c9watch.git
+cd c9watch
+npm install
+npm run tauri build</code></pre>
+
+  <p>
+    The built <code>.app</code> will be in
+    <code>src-tauri/target/release/bundle/macos/</code>.
+  </p>
+</Docs>
