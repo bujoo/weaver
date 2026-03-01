@@ -1,0 +1,202 @@
+---
+// Animated dot matrix — echoes c9watch's pixel grid status bar
+// Dots are fixed on a perfect grid, no drifting. Color waves ripple outward.
+---
+
+<canvas id="dot-grid" class="dot-grid" aria-hidden="true"></canvas>
+
+<script>
+  const canvas = document.getElementById('dot-grid') as HTMLCanvasElement;
+  if (canvas) {
+    const ctx = canvas.getContext('2d')!;
+    const dpr = window.devicePixelRatio || 1;
+
+    const GAP = 24;
+    const DOT_R = 1.2;
+
+    // c9watch status palette
+    const C_MUTED: [number, number, number] = [100, 100, 100];
+    const C_IDLE: [number, number, number] = [255, 255, 255];
+    const C_WORK: [number, number, number] = [30, 140, 255];
+    const C_PERM: [number, number, number] = [255, 130, 20];
+    const STATUS_COLORS = [C_IDLE, C_WORK, C_PERM];
+
+    let W = 0, H = 0, cols = 0, rows = 0, offX = 0, offY = 0;
+    // Per-dot state stored in flat arrays for performance
+    let color_r: Float32Array;
+    let color_g: Float32Array;
+    let color_b: Float32Array;
+    let target_r: Float32Array;
+    let target_g: Float32Array;
+    let target_b: Float32Array;
+    let brightness: Float32Array; // 0–1 extra brightness
+    let total = 0;
+    let animId = 0;
+    let mouseX = -9999, mouseY = -9999;
+
+    // Active ripples
+    interface Ripple {
+      cx: number; cy: number;
+      color: [number, number, number];
+      birth: number;
+      speed: number; // px per second
+      maxRadius: number;
+    }
+    const ripples: Ripple[] = [];
+    let now = 0;
+
+    function resize() {
+      const rect = canvas.getBoundingClientRect();
+      W = rect.width; H = rect.height;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      cols = Math.floor(W / GAP) + 1;
+      rows = Math.floor(H / GAP) + 1;
+      offX = (W - (cols - 1) * GAP) / 2;
+      offY = (H - (rows - 1) * GAP) / 2;
+      total = cols * rows;
+
+      color_r = new Float32Array(total).fill(C_MUTED[0]);
+      color_g = new Float32Array(total).fill(C_MUTED[1]);
+      color_b = new Float32Array(total).fill(C_MUTED[2]);
+      target_r = new Float32Array(total).fill(C_MUTED[0]);
+      target_g = new Float32Array(total).fill(C_MUTED[1]);
+      target_b = new Float32Array(total).fill(C_MUTED[2]);
+      brightness = new Float32Array(total);
+    }
+
+    function spawnRipple() {
+      const col = Math.random() * cols | 0;
+      const row = Math.random() * rows | 0;
+      const c = STATUS_COLORS[Math.random() * STATUS_COLORS.length | 0];
+      ripples.push({
+        cx: offX + col * GAP,
+        cy: offY + row * GAP,
+        color: c,
+        birth: now,
+        speed: 80 + Math.random() * 60,
+        maxRadius: 150 + Math.random() * 200,
+      });
+    }
+
+    function draw(t: number) {
+      now = t;
+      ctx.clearRect(0, 0, W, H);
+
+      // Process ripples: set targets for dots within ripple rings
+      for (let ri = ripples.length - 1; ri >= 0; ri--) {
+        const rip = ripples[ri];
+        const age = (now - rip.birth) / 1000;
+        const radius = age * rip.speed;
+        if (radius > rip.maxRadius + 30) {
+          ripples.splice(ri, 1);
+          continue;
+        }
+        const ringWidth = 40;
+        const fadeOut = Math.max(0, 1 - radius / rip.maxRadius);
+
+        for (let i = 0; i < total; i++) {
+          const c = i % cols, r = (i / cols) | 0;
+          const dx = offX + c * GAP - rip.cx;
+          const dy = offY + r * GAP - rip.cy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const inRing = 1 - Math.min(1, Math.abs(dist - radius) / ringWidth);
+          if (inRing > 0) {
+            const strength = inRing * fadeOut;
+            target_r[i] = C_MUTED[0] + (rip.color[0] - C_MUTED[0]) * strength;
+            target_g[i] = C_MUTED[1] + (rip.color[1] - C_MUTED[1]) * strength;
+            target_b[i] = C_MUTED[2] + (rip.color[2] - C_MUTED[2]) * strength;
+            brightness[i] = Math.max(brightness[i], strength);
+          }
+        }
+      }
+
+      // Lerp colors toward targets + mouse proximity
+      const lerpRate = 0.06;
+      const decayRate = 0.02;
+
+      for (let i = 0; i < total; i++) {
+        color_r[i] += (target_r[i] - color_r[i]) * lerpRate;
+        color_g[i] += (target_g[i] - color_g[i]) * lerpRate;
+        color_b[i] += (target_b[i] - color_b[i]) * lerpRate;
+
+        // Decay targets back to muted
+        target_r[i] += (C_MUTED[0] - target_r[i]) * decayRate;
+        target_g[i] += (C_MUTED[1] - target_g[i]) * decayRate;
+        target_b[i] += (C_MUTED[2] - target_b[i]) * decayRate;
+
+        brightness[i] *= 0.97;
+
+        const c = i % cols, r = (i / cols) | 0;
+        const px = offX + c * GAP;
+        const py = offY + r * GAP;
+
+        // Mouse glow
+        const dx = px - mouseX, dy = py - mouseY;
+        const md = Math.sqrt(dx * dx + dy * dy);
+        const mInf = Math.max(0, 1 - md / 160);
+
+        const cr = Math.min(255, color_r[i] + mInf * 200);
+        const cg = Math.min(255, color_g[i] + mInf * 200);
+        const cb = Math.min(255, color_b[i] + mInf * 200);
+        const alpha = 0.35 + brightness[i] * 0.75 + mInf * 0.6;
+        const rad = DOT_R + mInf * 1.5 + brightness[i] * 1.0;
+
+        // Soft glow halo for bright dots
+        if (alpha > 0.3) {
+          ctx.beginPath();
+          ctx.arc(px, py, rad * 5, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${cr | 0},${cg | 0},${cb | 0},${alpha * 0.1})`;
+          ctx.fill();
+        }
+
+        ctx.beginPath();
+        ctx.arc(px, py, rad, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${cr | 0},${cg | 0},${cb | 0},${alpha})`;
+        ctx.fill();
+      }
+
+      animId = requestAnimationFrame(draw);
+    }
+
+    // Track mouse on the wrapper (not canvas) so it works through z-indexed content
+    const wrapper = canvas.parentElement;
+    wrapper?.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      mouseX = e.clientX - rect.left;
+      mouseY = e.clientY - rect.top;
+    });
+    wrapper?.addEventListener('mouseleave', () => { mouseX = mouseY = -9999; });
+
+    resize();
+    animId = requestAnimationFrame(draw);
+
+    // Spawn ripples periodically — two at a time for richer effect
+    spawnRipple(); spawnRipple();
+    setInterval(() => { spawnRipple(); if (Math.random() > 0.4) spawnRipple(); }, 1500);
+
+    let resizeTimer: ReturnType<typeof setTimeout>;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(resize, 150);
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) cancelAnimationFrame(animId);
+      else animId = requestAnimationFrame(draw);
+    });
+  }
+</script>
+
+<style>
+  .dot-grid {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+  }
+</style>

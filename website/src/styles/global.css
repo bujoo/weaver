@@ -40,6 +40,8 @@
 
   --transition-fast: 100ms linear;
   --transition-normal: 150ms linear;
+
+  --nav-height: 56px;
 }
 
 *, *::before, *::after {
@@ -92,11 +94,35 @@ img {
   height: auto;
 }
 
+/* Custom scrollbar — Vercel Noir */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-default) transparent;
+}
+
 /* Scroll fade-in animation */
 .fade-in {
   opacity: 0;
-  transform: translateY(16px);
-  transition: opacity 0.5s ease, transform 0.5s ease;
+  transform: translateY(32px);
+  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .fade-in.visible {
