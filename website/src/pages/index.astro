@@ -1,8 +1,34 @@
 ---
 import Base from '../layouts/Base.astro';
 import Hero from '../components/Hero.astro';
+import Compatibility from '../components/Compatibility.astro';
+import Features from '../components/Features.astro';
+import TechStack from '../components/TechStack.astro';
+import InstallCTA from '../components/InstallCTA.astro';
+import Footer from '../components/Footer.astro';
 ---
 
 <Base title="c9watch — Monitor all your Claude Code sessions">
   <Hero />
+  <div class="fade-in"><Compatibility /></div>
+  <div class="fade-in"><Features /></div>
+  <div class="fade-in"><TechStack /></div>
+  <div class="fade-in"><InstallCTA /></div>
+  <Footer />
 </Base>
+
+<script>
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    },
+    { threshold: 0.1 }
+  );
+
+  document.querySelectorAll('.fade-in').forEach((el) => observer.observe(el));
+</script>
