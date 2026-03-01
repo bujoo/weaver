@@ -82,13 +82,13 @@ A quick-glance overlay showing all active sessions and their status directly fro
 - **Zero-integration setup** -- Works with any terminal or IDE, no plugins or extensions required
 - **Auto-discovery** -- Detects all running Claude Code sessions by scanning processes at the OS level
 - **Real-time status** -- See at a glance which sessions are Working, Need Permission, or Idle
-- **Conversation viewer** -- Expand any session to view the full conversation with formatted markdown and code blocks
+- **Conversation viewer** -- Expand any session to view the full conversation with formatted markdown, code blocks, and inline images
 - **Session control** -- Stop sessions, open their parent terminal/IDE, or rename them for easier tracking
 - **Multi-project view** -- Sessions grouped by project with git branch info
 - **Tray popover** -- Click the menu bar icon for a quick-glance overlay with session status indicators and latest messages
 - **Status notifications** -- Get a native macOS notification when a session needs your attention
 - **Mobile/Web client** -- Connect from any browser or mobile device via WebSocket; scan the QR code to monitor sessions remotely
-- **Session history** -- Browse and search all past sessions with instant metadata filter and deep content search, with full conversation viewer
+- **Session history** -- Browse and search all past sessions with instant metadata filter and deep content search; click a result to scroll to and highlight the matching message
 - **Cost tracker** -- Track Claude Code spending with daily, per-project, and per-model breakdowns using cached JSONL scanning
 
 ## How it works
