@@ -5,7 +5,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { get } from 'svelte/store';
-import type { Session, Conversation, HistoryEntry, DeepSearchHit, CostData } from './types';
+import type { Session, Conversation, HistoryEntry, DeepSearchHit, CostData, ProjectMemory } from './types';
 import { isDemoMode } from './demo';
 import { getDemoSessions, demoConversations } from './demo/data';
 import { wsClient, useWebSocket } from './ws';
@@ -118,4 +118,22 @@ export async function getCostData(): Promise<CostData | null> {
 	if (get(isDemoMode)) return null;
 	if (useWebSocket()) return null;
 	return await invoke<CostData>('get_cost_data');
+}
+
+/**
+ * Get all memory files from ~/.claude/projects/*/memory/*.md
+ * (Desktop/Tauri only — returns empty array on mobile/browser)
+ */
+export async function getMemoryFiles(): Promise<ProjectMemory[]> {
+	if (get(isDemoMode)) return [];
+	if (useWebSocket()) return [];
+	return await invoke<ProjectMemory[]>('get_memory_files');
+}
+
+/**
+ * Open a directory in the system file manager (Finder on macOS)
+ */
+export async function revealInFileManager(path: string): Promise<void> {
+	if (get(isDemoMode)) return;
+	await invoke<void>('reveal_in_file_manager', { path });
 }

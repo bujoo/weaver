@@ -187,3 +187,21 @@ export interface CostData {
   projectCosts: ProjectCost[];
   modelCosts: ModelCost[];
 }
+
+/**
+ * A single memory file from a project's memory directory
+ */
+export interface MemoryFile {
+  filename: string;
+  content: string;
+}
+
+/**
+ * All memory files for a single Claude Code project
+ */
+export interface ProjectMemory {
+  projectName: string;
+  projectPath: string;
+  memoryDirPath: string;
+  files: MemoryFile[];
+}

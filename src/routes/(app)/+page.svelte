@@ -23,6 +23,7 @@
 	import { SessionStatus } from '$lib/types';
 	import SessionHistory from '$lib/components/SessionHistory.svelte';
 	import CostTracker from '$lib/components/CostTracker.svelte';
+	import MemoryViewer from '$lib/components/MemoryViewer.svelte';
 
 	let demoActive = $derived($isDemoMode);
 	let showQRModal = $state(false);
@@ -38,7 +39,7 @@
 
 	let isCompact = $state(false);
 
-	let activeTab = $state<'monitor' | 'history' | 'cost'>('monitor');
+	let activeTab = $state<'monitor' | 'history' | 'cost' | 'memory'>('monitor');
 
 	// Detect macOS native fullscreen to switch tab-bar padding.
 	// CSS `display-mode: fullscreen` does NOT fire for native macOS fullscreen.
@@ -286,6 +287,14 @@
 			<span class="tab-icon">$</span>
 			<span class="tab-label">COST</span>
 		</button>
+		<button
+			class="tab-btn"
+			class:active={activeTab === 'memory'}
+			onclick={() => (activeTab = 'memory')}
+		>
+			<span class="tab-icon">◆</span>
+			<span class="tab-label">MEMORY</span>
+		</button>
 		<!-- Drag handle: fills remaining space. The grip dots are absolutely
 		     centered in the whole tab bar so they appear at the window midpoint.
 		     Hidden in fullscreen where window dragging is unavailable. -->
@@ -303,6 +312,10 @@
 	{:else if activeTab === 'cost'}
 	<main class="grid-container history-main">
 		<CostTracker />
+	</main>
+	{:else if activeTab === 'memory'}
+	<main class="grid-container history-main">
+		<MemoryViewer />
 	</main>
 	{:else}
 	<main class="grid-container">
