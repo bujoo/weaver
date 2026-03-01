@@ -1,12 +1,13 @@
 ---
+import Base from '../layouts/Base.astro';
 ---
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>c9watch</title>
-</head>
-<body>
-  <h1>c9watch</h1>
-</body>
-</html>
+
+<Base title="c9watch">
+  <main style="padding: 4rem 2rem; text-align: center;">
+    <h1>c9watch</h1>
+    <p style="color: var(--text-secondary);">Coming soon.</p>
+    <p style="font-family: var(--font-mono); color: var(--text-muted); margin-top: 1rem;">
+      curl -fsSL https://raw.githubusercontent.com/minchenlee/c9watch/main/install.sh | bash
+    </p>
+  </main>
+</Base>
