@@ -1,0 +1,51 @@
+---
+const techs = ['Tauri', 'Rust', 'Svelte'];
+---
+
+<section class="techstack">
+  <p class="techstack-heading">Lightweight by design</p>
+  <p class="techstack-sub">
+    Built with Tauri, Rust, and Svelte — not Electron. Your monitoring tool shouldn't add to the pile.
+  </p>
+  <div class="techstack-badges">
+    {techs.map(name => <span class="techstack-badge">{name}</span>)}
+  </div>
+</section>
+
+<style>
+  .techstack {
+    padding: 3rem 2rem;
+    text-align: center;
+    border-top: 1px solid var(--border-muted);
+  }
+
+  .techstack-heading {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+
+  .techstack-sub {
+    color: var(--text-secondary);
+    font-size: 15px;
+    margin-bottom: 2rem;
+    max-width: 540px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .techstack-badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem;
+  }
+
+  .techstack-badge {
+    padding: 0.5rem 1.1rem;
+    border: 1px solid var(--border-default);
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-family: var(--font-mono);
+  }
+</style>
