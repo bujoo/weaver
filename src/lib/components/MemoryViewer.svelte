@@ -9,20 +9,22 @@
 	let loading = $state(true);
 	let selectedIndex = $state(0);
 
-	async function refresh() {
-		loading = true;
+	onMount(async () => {
 		projects = await getMemoryFiles();
-		if (selectedIndex >= projects.length) {
-			selectedIndex = 0;
-		}
 		loading = false;
-	}
-
-	onMount(() => {
-		refresh();
 	});
 
 	let selectedProject = $derived(projects[selectedIndex] ?? null);
+
+	let copied = $state(false);
+
+	function copyClaudeCommand() {
+		if (!selectedProject) return;
+		const cmd = `claude "Review my memory files and suggest improvements" --project-dir ${selectedProject.projectPath}`;
+		navigator.clipboard.writeText(cmd);
+		copied = true;
+		setTimeout(() => (copied = false), 2000);
+	}
 
 	function renderMarkdown(content: string): string {
 		const renderer = new marked.Renderer();
@@ -55,30 +57,16 @@
 </script>
 
 <div class="memory-viewer">
-	<div class="memory-header">
-		<span class="memory-title">Memory Files</span>
-		<div class="memory-actions">
-			{#if selectedProject}
-				<button class="action-btn" onclick={handleReveal} title="Reveal in Finder">
-					⌕
-				</button>
-			{/if}
-			<button class="action-btn" onclick={refresh} title="Refresh" disabled={loading}>
-				↻
-			</button>
-		</div>
+	<div class="section-header">
+		<span class="section-title">Memory</span>
+		<span class="section-count">{projects.length}</span>
 	</div>
 
 	{#if loading}
-		<div class="loading-state">
-			<span class="loading-spinner">◌</span>
-			<span>Scanning memory files…</span>
-		</div>
+		<div class="state-msg"><span class="loading-spinner">◌</span> Scanning memory files…</div>
 	{:else if projects.length === 0}
-		<div class="empty-state">
-			<p>No memory files found.</p>
-			<p class="empty-hint">Claude Code stores memory in ~/.claude/projects/*/memory/</p>
-		</div>
+		<div class="state-msg">No memory files found.</div>
+		<div class="empty-hint">Claude Code stores memory in ~/.claude/projects/*/memory/</div>
 	{:else}
 		<div class="two-panel">
 			<aside class="project-list">
@@ -97,7 +85,20 @@
 			<div class="memory-content">
 				{#if selectedProject}
 					<div class="content-header">
-						<span class="content-path">{selectedProject.projectPath}</span>
+						<div class="content-path-row">
+							<span class="content-path">{selectedProject.projectPath}</span>
+							<button class="reveal-btn" onclick={handleReveal} title="Reveal in Finder">
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+									<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+									<polyline points="15 3 21 3 21 9" />
+									<line x1="10" y1="14" x2="21" y2="3" />
+								</svg>
+							</button>
+						</div>
+						<button class="claude-cmd" onclick={copyClaudeCommand} title="Copy command to discuss memory with Claude Code">
+							<span class="cmd-text">claude "Review my memory files" --project-dir {selectedProject.projectPath}</span>
+							<span class="cmd-copy">{copied ? '✓ Copied' : 'Copy'}</span>
+						</button>
 					</div>
 					{#each selectedProject.files as file}
 						<div class="file-section">
@@ -121,64 +122,68 @@
 		overflow: hidden;
 	}
 
-	.memory-header {
+	/* ── Section header (matches HISTORY / COST tabs) ────────────── */
+
+	.section-header {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		padding: 12px 16px;
-		border-bottom: 1px solid var(--border);
+		gap: var(--space-md);
+		padding-bottom: var(--space-md);
+		border-bottom: 1px solid var(--text-primary);
+		margin-bottom: var(--space-md);
 		flex-shrink: 0;
 	}
 
-	.memory-title {
-		font-size: 11px;
+	.section-title {
+		font-family: var(--font-pixel);
+		font-size: 22px;
 		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-secondary);
-	}
-
-	.memory-actions {
-		display: flex;
-		gap: 8px;
-	}
-
-	.action-btn {
-		background: none;
-		border: 1px solid var(--border);
-		color: var(--text-secondary);
-		padding: 4px 8px;
-		border-radius: 4px;
-		cursor: pointer;
-		font-size: 13px;
-		transition: all 0.15s ease;
-	}
-
-	.action-btn:hover {
 		color: var(--text-primary);
-		border-color: var(--text-secondary);
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		line-height: 1;
 	}
 
-	.action-btn:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
+	.section-count {
+		font-family: var(--font-pixel);
+		font-size: 18px;
+		font-weight: 500;
+		line-height: 1;
+		color: var(--text-secondary);
 	}
 
-	.loading-state,
-	.empty-state {
-		display: flex;
-		flex-direction: column;
+	.reveal-btn {
+		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		gap: 8px;
-		padding: 48px 16px;
-		color: var(--text-secondary);
-		font-size: 13px;
+		background: none;
+		border: none;
+		color: var(--text-muted);
+		cursor: pointer;
+		padding: 0;
+		transition: color 0.15s ease;
 	}
 
-	.loading-spinner {
+	.reveal-btn:hover {
+		color: var(--text-primary);
+	}
+
+	/* ── Loading / empty states (matches HISTORY / COST pattern) ── */
+
+	.state-msg {
+		font-family: var(--font-mono);
+		font-size: 13px;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		padding: var(--space-xl) 0;
+		text-align: center;
+	}
+
+	.state-msg .loading-spinner {
 		animation: spin 1s linear infinite;
-		font-size: 18px;
+		display: inline-block;
+		margin-right: var(--space-xs);
 	}
 
 	@keyframes spin {
@@ -187,10 +192,14 @@
 	}
 
 	.empty-hint {
-		font-size: 11px;
-		opacity: 0.6;
 		font-family: var(--font-mono);
+		font-size: 11px;
+		color: var(--text-muted);
+		margin-top: var(--space-sm);
+		text-align: center;
 	}
+
+	/* ── Two-panel layout ────────────────────────────────────────── */
 
 	.two-panel {
 		display: flex;
@@ -201,7 +210,7 @@
 	.project-list {
 		width: 200px;
 		min-width: 160px;
-		border-right: 1px solid var(--border);
+		border-right: 1px solid var(--border-default);
 		overflow-y: auto;
 		flex-shrink: 0;
 	}
@@ -211,13 +220,14 @@
 		align-items: center;
 		justify-content: space-between;
 		width: 100%;
-		padding: 10px 12px;
+		padding: var(--space-sm) var(--space-md);
 		background: none;
 		border: none;
-		border-bottom: 1px solid var(--border);
-		color: var(--text-secondary);
+		border-bottom: 1px solid var(--border-default);
+		color: var(--text-muted);
 		cursor: pointer;
 		text-align: left;
+		font-family: var(--font-mono);
 		font-size: 12px;
 		transition: all 0.15s ease;
 	}
@@ -228,8 +238,9 @@
 	}
 
 	.project-item.selected {
-		background: rgba(255, 255, 255, 0.06);
+		background: rgba(255, 255, 255, 0.08);
 		color: var(--text-primary);
+		border-left: 2px solid var(--accent);
 	}
 
 	.project-item-name {
@@ -239,46 +250,100 @@
 	}
 
 	.project-item-count {
+		font-family: var(--font-mono);
 		font-size: 10px;
-		opacity: 0.5;
+		color: var(--text-muted);
 		flex-shrink: 0;
-		margin-left: 8px;
+		margin-left: var(--space-sm);
 	}
+
+	/* ── Content pane ────────────────────────────────────────────── */
 
 	.memory-content {
 		flex: 1;
 		overflow-y: auto;
-		padding: 16px;
+		padding: var(--space-lg);
 	}
 
 	.content-header {
-		margin-bottom: 16px;
-		padding-bottom: 8px;
-		border-bottom: 1px solid var(--border);
+		margin-bottom: var(--space-lg);
+		padding-bottom: var(--space-sm);
+		border-bottom: 1px solid var(--border-default);
+	}
+
+	.content-path-row {
+		display: flex;
+		align-items: center;
+		gap: var(--space-sm);
 	}
 
 	.content-path {
 		font-size: 11px;
-		color: var(--text-secondary);
+		color: var(--text-muted);
 		font-family: var(--font-mono);
 	}
 
+	.claude-cmd {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-md);
+		width: 100%;
+		margin-top: var(--space-sm);
+		padding: var(--space-sm) var(--space-md);
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid var(--border-default);
+		border-radius: 6px;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.claude-cmd:hover {
+		border-color: var(--text-secondary);
+		background: rgba(255, 255, 255, 0.05);
+	}
+
+	.cmd-text {
+		font-size: 11px;
+		font-family: var(--font-mono);
+		color: var(--text-muted);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.cmd-copy {
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 600;
+		color: var(--accent);
+		flex-shrink: 0;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	/* ── File sections ───────────────────────────────────────────── */
+
 	.file-section {
-		margin-bottom: 24px;
+		margin-bottom: var(--space-xl);
 	}
 
 	.file-header {
+		font-family: var(--font-pixel);
 		font-size: 11px;
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		color: var(--accent);
-		margin-bottom: 12px;
-		padding: 4px 0;
-		border-bottom: 1px solid var(--border);
+		margin-bottom: var(--space-md);
+		padding: var(--space-xs) 0;
+		border-bottom: 1px solid var(--border-default);
 	}
 
+	/* ── Markdown body ───────────────────────────────────────────── */
+
 	.markdown-body {
+		font-family: var(--font-sans);
 		font-size: 13px;
 		line-height: 1.6;
 		color: var(--text-primary);
@@ -287,7 +352,7 @@
 	.markdown-body :global(h1),
 	.markdown-body :global(h2),
 	.markdown-body :global(h3) {
-		margin: 16px 0 8px;
+		margin: var(--space-lg) 0 var(--space-sm);
 		font-weight: 600;
 		color: var(--text-primary);
 	}
@@ -297,17 +362,17 @@
 	.markdown-body :global(h3) { font-size: 13px; }
 
 	.markdown-body :global(p) {
-		margin: 8px 0;
+		margin: var(--space-sm) 0;
 	}
 
 	.markdown-body :global(ul),
 	.markdown-body :global(ol) {
-		margin: 8px 0;
+		margin: var(--space-sm) 0;
 		padding-left: 20px;
 	}
 
 	.markdown-body :global(li) {
-		margin: 4px 0;
+		margin: var(--space-xs) 0;
 	}
 
 	.markdown-body :global(code) {
@@ -324,23 +389,23 @@
 	}
 
 	.markdown-body :global(.code-block-wrapper) {
-		margin: 12px 0;
-		border: 1px solid var(--border);
+		margin: var(--space-md) 0;
+		border: 1px solid var(--border-default);
 		border-radius: 6px;
 		overflow: hidden;
 	}
 
 	.markdown-body :global(.code-header) {
-		padding: 6px 12px;
+		padding: 6px var(--space-md);
 		font-size: 11px;
-		color: var(--text-secondary);
-		border-bottom: 1px solid var(--border);
+		color: var(--text-muted);
+		border-bottom: 1px solid var(--border-default);
 		background: rgba(255, 255, 255, 0.02);
 	}
 
 	.markdown-body :global(pre) {
 		margin: 0;
-		padding: 12px;
+		padding: var(--space-md);
 		overflow-x: auto;
 		font-size: 12px;
 		line-height: 1.5;
@@ -363,28 +428,28 @@
 
 	.markdown-body :global(hr) {
 		border: none;
-		border-top: 1px solid var(--border);
-		margin: 16px 0;
+		border-top: 1px solid var(--border-default);
+		margin: var(--space-lg) 0;
 	}
 
 	.markdown-body :global(blockquote) {
-		margin: 8px 0;
-		padding: 4px 12px;
-		border-left: 2px solid var(--border);
+		margin: var(--space-sm) 0;
+		padding: var(--space-xs) var(--space-md);
+		border-left: 2px solid var(--border-default);
 		color: var(--text-secondary);
 	}
 
 	.markdown-body :global(table) {
 		width: 100%;
 		border-collapse: collapse;
-		margin: 12px 0;
+		margin: var(--space-md) 0;
 		font-size: 12px;
 	}
 
 	.markdown-body :global(th),
 	.markdown-body :global(td) {
 		padding: 6px 10px;
-		border: 1px solid var(--border);
+		border: 1px solid var(--border-default);
 		text-align: left;
 	}
 
