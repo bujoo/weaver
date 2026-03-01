@@ -2,6 +2,7 @@
 import Base from './Base.astro';
 import Nav from '../components/Nav.astro';
 import DocsSidebar from '../components/DocsSidebar.astro';
+import DocsPrevNext from '../components/DocsPrevNext.astro';
 
 interface Props {
   title: string;
@@ -12,28 +13,46 @@ const currentPath = Astro.url.pathname;
 ---
 
 <Base title={`${title} — c9watch`} hideNav>
-  <Nav />
-  <div class="docs-wrapper">
-    <DocsSidebar currentPath={currentPath} />
-    <main class="docs-content">
-      <slot />
-    </main>
+  <div class="docs-shell">
+    <Nav />
+    <div class="docs-body">
+      <DocsSidebar currentPath={currentPath} />
+      <div class="docs-scroll">
+        <main class="docs-content">
+          <slot />
+          <DocsPrevNext currentPath={currentPath} />
+        </main>
+      </div>
+    </div>
   </div>
 </Base>
 
 <style>
-  .docs-wrapper {
+  /* Full viewport shell — prevents body scroll, one scrollbar only */
+  .docs-shell {
     display: flex;
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 0 2rem;
-    min-height: calc(100vh - 56px);
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
   }
 
-  .docs-content {
+  .docs-body {
+    display: flex;
     flex: 1;
-    padding: 2rem 0 4rem 2rem;
-    max-width: 700px;
+    min-height: 0; /* allow flex children to shrink below content size */
+  }
+
+  /* Scrollable right panel — scrollbar sits at right viewport edge */
+  .docs-scroll {
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  /* Centered content within the scroll panel */
+  .docs-content {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 2rem 3rem 4rem;
   }
 
   .docs-content :global(h1) {
@@ -47,6 +66,7 @@ const currentPath = Astro.url.pathname;
     margin-bottom: 1rem;
     padding-bottom: 0.5rem;
     border-bottom: 1px solid var(--border-muted);
+    scroll-margin-top: 1rem;
   }
 
   .docs-content :global(h3) {
@@ -96,13 +116,38 @@ const currentPath = Astro.url.pathname;
     margin: 1rem 0;
   }
 
-  @media (max-width: 768px) {
-    .docs-wrapper {
-      padding: 0 1rem;
-    }
+  .docs-content :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1.5rem;
+  }
 
+  .docs-content :global(th),
+  .docs-content :global(td) {
+    text-align: left;
+    padding: 0.6rem 1rem;
+    border: 1px solid var(--border-muted);
+    font-size: 14px;
+  }
+
+  .docs-content :global(th) {
+    background: var(--bg-card);
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .docs-content :global(td) {
+    color: var(--text-secondary);
+  }
+
+  .docs-content :global(strong) {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  @media (max-width: 768px) {
     .docs-content {
-      padding-left: 0;
+      padding: 1.5rem 1rem 4rem;
     }
   }
 </style>
