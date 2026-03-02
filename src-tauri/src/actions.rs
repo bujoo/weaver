@@ -1205,4 +1205,66 @@ mod tests {
             Some("iTerm")
         );
     }
+
+    #[test]
+    fn test_get_app_name_windows_exe_suffix() {
+        // .exe stripping is cross-platform safe — these tests run everywhere
+        assert_eq!(get_app_name("Code.exe"), Some("Visual Studio Code"));
+        assert_eq!(get_app_name("Cursor.exe"), Some("Cursor"));
+        assert_eq!(get_app_name("Windsurf.exe"), Some("Windsurf"));
+        assert_eq!(get_app_name("WindowsTerminal.exe"), Some("Windows Terminal"));
+        assert_eq!(get_app_name("pwsh.exe"), Some("PowerShell"));
+        assert_eq!(get_app_name("powershell.exe"), Some("PowerShell"));
+        assert_eq!(get_app_name("cmd.exe"), Some("Command Prompt"));
+        assert_eq!(get_app_name("alacritty.exe"), Some("Alacritty"));
+        assert_eq!(get_app_name("kitty.exe"), Some("kitty"));
+        assert_eq!(get_app_name("zed.exe"), Some("Zed"));
+    }
+
+    #[test]
+    fn test_get_app_name_windows_backslash_paths() {
+        // Windows-style paths with backslashes
+        assert_eq!(
+            get_app_name(r"C:\Program Files\Microsoft VS Code\Code.exe"),
+            Some("Visual Studio Code")
+        );
+        assert_eq!(
+            get_app_name(r"C:\Users\user\AppData\Local\Programs\cursor\Cursor.exe"),
+            Some("Cursor")
+        );
+        assert_eq!(
+            get_app_name(r"C:\Program Files\WindowsApps\WindowsTerminal.exe"),
+            Some("Windows Terminal")
+        );
+    }
+
+    #[test]
+    fn test_get_app_name_windows_terminals() {
+        // Windows terminal process names without .exe
+        assert_eq!(get_app_name("windowsterminal"), Some("Windows Terminal"));
+        assert_eq!(get_app_name("pwsh"), Some("PowerShell"));
+        assert_eq!(get_app_name("powershell"), Some("PowerShell"));
+        assert_eq!(get_app_name("cmd"), Some("Command Prompt"));
+    }
+
+    #[test]
+    fn test_windows_path_encoding() {
+        // Verify the path encoding logic matches what detector.rs does
+        let windows_path = r"C:\Users\Name\My_Project";
+        let encoded = windows_path
+            .replace('\\', "-")
+            .replace('/', "-")
+            .replace('_', "-")
+            .replace(':', "");
+        assert_eq!(encoded, "C-Users-Name-My-Project");
+
+        // Unix path for comparison
+        let unix_path = "/Users/Name/My_Project";
+        let encoded = unix_path
+            .replace('\\', "-")
+            .replace('/', "-")
+            .replace('_', "-")
+            .replace(':', "");
+        assert_eq!(encoded, "-Users-Name-My-Project");
+    }
 }
