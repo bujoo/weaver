@@ -274,35 +274,52 @@ fn activate_app_fallback(app_name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Windows fallback: use Win32 APIs to find and activate a window
+/// Windows fallback: use Win32 APIs to find and activate a window by substring title match
 #[cfg(target_os = "windows")]
 fn activate_app_fallback(app_name: &str) -> Result<(), String> {
-    use std::ffi::OsStr;
-    use std::os::windows::ffi::OsStrExt;
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::Foundation::*;
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
-    // Map app names to window title patterns
-    let search_title: &str = match app_name {
-        "Visual Studio Code" => "Visual Studio Code",
-        "Cursor" => "Cursor",
-        "Windsurf" => "Windsurf",
-        "Windows Terminal" => "Windows Terminal",
-        "PowerShell" => "PowerShell",
-        "Command Prompt" => "Command Prompt",
-        _ => app_name,
+    // The search substring to look for in window titles
+    let search_title: &str = app_name;
+
+    // EnumWindows callback data
+    struct FindData {
+        needle: String,
+        found_hwnd: isize, // HWND is isize on windows-sys
+    }
+
+    unsafe extern "system" fn enum_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let data = &mut *(lparam as *mut FindData);
+        let mut buf = [0u16; 512];
+        let len = GetWindowTextW(hwnd, buf.as_mut_ptr(), buf.len() as i32);
+        if len > 0 {
+            let title = OsString::from_wide(&buf[..len as usize])
+                .to_string_lossy()
+                .to_lowercase();
+            if title.contains(&data.needle) {
+                // Check window is visible
+                if IsWindowVisible(hwnd) != 0 {
+                    data.found_hwnd = hwnd;
+                    return 0; // Stop enumeration
+                }
+            }
+        }
+        1 // Continue enumeration
+    }
+
+    let mut data = FindData {
+        needle: search_title.to_lowercase(),
+        found_hwnd: 0,
     };
 
-    // Use FindWindowW to find the window by title
-    let title_wide: Vec<u16> = OsStr::new(search_title)
-        .encode_wide()
-        .chain(Some(0))
-        .collect();
-
     unsafe {
-        let hwnd = FindWindowW(std::ptr::null(), title_wide.as_ptr());
-        if hwnd != 0 {
-            ShowWindow(hwnd, SW_RESTORE);
-            SetForegroundWindow(hwnd);
+        EnumWindows(Some(enum_callback), &mut data as *mut FindData as LPARAM);
+        if data.found_hwnd != 0 {
+            ShowWindow(data.found_hwnd, SW_RESTORE);
+            SetForegroundWindow(data.found_hwnd);
             eprintln!("[open_session] Activated window for: {}", app_name);
         } else {
             eprintln!("[open_session] Window not found for: {}", app_name);
@@ -539,54 +556,30 @@ fn get_app_cli(app_name: &str) -> Option<String> {
     let local_app_data = std::env::var("LOCALAPPDATA").ok()?;
     let program_files = std::env::var("PROGRAMFILES").ok()?;
 
-    let cli_paths: Vec<(&str, Vec<String>)> = vec![
-        (
-            "Visual Studio Code",
-            vec![
-                format!(
-                    r"{}\Programs\Microsoft VS Code\bin\code.cmd",
-                    local_app_data
-                ),
-                format!(r"{}\Microsoft VS Code\bin\code.cmd", program_files),
-            ],
-        ),
-        (
-            "Cursor",
-            vec![
-                format!(
-                    r"{}\Programs\cursor\resources\app\bin\cursor.cmd",
-                    local_app_data
-                ),
-                format!(r"{}\Cursor\resources\app\bin\cursor.cmd", local_app_data),
-            ],
-        ),
-        (
-            "Windsurf",
-            vec![
-                format!(r"{}\Programs\Windsurf\bin\windsurf.cmd", local_app_data),
-                format!(r"{}\Windsurf\bin\windsurf.cmd", program_files),
-            ],
-        ),
-        (
-            "Zed",
-            vec![
-                format!(r"{}\Zed\zed.exe", local_app_data),
-                format!(r"{}\Programs\Zed\zed.exe", local_app_data),
-            ],
-        ),
-    ];
+    // Only build candidate paths for the matched app (avoids allocating all paths)
+    let candidates: Vec<String> = match app_name {
+        "Visual Studio Code" => vec![
+            format!(r"{}\Programs\Microsoft VS Code\bin\code.cmd", local_app_data),
+            format!(r"{}\Microsoft VS Code\bin\code.cmd", program_files),
+        ],
+        "Cursor" => vec![
+            format!(r"{}\Programs\cursor\resources\app\bin\cursor.cmd", local_app_data),
+            format!(r"{}\Cursor\resources\app\bin\cursor.cmd", local_app_data),
+        ],
+        "Windsurf" => vec![
+            format!(r"{}\Programs\Windsurf\bin\windsurf.cmd", local_app_data),
+            format!(r"{}\Windsurf\bin\windsurf.cmd", program_files),
+        ],
+        "Zed" => vec![
+            format!(r"{}\Zed\zed.exe", local_app_data),
+            format!(r"{}\Programs\Zed\zed.exe", local_app_data),
+        ],
+        _ => return None,
+    };
 
-    for (name, paths) in &cli_paths {
-        if *name == app_name {
-            for path in paths {
-                if std::path::Path::new(path).exists() {
-                    return Some(path.clone());
-                }
-            }
-        }
-    }
-
-    None
+    candidates
+        .into_iter()
+        .find(|path| std::path::Path::new(path).exists())
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
@@ -694,9 +687,12 @@ fn find_parent_app(pid: u32) -> Result<String, String> {
             stdout.trim()
         );
 
-        // Parse JSON output
-        let json: serde_json::Value = serde_json::from_str(stdout.trim())
-            .map_err(|e| format!("Failed to parse process info: {}", e))?;
+        // Parse JSON output — treat parse failures as a loop-break, not a hard error,
+        // since transient CIM query failures for intermediate PIDs shouldn't abort the walk
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(stdout.trim()) else {
+            eprintln!("[open_session] Failed to parse JSON for PID {}, stopping walk", current_pid);
+            break;
+        };
 
         let process_name = json["Name"].as_str().unwrap_or("").to_string();
         let parent_pid = json["ParentProcessId"].as_u64().unwrap_or(0) as u32;
@@ -1218,22 +1214,13 @@ mod tests {
 
     #[test]
     fn test_windows_path_encoding() {
-        // Verify the path encoding logic matches what detector.rs does
-        let windows_path = r"C:\Users\Name\My_Project";
-        let encoded = windows_path
-            .replace('\\', "-")
-            .replace('/', "-")
-            .replace('_', "-")
-            .replace(':', "");
-        assert_eq!(encoded, "C-Users-Name-My-Project");
+        // Verify the encoding logic used by detector.rs for session matching
+        // This uses the same replace chain as detector.rs: replace(\, /, _ with -) then strip :
+        let encode = |s: &str| -> String {
+            s.replace(['\\', '/', '_'], "-").replace(':', "")
+        };
 
-        // Unix path for comparison
-        let unix_path = "/Users/Name/My_Project";
-        let encoded = unix_path
-            .replace('\\', "-")
-            .replace('/', "-")
-            .replace('_', "-")
-            .replace(':', "");
-        assert_eq!(encoded, "-Users-Name-My-Project");
+        assert_eq!(encode(r"C:\Users\Name\My_Project"), "C-Users-Name-My-Project");
+        assert_eq!(encode("/Users/Name/My_Project"), "-Users-Name-My-Project");
     }
 }

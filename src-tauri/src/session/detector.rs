@@ -191,13 +191,10 @@ impl SessionDetector {
             };
 
             // Encode the process cwd for matching
+            // Handles Unix (/), Windows (\), and underscores → dashes; strips colons (C:\)
             let cwd_str = proc_cwd.to_string_lossy();
-            // Handle both Unix (/) and Windows (\) path separators, plus underscores
-            // Windows paths also contain ':' (e.g., C:\) which needs removal
             let encoded_cwd = cwd_str
-                .replace('\\', "-")
-                .replace('/', "-")
-                .replace('_', "-")
+                .replace(['\\', '/', '_'], "-")
                 .replace(':', "");
 
             // Helper closure to check if a session matches the process path
@@ -330,11 +327,8 @@ impl SessionDetector {
             let name = process.name().to_string_lossy();
             let name_lower = name.to_lowercase();
 
-            // Match "claude" on Unix and "claude.exe" on Windows
-            // Exclude c9watch's own process
-            let is_claude = name_lower == "claude"
-                || name_lower == "claude.exe"
-                || (name_lower.contains("claude") && !name_lower.contains("c9watch"));
+            // Match processes with "claude" in the name, excluding c9watch itself
+            let is_claude = name_lower.contains("claude") && !name_lower.contains("c9watch");
 
             if is_claude {
                 // Get the current working directory of the process
