@@ -44,7 +44,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "app", "deb", "appimage"],
+    "targets": ["dmg", "app", "nsis", "msi", "deb", "appimage"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -57,6 +57,16 @@
       "minimumSystemVersion": "10.15",
       "signingIdentity": "-",
       "entitlements": "entitlements.plist"
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "",
+      "nsis": {
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico",
+        "languages": ["English"]
+      }
     },
     "createUpdaterArtifacts": "v1Compatible"
   },
