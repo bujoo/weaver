@@ -285,10 +285,10 @@ fn activate_app_fallback(app_name: &str) -> Result<(), String> {
     // The search substring to look for in window titles
     let search_title: &str = app_name;
 
-    // EnumWindows callback data
+    // EnumWindows callback data — HWND is *mut c_void on windows-sys 0.59
     struct FindData {
         needle: String,
-        found_hwnd: isize, // HWND is isize on windows-sys
+        found_hwnd: HWND,
     }
 
     unsafe extern "system" fn enum_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
@@ -312,12 +312,12 @@ fn activate_app_fallback(app_name: &str) -> Result<(), String> {
 
     let mut data = FindData {
         needle: search_title.to_lowercase(),
-        found_hwnd: 0,
+        found_hwnd: std::ptr::null_mut(),
     };
 
     unsafe {
         EnumWindows(Some(enum_callback), &mut data as *mut FindData as LPARAM);
-        if data.found_hwnd != 0 {
+        if !data.found_hwnd.is_null() {
             ShowWindow(data.found_hwnd, SW_RESTORE);
             SetForegroundWindow(data.found_hwnd);
             eprintln!("[open_session] Activated window for: {}", app_name);
