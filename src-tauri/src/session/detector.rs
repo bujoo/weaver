@@ -192,7 +192,13 @@ impl SessionDetector {
 
             // Encode the process cwd for matching
             let cwd_str = proc_cwd.to_string_lossy();
-            let encoded_cwd = cwd_str.replace(['/', '_'], "-");
+            // Handle both Unix (/) and Windows (\) path separators, plus underscores
+            // Windows paths also contain ':' (e.g., C:\) which needs removal
+            let encoded_cwd = cwd_str
+                .replace('\\', "-")
+                .replace('/', "-")
+                .replace('_', "-")
+                .replace(':', "");
 
             // Helper closure to check if a session matches the process path
             let path_matches =
@@ -322,8 +328,15 @@ impl SessionDetector {
         for (pid, process) in self.system.processes() {
             // Check if the process name is "claude"
             let name = process.name().to_string_lossy();
+            let name_lower = name.to_lowercase();
 
-            if name.contains("claude") && !name.contains("c9watch") {
+            // Match "claude" on Unix and "claude.exe" on Windows
+            // Exclude c9watch's own process
+            let is_claude = name_lower == "claude"
+                || name_lower == "claude.exe"
+                || (name_lower.contains("claude") && !name_lower.contains("c9watch"));
+
+            if is_claude {
                 // Get the current working directory of the process
                 let cwd = process.cwd().map(|p| p.to_path_buf());
                 let start_time = process.start_time();
