@@ -180,11 +180,18 @@ async fn save_temp_image(data: String) -> Result<String, String> {
     Ok(file_path.to_string_lossy().to_string())
 }
 
-/// Open a directory in the system file manager (Finder on macOS)
+/// Open a directory in the system file manager
 #[cfg(not(mobile))]
 #[tauri::command]
 async fn reveal_in_file_manager(path: String) -> Result<(), String> {
-    std::process::Command::new("open")
+    #[cfg(target_os = "macos")]
+    let cmd = "open";
+    #[cfg(target_os = "windows")]
+    let cmd = "explorer";
+    #[cfg(target_os = "linux")]
+    let cmd = "xdg-open";
+
+    std::process::Command::new(cmd)
         .arg(&path)
         .spawn()
         .map_err(|e| format!("Failed to open directory: {}", e))?;
