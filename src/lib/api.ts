@@ -37,7 +37,9 @@ export async function getConversation(sessionId: string): Promise<Conversation> 
 }
 
 /**
- * Stop a running session by sending SIGTERM
+ * Stop a running session by terminating the process
+ * On Unix: Sends SIGTERM for graceful termination
+ * On Windows: Uses taskkill for process termination
  */
 export async function stopSession(pid: number): Promise<void> {
 	if (get(isDemoMode)) return;
