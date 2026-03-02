@@ -6,7 +6,7 @@
 
 <p align="center">Monitor and control all your Claude Code sessions from one place.</p>
 
-**c9watch** (short for **c**laude cod**e** watch, like k8s for Kubernetes) is a macOS desktop app that gives you a real-time dashboard of every Claude Code session running on your machine. No more switching between terminals to check which agent needs permission, which one is working, and which one is idle.
+**c9watch** (short for **c**laude cod**e** watch, like k8s for Kubernetes) is a desktop app for **macOS** and **Windows** that gives you a real-time dashboard of every Claude Code session running on your machine. No more switching between terminals to check which agent needs permission, which one is working, and which one is idle.
 
 ## Demo
 
@@ -16,7 +16,7 @@
 
 Unlike other Claude Code management tools that require you to launch sessions from within their app, **c9watch doesn't care where you start your sessions**. It discovers them automatically by scanning running processes at the OS level.
 
-Start Claude Code from any terminal or IDE you already use -- VS Code, Zed, iTerm2, Antigravity, you name it -- and c9watch picks them all up. No plugins to install. No workflows to change. No vendor lock-in.
+Start Claude Code from any terminal or IDE you already use -- VS Code, Zed, Cursor, Windows Terminal, iTerm2, you name it -- and c9watch picks them all up. No plugins to install. No workflows to change. No vendor lock-in.
 
 Just open c9watch and see everything.
 
@@ -26,19 +26,42 @@ Built with **Tauri**, **Rust**, and **Svelte** -- not Electron. The app binary i
 
 ## Install
 
-### Quick install
+### macOS
+
+#### Quick install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/minchenlee/c9watch/main/install.sh | bash
 ```
 
-### Download
+#### Download
 
 Grab the latest `.dmg` from the [Releases](https://github.com/minchenlee/c9watch/releases) page.
+
+### Windows
+
+#### Quick install (PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/minchenlee/c9watch/main/install.ps1 | iex
+```
+
+This downloads and runs the latest NSIS or MSI installer.
+
+#### Download
+
+Grab the latest `.exe` (NSIS installer) or `.msi` from the [Releases](https://github.com/minchenlee/c9watch/releases) page.
+
+#### System requirements
+
+- Windows 10 (1803+) or Windows 11
+- [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (pre-installed on Windows 11; the NSIS installer will prompt to install it if missing)
 
 ### Build from source
 
 Prerequisites: [Rust](https://rustup.rs/), [Node.js](https://nodejs.org/) (v18+), and the [Tauri CLI](https://v2.tauri.app/start/prerequisites/).
+
+**Windows additional prerequisites:** [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the "Desktop development with C++" workload, and [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
 
 ```bash
 git clone https://github.com/minchenlee/c9watch.git
@@ -47,7 +70,9 @@ npm install
 npm run tauri build
 ```
 
-The built `.app` will be in `src-tauri/target/release/bundle/macos/`.
+Build output:
+- **macOS:** `src-tauri/target/release/bundle/macos/`
+- **Windows:** `src-tauri/target/release/bundle/nsis/` and `src-tauri/target/release/bundle/msi/`
 
 ## Screenshots
 
@@ -83,17 +108,38 @@ A quick-glance overlay showing all active sessions and their status directly fro
 
 ## Features
 
+- **Cross-platform** -- Runs natively on macOS and Windows
 - **Zero-integration setup** -- Works with any terminal or IDE, no plugins or extensions required
 - **Auto-discovery** -- Detects all running Claude Code sessions by scanning processes at the OS level
 - **Real-time status** -- See at a glance which sessions are Working, Need Permission, or Idle
 - **Conversation viewer** -- Expand any session to view the full conversation with formatted markdown, code blocks, and inline images
 - **Session control** -- Stop sessions, open their parent terminal/IDE, or rename them for easier tracking
 - **Multi-project view** -- Sessions grouped by project with git branch info
-- **Tray popover** -- Click the menu bar icon for a quick-glance overlay with session status indicators and latest messages
-- **Status notifications** -- Get a native macOS notification when a session needs your attention
+- **System tray integration** -- Click the tray icon for a quick-glance overlay with session status indicators and latest messages
+- **Status notifications** -- Get a native notification when a session needs your attention
 - **Mobile/Web client** -- Connect from any browser or mobile device via WebSocket; scan the QR code to monitor sessions remotely
 - **Session history** -- Browse and search all past sessions with instant metadata filter and deep content search; click a result to scroll to and highlight the matching message
 - **Cost tracker** -- Track Claude Code spending with daily, per-project, and per-model breakdowns using cached JSONL scanning
+
+### Supported terminals and IDEs
+
+| Application | macOS | Windows |
+|-------------|-------|---------|
+| VS Code | Yes | Yes |
+| Cursor | Yes | Yes |
+| Windsurf | Yes | Yes |
+| Zed | Yes | Yes |
+| Terminal.app | Yes | -- |
+| iTerm2 | Yes | -- |
+| Windows Terminal | -- | Yes |
+| PowerShell | -- | Yes |
+| Command Prompt | -- | Yes |
+| Alacritty | Yes | Yes |
+| kitty | Yes | Yes |
+| WezTerm | Yes | Yes |
+| Warp | Yes | -- |
+| Ghostty | Yes | -- |
+| Hyper | Yes | Yes |
 
 ## How it works
 
@@ -108,6 +154,12 @@ Status updates are pushed to the Svelte frontend via Tauri events. The UI reacti
 
 **Cost tracking** -- Parses assistant message metadata from JSONL files to extract model usage and token counts. Costs are computed using per-model pricing tables and cached by file mtime to avoid re-scanning unchanged sessions.
 
+### Platform-specific details
+
+- **macOS:** Process tree walking via `ps`, window activation via AppleScript, IDE CLI detection in `/Applications/`
+- **Windows:** Process tree walking via PowerShell CIM, window activation via Win32 APIs, IDE CLI detection in `%LOCALAPPDATA%` and `%PROGRAMFILES%`
+- **Process termination:** `SIGTERM` on Unix, `taskkill` on Windows (graceful first, then force)
+
 ## Tech stack
 
 | Layer | Technology |
@@ -116,6 +168,7 @@ Status updates are pushed to the Svelte frontend via Tauri events. The UI reacti
 | Frontend | [SvelteKit](https://svelte.dev/) + [Svelte 5](https://svelte.dev/docs/svelte/overview) |
 | Backend | Rust |
 | Process discovery | [sysinfo](https://crates.io/crates/sysinfo) |
+| Windows APIs | [windows-sys](https://crates.io/crates/windows-sys) |
 | Design system | Vercel Noir (true black, [Geist](https://vercel.com/font) fonts) |
 
 ## Development
@@ -147,9 +200,10 @@ c9watch/
 │   │   ├── api.ts              # Tauri command wrappers
 │   │   └── types.ts            # TypeScript type definitions
 │   └── app.css                 # Global styles (Vercel Noir theme)
+├── install.ps1                 # Windows PowerShell installer
 ├── src-tauri/                  # Rust backend (Tauri)
 │   └── src/
-│       ├── lib.rs              # App setup, tray icon, NSPanel popover
+│       ├── lib.rs              # App setup, tray icon, system tray popover
 │       ├── polling.rs          # Background session detection loop
 │       ├── actions.rs          # Stop/open session, IDE detection
 │       ├── web_server.rs       # WebSocket server for mobile clients
@@ -166,7 +220,7 @@ c9watch/
 
 ## Demo mode
 
-Press `Cmd+D` to toggle demo mode, which loads simulated sessions with animated status transitions. Useful for testing the UI without running real Claude Code sessions.
+Press `Cmd+D` (macOS) / `Ctrl+D` (Windows) to toggle demo mode, which loads simulated sessions with animated status transitions. Useful for testing the UI without running real Claude Code sessions.
 
 ## Contributing
 
