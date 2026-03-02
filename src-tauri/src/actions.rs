@@ -342,7 +342,45 @@ fn activate_app_fallback(app_name: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+/// Windows fallback: use Win32 APIs to find and activate a window
+#[cfg(target_os = "windows")]
+fn activate_app_fallback(app_name: &str) -> Result<(), String> {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::WindowsAndMessaging::*;
+
+    // Map app names to window title patterns
+    let search_title: &str = match app_name {
+        "Visual Studio Code" => "Visual Studio Code",
+        "Cursor" => "Cursor",
+        "Windsurf" => "Windsurf",
+        "Windows Terminal" => "Windows Terminal",
+        "PowerShell" => "PowerShell",
+        "Command Prompt" => "Command Prompt",
+        _ => app_name,
+    };
+
+    // Use FindWindowW to find the window by title
+    let title_wide: Vec<u16> = OsStr::new(search_title)
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+
+    unsafe {
+        let hwnd = FindWindowW(std::ptr::null(), title_wide.as_ptr());
+        if hwnd != 0 {
+            ShowWindow(hwnd, SW_RESTORE);
+            SetForegroundWindow(hwnd);
+            eprintln!("[open_session] Activated window for: {}", app_name);
+        } else {
+            eprintln!("[open_session] Window not found for: {}", app_name);
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 fn activate_app_fallback(_app_name: &str) -> Result<(), String> {
     Ok(())
 }
@@ -624,12 +662,69 @@ fn get_app_cli(app_name: &str) -> Option<String> {
     None
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+/// Get the CLI path for an application on Windows
+#[cfg(target_os = "windows")]
+fn get_app_cli(app_name: &str) -> Option<String> {
+    let local_app_data = std::env::var("LOCALAPPDATA").ok()?;
+    let program_files = std::env::var("PROGRAMFILES").ok()?;
+
+    let cli_paths: Vec<(&str, Vec<String>)> = vec![
+        (
+            "Visual Studio Code",
+            vec![
+                format!(
+                    r"{}\Programs\Microsoft VS Code\bin\code.cmd",
+                    local_app_data
+                ),
+                format!(r"{}\Microsoft VS Code\bin\code.cmd", program_files),
+            ],
+        ),
+        (
+            "Cursor",
+            vec![
+                format!(
+                    r"{}\Programs\cursor\resources\app\bin\cursor.cmd",
+                    local_app_data
+                ),
+                format!(r"{}\Cursor\resources\app\bin\cursor.cmd", local_app_data),
+            ],
+        ),
+        (
+            "Windsurf",
+            vec![
+                format!(r"{}\Programs\Windsurf\bin\windsurf.cmd", local_app_data),
+                format!(r"{}\Windsurf\bin\windsurf.cmd", program_files),
+            ],
+        ),
+        (
+            "Zed",
+            vec![
+                format!(r"{}\Zed\zed.exe", local_app_data),
+                format!(r"{}\Programs\Zed\zed.exe", local_app_data),
+            ],
+        ),
+    ];
+
+    for (name, paths) in &cli_paths {
+        if *name == app_name {
+            for path in paths {
+                if std::path::Path::new(path).exists() {
+                    return Some(path.clone());
+                }
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 fn get_app_cli(_app_name: &str) -> Option<String> {
     None
 }
 
-/// Find the parent GUI application for a given process ID
+/// Find the parent GUI application for a given process ID (Unix: macOS/Linux)
+#[cfg(unix)]
 fn find_parent_app(pid: u32) -> Result<String, String> {
     let mut current_pid = pid;
 
@@ -699,10 +794,64 @@ fn find_parent_app(pid: u32) -> Result<String, String> {
         crate::debug_log::log_warn("[open_session] Falling back to xterm");
         Ok("xterm".to_string())
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        Ok("Terminal".to_string())
+}
+
+/// Find the parent GUI application for a given process ID (Windows)
+#[cfg(target_os = "windows")]
+fn find_parent_app(pid: u32) -> Result<String, String> {
+    let mut current_pid = pid;
+
+    eprintln!("[open_session] Starting with PID: {}", pid);
+
+    for i in 0..20 {
+        let output = Command::new("powershell")
+            .arg("-NoProfile")
+            .arg("-NonInteractive")
+            .arg("-Command")
+            .arg(format!(
+                "Get-CimInstance -ClassName Win32_Process -Filter 'ProcessId={}' | Select-Object Name,ParentProcessId | ConvertTo-Json",
+                current_pid
+            ))
+            .output()
+            .map_err(|e| format!("Failed to execute PowerShell: {}", e))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        eprintln!(
+            "[open_session] Step {}: PID {} -> output: {}",
+            i,
+            current_pid,
+            stdout.trim()
+        );
+
+        // Parse JSON output
+        let json: serde_json::Value = serde_json::from_str(stdout.trim())
+            .map_err(|e| format!("Failed to parse process info: {}", e))?;
+
+        let process_name = json["Name"].as_str().unwrap_or("").to_string();
+        let parent_pid = json["ParentProcessId"].as_u64().unwrap_or(0) as u32;
+
+        if process_name.is_empty() {
+            break;
+        }
+
+        eprintln!(
+            "[open_session] Process: {} (PPID: {})",
+            process_name, parent_pid
+        );
+
+        if let Some(app_name) = get_app_name(&process_name) {
+            eprintln!("[open_session] Found app: {}", app_name);
+            return Ok(app_name.to_string());
+        }
+
+        if parent_pid <= 1 || parent_pid == current_pid {
+            break;
+        }
+        current_pid = parent_pid;
     }
+
+    eprintln!("[open_session] Falling back to Windows Terminal");
+    Ok("Windows Terminal".to_string())
 }
 
 /// Map process command names to application names
@@ -807,8 +956,17 @@ fn get_app_name(comm: &str) -> Option<&'static str> {
         }
     }
 
-    // Extract the base name from the path
-    let base_name = comm.rsplit('/').next().unwrap_or(comm);
+    // Extract the base name from the path (handle both Unix / and Windows \)
+    let base_name = comm
+        .rsplit('/')
+        .next()
+        .unwrap_or(comm)
+        .rsplit('\\')
+        .next()
+        .unwrap_or(comm);
+
+    // Strip .exe suffix for Windows process names (safe on all platforms)
+    let base_name = base_name.strip_suffix(".exe").unwrap_or(base_name);
 
     match base_name.to_lowercase().as_str() {
         // Terminals (cross-platform names)
@@ -853,6 +1011,11 @@ fn get_app_name(comm: &str) -> Option<&'static str> {
         "sublime_text" | "subl" => Some("Sublime Text"),
         "atom" => Some("Atom"),
 
+        // Windows-specific process names
+        "windowsterminal" => Some("Windows Terminal"),
+        "pwsh" | "powershell" => Some("PowerShell"),
+        "cmd" => Some("Command Prompt"),
+
         _ => None,
     }
 }
@@ -862,10 +1025,11 @@ fn is_jetbrains_ide(app_name: &str) -> bool {
     jetbrains_url_scheme(app_name).is_some()
 }
 
-/// Stop a session by sending SIGTERM to the process
+/// Stop a session by sending SIGTERM to the process (Unix: macOS/Linux)
 ///
 /// This gracefully terminates the Claude process by sending a SIGTERM signal.
 /// SIGTERM is preferred over SIGINT as Claude Code may trap SIGINT for its own use.
+#[cfg(unix)]
 pub fn stop_session(pid: u32) -> Result<(), String> {
     crate::debug_log::log_info(&format!("[stop_session] Stopping PID: {}", pid));
 
@@ -885,6 +1049,45 @@ pub fn stop_session(pid: u32) -> Result<(), String> {
     }
 
     crate::debug_log::log_info("[stop_session] SIGTERM sent successfully");
+    Ok(())
+}
+
+/// Stop a session by terminating the process (Windows)
+///
+/// Uses taskkill to terminate the Claude process. First tries graceful termination,
+/// then falls back to force kill if needed.
+#[cfg(target_os = "windows")]
+pub fn stop_session(pid: u32) -> Result<(), String> {
+    eprintln!("[stop_session] Stopping PID: {} on Windows", pid);
+
+    // First try graceful termination with taskkill (sends WM_CLOSE)
+    let output = Command::new("taskkill")
+        .arg("/PID")
+        .arg(pid.to_string())
+        .output()
+        .map_err(|e| format!("Failed to execute taskkill: {}", e))?;
+
+    if output.status.success() {
+        eprintln!("[stop_session] Graceful termination succeeded");
+        return Ok(());
+    }
+
+    // If graceful fails, try force kill
+    eprintln!("[stop_session] Graceful termination failed, trying force kill");
+    let output = Command::new("taskkill")
+        .arg("/F")
+        .arg("/PID")
+        .arg(pid.to_string())
+        .output()
+        .map_err(|e| format!("Failed to execute taskkill /F: {}", e))?;
+
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr);
+        eprintln!("[stop_session] Force kill failed: {}", error);
+        return Err(format!("Failed to stop process {}: {}", pid, error));
+    }
+
+    eprintln!("[stop_session] Force kill succeeded");
     Ok(())
 }
 
