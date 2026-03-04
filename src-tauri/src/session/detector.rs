@@ -53,7 +53,8 @@ impl SessionDetector {
                 RefreshKind::new().with_processes(
                     ProcessRefreshKind::new()
                         .with_exe(UpdateKind::OnlyIfNotSet)
-                        .with_cwd(UpdateKind::OnlyIfNotSet),
+                        .with_cmd(UpdateKind::OnlyIfNotSet)
+                        .with_cwd(UpdateKind::Always),
                 ),
             ),
             claude_projects_dir,
@@ -68,7 +69,8 @@ impl SessionDetector {
             true,
             ProcessRefreshKind::new()
                 .with_exe(UpdateKind::OnlyIfNotSet)
-                .with_cwd(UpdateKind::OnlyIfNotSet),
+                .with_cmd(UpdateKind::OnlyIfNotSet)
+                .with_cwd(UpdateKind::Always),
         );
 
         // Find all running Claude processes
@@ -184,10 +186,10 @@ impl SessionDetector {
         let mut sorted_processes: Vec<&ClaudeProcess> = processes.iter().collect();
         sorted_processes.sort_by(|a, b| b.start_time.cmp(&a.start_time));
 
-        for proc in sorted_processes {
+        for proc in &sorted_processes {
             let proc_cwd = match &proc.cwd {
                 Some(cwd) => cwd,
-                None => continue, // Skip processes without cwd
+                None => continue, // Skip processes without cwd (handled in fallback below)
             };
 
             // Encode the process cwd for matching
@@ -271,6 +273,85 @@ impl SessionDetector {
             }
         }
 
+        // Fallback: match processes without CWD to remaining sessions by temporal proximity.
+        // On Windows, sysinfo often can't read CWD of other processes (requires PEB access
+        // via ReadProcessMemory which may fail). When CWD is unavailable, we match unmatched
+        // processes to the most recently modified unmatched sessions.
+        let matched_pids: std::collections::HashSet<u32> =
+            sessions.iter().map(|s| s.pid).collect();
+
+        let mut unmatched_processes: Vec<&ClaudeProcess> = sorted_processes
+            .iter()
+            .filter(|p| !matched_pids.contains(&p.pid) && p.cwd.is_none())
+            .copied()
+            .collect();
+
+        if !unmatched_processes.is_empty() {
+            // Sort unmatched processes by start time (newest first)
+            unmatched_processes.sort_by(|a, b| b.start_time.cmp(&a.start_time));
+
+            // Get remaining session files (not yet matched), sorted by modification time
+            let remaining_sessions: Vec<_> = session_files
+                .iter()
+                .filter(|(_, path, _, _, _, _)| {
+                    path.file_stem()
+                        .and_then(|s| s.to_str())
+                        .map(|id| !used_session_ids.contains(id))
+                        .unwrap_or(false)
+                })
+                .collect();
+
+            // Match each unmatched process to the closest unmatched session by time
+            for proc in &unmatched_processes {
+                let best_match = remaining_sessions.iter().find(
+                    |(modified, path, _, _, _, _)| {
+                        // Session must not already be used
+                        let session_id = match path.file_stem().and_then(|s| s.to_str()) {
+                            Some(id) => id,
+                            None => return false,
+                        };
+                        if used_session_ids.contains(session_id) {
+                            return false;
+                        }
+
+                        // Session must have been modified around or after process start
+                        match modified.duration_since(std::time::UNIX_EPOCH) {
+                            Ok(duration) => {
+                                let session_secs = duration.as_secs();
+                                // Allow 60s buffer for Windows timing differences
+                                session_secs + 60 >= proc.start_time
+                            }
+                            Err(_) => false,
+                        }
+                    },
+                );
+
+                if let Some((_, path, project_dir, _, project_name, _)) = best_match {
+                    if let Some(session_id) = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s.to_string())
+                    {
+                        used_session_ids.insert(session_id.clone());
+
+                        // Use project_path from index if available, otherwise infer from project_dir
+                        let cwd = self
+                            .get_project_info_from_index(project_dir, &session_id)
+                            .map(|(path, _)| path)
+                            .unwrap_or_else(|| project_dir.clone());
+
+                        sessions.push(DetectedSession {
+                            pid: proc.pid,
+                            cwd,
+                            project_path: project_dir.clone(),
+                            session_id: Some(session_id),
+                            project_name: project_name.clone(),
+                        });
+                    }
+                }
+            }
+        }
+
         sessions
     }
 
@@ -318,20 +399,51 @@ impl SessionDetector {
         None
     }
 
-    /// Finds all processes with name "claude"
+    /// Finds all processes running Claude Code
+    ///
+    /// Checks process name, executable path, and command-line arguments.
+    /// On Windows, Claude may run as `node.exe` when installed via npm,
+    /// so we also check cmd args for "claude" to catch those cases.
     fn find_claude_processes(&self) -> Vec<ClaudeProcess> {
         let mut processes = Vec::new();
 
         for (pid, process) in self.system.processes() {
-            // Check if the process name is "claude"
             let name = process.name().to_string_lossy();
             let name_lower = name.to_lowercase();
 
-            // Match processes with "claude" in the name, excluding c9watch itself
-            let is_claude = name_lower.contains("claude") && !name_lower.contains("c9watch");
+            // Exclude c9watch's own processes
+            if name_lower.contains("c9watch") {
+                continue;
+            }
 
-            if is_claude {
-                // Get the current working directory of the process
+            // Method 1: Process name contains "claude" (standalone install: claude / claude.exe)
+            let is_claude_by_name = name_lower.contains("claude");
+
+            // Method 2: Executable path contains "claude" (catches edge cases)
+            let is_claude_by_exe = if !is_claude_by_name {
+                process
+                    .exe()
+                    .map(|p| {
+                        let exe_lower = p.to_string_lossy().to_lowercase();
+                        exe_lower.contains("claude") && !exe_lower.contains("c9watch")
+                    })
+                    .unwrap_or(false)
+            } else {
+                false
+            };
+
+            // Method 3: Command-line args contain "claude" (npm install: node.exe running claude)
+            let is_claude_by_cmd = if !is_claude_by_name && !is_claude_by_exe {
+                process.cmd().iter().any(|arg| {
+                    let arg_lower = arg.to_string_lossy().to_lowercase();
+                    (arg_lower.contains("claude-code") || arg_lower.contains("claude/cli"))
+                        && !arg_lower.contains("c9watch")
+                })
+            } else {
+                false
+            };
+
+            if is_claude_by_name || is_claude_by_exe || is_claude_by_cmd {
                 let cwd = process.cwd().map(|p| p.to_path_buf());
                 let start_time = process.start_time();
 
@@ -417,6 +529,8 @@ struct SessionEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{Duration, SystemTime};
+    use tempfile::TempDir;
 
     #[test]
     fn test_detector_creation() {
@@ -441,5 +555,165 @@ mod tests {
         if let Ok(dirs) = result {
             println!("Found {} project directories", dirs.len());
         }
+    }
+
+    #[test]
+    fn test_fallback_matching_processes_without_cwd() {
+        // Simulate the scenario where processes have no CWD (common on Windows)
+        let temp_dir = TempDir::new().unwrap();
+        let project_dir = temp_dir.path().join("C-Users-test-project");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        // Create a session file with recent modification time
+        let session_file = project_dir.join("abc-def-123.jsonl");
+        fs::write(&session_file, "{}").unwrap();
+
+        // Create sessions-index.json with project path
+        let index = serde_json::json!({
+            "version": 1,
+            "entries": [{
+                "sessionId": "abc-def-123",
+                "projectPath": "/home/test/project"
+            }]
+        });
+        fs::write(
+            project_dir.join("sessions-index.json"),
+            serde_json::to_string(&index).unwrap(),
+        )
+        .unwrap();
+
+        let detector = SessionDetector {
+            system: System::new(),
+            claude_projects_dir: temp_dir.path().to_path_buf(),
+        };
+
+        let now_secs = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Process with no CWD (simulates Windows behavior)
+        let processes = vec![ClaudeProcess {
+            pid: 12345,
+            cwd: None,
+            start_time: now_secs - 10,
+        }];
+
+        let project_dirs = vec![project_dir];
+        let sessions = detector.find_active_sessions(&processes, &project_dirs);
+
+        // Should match via temporal fallback since process has no CWD
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].pid, 12345);
+        assert_eq!(sessions[0].session_id.as_deref(), Some("abc-def-123"));
+    }
+
+    #[test]
+    fn test_fallback_does_not_match_old_sessions() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_dir = temp_dir.path().join("C-Users-test-old");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        // Create a session file and backdate it
+        let session_file = project_dir.join("old-session-id.jsonl");
+        fs::write(&session_file, "{}").unwrap();
+
+        // Set modification time to 2 hours ago
+        let old_time = filetime::FileTime::from_system_time(
+            SystemTime::now() - Duration::from_secs(7200),
+        );
+        filetime::set_file_mtime(&session_file, old_time).unwrap();
+
+        let detector = SessionDetector {
+            system: System::new(),
+            claude_projects_dir: temp_dir.path().to_path_buf(),
+        };
+
+        let now_secs = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Process started recently but session file is old
+        let processes = vec![ClaudeProcess {
+            pid: 99999,
+            cwd: None,
+            start_time: now_secs - 5,
+        }];
+
+        let project_dirs = vec![project_dir];
+        let sessions = detector.find_active_sessions(&processes, &project_dirs);
+
+        // Should NOT match because session file is much older than process start
+        assert_eq!(sessions.len(), 0);
+    }
+
+    #[test]
+    fn test_cwd_matching_takes_priority_over_fallback() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create two project directories
+        let project_dir_a = temp_dir.path().join("-home-user-project-a");
+        let project_dir_b = temp_dir.path().join("-home-user-project-b");
+        fs::create_dir_all(&project_dir_a).unwrap();
+        fs::create_dir_all(&project_dir_b).unwrap();
+
+        // Create session files
+        fs::write(project_dir_a.join("session-a.jsonl"), "{}").unwrap();
+        fs::write(project_dir_b.join("session-b.jsonl"), "{}").unwrap();
+
+        // Create index files
+        for (dir, sid, path) in [
+            (&project_dir_a, "session-a", "/home/user/project-a"),
+            (&project_dir_b, "session-b", "/home/user/project-b"),
+        ] {
+            let index = serde_json::json!({
+                "version": 1,
+                "entries": [{"sessionId": sid, "projectPath": path}]
+            });
+            fs::write(
+                dir.join("sessions-index.json"),
+                serde_json::to_string(&index).unwrap(),
+            )
+            .unwrap();
+        }
+
+        let detector = SessionDetector {
+            system: System::new(),
+            claude_projects_dir: temp_dir.path().to_path_buf(),
+        };
+
+        let now_secs = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Process 1 has CWD, process 2 doesn't (Windows-like)
+        let processes = vec![
+            ClaudeProcess {
+                pid: 100,
+                cwd: Some(PathBuf::from("/home/user/project-a")),
+                start_time: now_secs - 10,
+            },
+            ClaudeProcess {
+                pid: 200,
+                cwd: None,
+                start_time: now_secs - 5,
+            },
+        ];
+
+        let project_dirs = vec![project_dir_a, project_dir_b];
+        let sessions = detector.find_active_sessions(&processes, &project_dirs);
+
+        // Both should be matched
+        assert_eq!(sessions.len(), 2);
+
+        // Process with CWD should match project-a
+        let session_a = sessions.iter().find(|s| s.pid == 100).unwrap();
+        assert_eq!(session_a.session_id.as_deref(), Some("session-a"));
+
+        // Process without CWD should fallback-match to project-b
+        let session_b = sessions.iter().find(|s| s.pid == 200).unwrap();
+        assert_eq!(session_b.session_id.as_deref(), Some("session-b"));
     }
 }
