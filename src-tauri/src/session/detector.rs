@@ -433,10 +433,13 @@ impl SessionDetector {
             };
 
             // Method 3: Command-line args contain "claude" (npm install: node.exe running claude)
+            // On Windows paths use backslash, so check both separators
             let is_claude_by_cmd = if !is_claude_by_name && !is_claude_by_exe {
                 process.cmd().iter().any(|arg| {
                     let arg_lower = arg.to_string_lossy().to_lowercase();
-                    (arg_lower.contains("claude-code") || arg_lower.contains("claude/cli"))
+                    (arg_lower.contains("claude-code")
+                        || arg_lower.contains("claude/cli")
+                        || arg_lower.contains("claude\\cli"))
                         && !arg_lower.contains("c9watch")
                 })
             } else {
