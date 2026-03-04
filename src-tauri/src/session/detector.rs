@@ -187,15 +187,18 @@ impl SessionDetector {
         for proc in sorted_processes {
             let proc_cwd = match &proc.cwd {
                 Some(cwd) => cwd,
-                None => continue, // Skip processes without cwd
+                None => {
+                    eprintln!(
+                        "[c9watch] Skipping claude process pid={}: cwd unavailable",
+                        proc.pid
+                    );
+                    continue;
+                }
             };
 
-            // Encode the process cwd for matching
-            // Handles Unix (/), Windows (\), and underscores → dashes; strips colons (C:\)
+            // Encode the process cwd for matching against Claude's project directory names.
             let cwd_str = proc_cwd.to_string_lossy();
-            let encoded_cwd = cwd_str
-                .replace(['\\', '/', '_'], "-")
-                .replace(':', "");
+            let encoded_cwd = encode_path_for_matching(&cwd_str);
 
             // Helper closure to check if a session matches the process path
             let path_matches =
@@ -378,6 +381,14 @@ impl Default for SessionDetector {
     }
 }
 
+/// Encodes a path the same way Claude Code does for its project directory names:
+/// every non-alphanumeric character is replaced with a dash.
+pub(crate) fn encode_path_for_matching(path: &str) -> String {
+    path.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect()
+}
+
 /// Internal representation of a Claude process
 #[derive(Debug, Clone)]
 struct ClaudeProcess {
@@ -441,5 +452,35 @@ mod tests {
         if let Ok(dirs) = result {
             println!("Found {} project directories", dirs.len());
         }
+    }
+
+    #[test]
+    fn test_encode_path_for_matching() {
+        // Must match Claude Code's encoding: replace every non-alphanumeric char with '-'.
+        // Windows: colon AND backslash each become a dash → double dash after drive letter
+        assert_eq!(
+            encode_path_for_matching(r"C:\Users\Name\My_Project"),
+            "C--Users-Name-My-Project"
+        );
+        // macOS/Linux: leading slash becomes a dash
+        assert_eq!(
+            encode_path_for_matching("/Users/Name/My_Project"),
+            "-Users-Name-My-Project"
+        );
+        // Dots in paths (hidden dirs) become dashes
+        assert_eq!(
+            encode_path_for_matching("/Users/Name/.config/project"),
+            "-Users-Name--config-project"
+        );
+        // Spaces become dashes
+        assert_eq!(
+            encode_path_for_matching(r"C:\Users\Name\My Project"),
+            "C--Users-Name-My-Project"
+        );
+        // UNC paths (Windows network shares)
+        assert_eq!(
+            encode_path_for_matching(r"\\server\share\project"),
+            "--server-share-project"
+        );
     }
 }
