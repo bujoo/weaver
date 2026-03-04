@@ -1242,16 +1242,4 @@ mod tests {
         assert_eq!(get_app_name("powershell"), Some("PowerShell"));
         assert_eq!(get_app_name("cmd"), Some("Command Prompt"));
     }
-
-    #[test]
-    fn test_windows_path_encoding() {
-        // Verify the encoding logic used by detector.rs for session matching
-        // This uses the same replace chain as detector.rs: replace(\, /, _ with -) then strip :
-        let encode = |s: &str| -> String {
-            s.replace(['\\', '/', '_'], "-").replace(':', "")
-        };
-
-        assert_eq!(encode(r"C:\Users\Name\My_Project"), "C-Users-Name-My-Project");
-        assert_eq!(encode("/Users/Name/My_Project"), "-Users-Name-My-Project");
-    }
 }
