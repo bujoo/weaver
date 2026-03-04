@@ -204,7 +204,13 @@ impl SessionDetector {
         for proc in sorted_processes {
             let proc_cwd = match &proc.cwd {
                 Some(cwd) => cwd,
-                None => continue, // Skip processes without cwd
+                None => {
+                    eprintln!(
+                        "[c9watch] Skipping claude process pid={}: cwd unavailable",
+                        proc.pid
+                    );
+                    continue;
+                }
             };
 
             // Encode the process cwd for matching against Claude's project directory names.
@@ -473,6 +479,12 @@ mod tests {
     #[test]
     fn test_encode_path_for_matching() {
         // Must match Claude Code's encoding: replace every non-alphanumeric char with '-'.
+        // Windows: colon AND backslash each become a dash → double dash after drive letter
+        assert_eq!(
+            encode_path_for_matching(r"C:\Users\Name\My_Project"),
+            "C--Users-Name-My-Project"
+        );
+        // macOS/Linux: leading slash becomes a dash
         assert_eq!(
             encode_path_for_matching("/Users/Name/My_Project"),
             "-Users-Name-My-Project"
@@ -491,6 +503,16 @@ mod tests {
         assert_eq!(
             encode_path_for_matching("/Users/Name/project.v2"),
             "-Users-Name-project-v2"
+        );
+        // Windows spaces
+        assert_eq!(
+            encode_path_for_matching(r"C:\Users\Name\My Project"),
+            "C--Users-Name-My-Project"
+        );
+        // UNC paths (Windows network shares)
+        assert_eq!(
+            encode_path_for_matching(r"\\server\share\project"),
+            "--server-share-project"
         );
     }
 }
