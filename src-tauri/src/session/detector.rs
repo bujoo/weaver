@@ -48,13 +48,20 @@ impl SessionDetector {
 
         let claude_projects_dir = home_dir.join(".claude").join("projects");
 
+        #[allow(unused_mut)]
+        let mut process_refresh = ProcessRefreshKind::new()
+            .with_exe(UpdateKind::OnlyIfNotSet)
+            .with_cwd(UpdateKind::OnlyIfNotSet);
+
+        // On Windows, also fetch command-line args to filter out Claude Desktop processes
+        #[cfg(target_os = "windows")]
+        {
+            process_refresh = process_refresh.with_cmd(UpdateKind::OnlyIfNotSet);
+        }
+
         Ok(Self {
             system: System::new_with_specifics(
-                RefreshKind::new().with_processes(
-                    ProcessRefreshKind::new()
-                        .with_exe(UpdateKind::OnlyIfNotSet)
-                        .with_cwd(UpdateKind::OnlyIfNotSet),
-                ),
+                RefreshKind::new().with_processes(process_refresh),
             ),
             claude_projects_dir,
         })
@@ -63,12 +70,20 @@ impl SessionDetector {
     /// Detects all active Claude Code sessions
     pub fn detect_sessions(&mut self) -> Result<Vec<DetectedSession>, SessionDetectorError> {
         // Refresh process information (only what we need: name, cwd, start_time)
+        #[allow(unused_mut)]
+        let mut process_refresh = ProcessRefreshKind::new()
+            .with_exe(UpdateKind::OnlyIfNotSet)
+            .with_cwd(UpdateKind::OnlyIfNotSet);
+
+        #[cfg(target_os = "windows")]
+        {
+            process_refresh = process_refresh.with_cmd(UpdateKind::OnlyIfNotSet);
+        }
+
         self.system.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
-            ProcessRefreshKind::new()
-                .with_exe(UpdateKind::OnlyIfNotSet)
-                .with_cwd(UpdateKind::OnlyIfNotSet),
+            process_refresh,
         );
 
         // Find all running Claude processes
@@ -197,8 +212,10 @@ impl SessionDetector {
             };
 
             // Encode the process cwd for matching against Claude's project directory names.
+            // Trim trailing separators first — Windows sysinfo often includes trailing '\'.
             let cwd_str = proc_cwd.to_string_lossy();
-            let encoded_cwd = encode_path_for_matching(&cwd_str);
+            let trimmed = cwd_str.trim_end_matches(['/', '\\']);
+            let encoded_cwd = encode_path_for_matching(trimmed);
 
             // Helper closure to check if a session matches the process path
             let path_matches =
@@ -321,29 +338,49 @@ impl SessionDetector {
         None
     }
 
-    /// Finds all processes with name "claude"
+    /// Finds all running Claude Code CLI processes.
+    /// Filters out Claude Desktop (Electron) subprocesses on Windows.
     fn find_claude_processes(&self) -> Vec<ClaudeProcess> {
         let mut processes = Vec::new();
 
         for (pid, process) in self.system.processes() {
-            // Check if the process name is "claude"
             let name = process.name().to_string_lossy();
             let name_lower = name.to_lowercase();
 
             // Match processes with "claude" in the name, excluding c9watch itself
-            let is_claude = name_lower.contains("claude") && !name_lower.contains("c9watch");
-
-            if is_claude {
-                // Get the current working directory of the process
-                let cwd = process.cwd().map(|p| p.to_path_buf());
-                let start_time = process.start_time();
-
-                processes.push(ClaudeProcess {
-                    pid: pid.as_u32(),
-                    cwd,
-                    start_time,
-                });
+            if !name_lower.contains("claude") || name_lower.contains("c9watch") {
+                continue;
             }
+
+            // On Windows, filter out Claude Desktop (Electron) subprocesses.
+            // These have --type= flags (renderer, GPU, utility) or --startup,
+            // or their exe path contains "AnthropicClaude".
+            #[cfg(target_os = "windows")]
+            {
+                let exe_path = process.exe().map(|p| p.to_string_lossy().to_string());
+                let cmd_args = process.cmd();
+
+                let is_desktop = exe_path
+                    .as_ref()
+                    .map_or(false, |p| p.contains("AnthropicClaude"));
+
+                let has_electron_flags = cmd_args
+                    .iter()
+                    .any(|arg| arg.to_string_lossy().starts_with("--type="));
+
+                if is_desktop || has_electron_flags {
+                    continue;
+                }
+            }
+
+            let cwd = process.cwd().map(|p| p.to_path_buf());
+            let start_time = process.start_time();
+
+            processes.push(ClaudeProcess {
+                pid: pid.as_u32(),
+                cwd,
+                start_time,
+            });
         }
 
         processes
@@ -481,6 +518,24 @@ mod tests {
         assert_eq!(
             encode_path_for_matching(r"\\server\share\project"),
             "--server-share-project"
+        );
+        // Trailing separators should be trimmed BEFORE calling this function,
+        // so encoding itself does not handle them — test the trim + encode combo:
+        let trim_and_encode = |s: &str| {
+            encode_path_for_matching(s.trim_end_matches(['/', '\\']))
+        };
+        assert_eq!(
+            trim_and_encode(r"C:\Users\Name\project\"),
+            "C--Users-Name-project"
+        );
+        assert_eq!(
+            trim_and_encode("/Users/Name/project/"),
+            "-Users-Name-project"
+        );
+        // Without trailing separator, result is the same
+        assert_eq!(
+            trim_and_encode(r"C:\Users\Name\project"),
+            "C--Users-Name-project"
         );
     }
 }
