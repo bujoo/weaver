@@ -208,3 +208,15 @@ export interface ProjectMemory {
   memoryDirPath: string;
   files: MemoryFile[];
 }
+
+export interface LogEntry {
+  timestamp: string;
+  level: 'info' | 'warn' | 'error';
+  message: string;
+}
+
+export interface DetectionDiagnostics {
+  claudeProcessesFound: number;
+  processesWithCwd: number;
+  fdaLikelyNeeded: boolean;
+}
