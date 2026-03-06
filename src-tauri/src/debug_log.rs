@@ -79,19 +79,20 @@ mod tests {
 
     #[test]
     fn test_log_and_retrieve() {
-        clear_buffer();
-
-        log_info("hello world");
-        log_error("something broke");
+        // Use unique messages to avoid interference from parallel tests
+        // sharing the global buffer.
+        log_info("test_lar_hello");
+        log_error("test_lar_broke");
 
         let logs = get_logs();
-        assert_eq!(logs.len(), 2);
+        let hello = logs.iter().find(|l| l.message == "test_lar_hello");
+        let broke = logs.iter().find(|l| l.message == "test_lar_broke");
 
-        assert_eq!(logs[0].level, LogLevel::Info);
-        assert_eq!(logs[0].message, "hello world");
+        assert!(hello.is_some(), "expected to find 'test_lar_hello' in logs");
+        assert_eq!(hello.unwrap().level, LogLevel::Info);
 
-        assert_eq!(logs[1].level, LogLevel::Error);
-        assert_eq!(logs[1].message, "something broke");
+        assert!(broke.is_some(), "expected to find 'test_lar_broke' in logs");
+        assert_eq!(broke.unwrap().level, LogLevel::Error);
     }
 
     #[test]
