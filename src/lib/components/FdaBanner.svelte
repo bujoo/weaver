@@ -84,28 +84,29 @@
 	.banner-title {
 		font-size: 14px;
 		font-weight: 500;
-		color: rgba(255, 255, 255, 0.9);
+		color: var(--text-primary);
 		margin-bottom: 2px;
 	}
 
 	.banner-description {
 		font-size: 12px;
-		color: rgba(255, 255, 255, 0.6);
+		color: var(--text-muted);
 	}
 
 	.hint-link {
 		background: none;
 		border: none;
-		color: rgba(255, 255, 255, 0.4);
+		color: var(--text-muted);
 		font-size: 12px;
 		cursor: pointer;
 		text-decoration: underline;
 		padding: 0;
 		margin-left: 4px;
+		opacity: 0.6;
 	}
 
 	.hint-link:hover {
-		color: rgba(255, 255, 255, 0.6);
+		opacity: 1;
 	}
 
 	.banner-button {

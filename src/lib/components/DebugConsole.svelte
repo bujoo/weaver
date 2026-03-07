@@ -12,16 +12,13 @@
 
 	let logs = $state<LogEntry[]>([]);
 	let logContainer: HTMLDivElement | undefined = $state();
-	let pollTimer: ReturnType<typeof setInterval> | undefined;
 	let paused = $state(false);
 	let expanded = $state(false);
 
 	async function fetchLogs() {
 		try {
 			logs = await getDebugLogs();
-			if (!paused) {
-				scrollToBottom();
-			}
+			scrollToBottom();
 		} catch {
 			// Silently fail — we are the debug console, don't recurse errors
 		}
@@ -71,19 +68,11 @@
 	}
 
 	$effect(() => {
-		if (visible) {
+		if (visible && !paused) {
 			fetchLogs();
-			pollTimer = setInterval(fetchLogs, 3500);
-		} else if (pollTimer) {
-			clearInterval(pollTimer);
-			pollTimer = undefined;
+			const timer = setInterval(fetchLogs, 3500);
+			return () => clearInterval(timer);
 		}
-
-		return () => {
-			if (pollTimer) {
-				clearInterval(pollTimer);
-			}
-		};
 	});
 </script>
 
@@ -185,7 +174,7 @@
 	}
 
 	.console-btn:hover {
-		color: var(--text-secondary);
+		color: var(--text-primary);
 		border-color: var(--text-muted);
 	}
 
@@ -233,8 +222,8 @@
 	.log-line.error .log-level { color: var(--status-permission); }
 
 	.log-line.info .log-msg { color: var(--text-muted); }
-	.log-line.warn .log-msg { color: rgba(255, 255, 255, 0.7); }
-	.log-line.error .log-msg { color: rgba(255, 255, 255, 0.9); }
+	.log-line.warn .log-msg { color: var(--text-primary); }
+	.log-line.error .log-msg { color: var(--text-primary); }
 
 	.log-empty {
 		color: var(--text-muted);

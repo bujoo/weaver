@@ -43,7 +43,10 @@ pub fn debug_log(level: LogLevel, message: &str) {
 
     eprintln!("[c9watch][{}] {}", entry.level.as_str(), message);
 
-    let mut buffer = LOG_BUFFER.lock().unwrap();
+    let mut buffer = match LOG_BUFFER.lock() {
+        Ok(b) => b,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     if buffer.len() == MAX_ENTRIES {
         buffer.pop_front();
     }
@@ -51,7 +54,10 @@ pub fn debug_log(level: LogLevel, message: &str) {
 }
 
 pub fn get_logs() -> Vec<LogEntry> {
-    let buffer = LOG_BUFFER.lock().unwrap();
+    let buffer = match LOG_BUFFER.lock() {
+        Ok(b) => b,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     buffer.iter().cloned().collect()
 }
 
