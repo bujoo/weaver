@@ -240,14 +240,16 @@
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'D' && e.shiftKey && (e.metaKey || e.ctrlKey)) {
+		const tag = (e.target as HTMLElement)?.tagName;
+		if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+		// Cmd+Shift+D → debug console (check shift first to avoid triggering demo toggle)
+		// On macOS, e.key is lowercase 'd' even with Shift held when Cmd is pressed
+		if ((e.key === 'd' || e.key === 'D') && e.shiftKey && (e.metaKey || e.ctrlKey)) {
 			e.preventDefault();
 			showDebugConsole = !showDebugConsole;
 			return;
 		}
-
-		const tag = (e.target as HTMLElement)?.tagName;
-		if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
 		if (e.key === 'd' && (e.metaKey || e.ctrlKey)) {
 			e.preventDefault();
