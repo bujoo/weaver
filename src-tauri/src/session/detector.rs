@@ -207,9 +207,9 @@ impl SessionDetector {
                 None => continue, // Skip processes without cwd
             };
 
-            // Encode the process cwd for matching
+            // Encode the process cwd for matching against Claude's project directory names.
             let cwd_str = proc_cwd.to_string_lossy();
-            let encoded_cwd = cwd_str.replace(['/', '_'], "-");
+            let encoded_cwd = encode_path_for_matching(&cwd_str);
 
             // Helper closure to check if a session matches the process path
             let path_matches =
@@ -388,6 +388,14 @@ impl Default for SessionDetector {
     }
 }
 
+/// Encodes a path the same way Claude Code does for its project directory names:
+/// every non-alphanumeric character is replaced with a dash.
+pub(crate) fn encode_path_for_matching(path: &str) -> String {
+    path.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect()
+}
+
 /// Internal representation of a Claude process
 #[derive(Debug, Clone)]
 struct ClaudeProcess {
@@ -451,5 +459,29 @@ mod tests {
         if let Ok(dirs) = result {
             println!("Found {} project directories", dirs.len());
         }
+    }
+
+    #[test]
+    fn test_encode_path_for_matching() {
+        // Must match Claude Code's encoding: replace every non-alphanumeric char with '-'.
+        assert_eq!(
+            encode_path_for_matching("/Users/Name/My_Project"),
+            "-Users-Name-My-Project"
+        );
+        // Dots in paths (hidden dirs) become dashes
+        assert_eq!(
+            encode_path_for_matching("/Users/Name/.config/project"),
+            "-Users-Name--config-project"
+        );
+        // Spaces become dashes
+        assert_eq!(
+            encode_path_for_matching("/Users/Name/My Project"),
+            "-Users-Name-My-Project"
+        );
+        // Dots in project names
+        assert_eq!(
+            encode_path_for_matching("/Users/Name/project.v2"),
+            "-Users-Name-project-v2"
+        );
     }
 }
