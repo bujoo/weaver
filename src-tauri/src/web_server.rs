@@ -104,16 +104,16 @@ pub async fn start_server(state: Arc<WsState>) {
 
     // [::] accepts both IPv4 and IPv6 (localhost can resolve to ::1)
     let addr = format!("[::]:{}", WS_PORT);
-    eprintln!("[ws-server] Listening on {}", addr);
+    crate::debug_log::log_info(&format!("[ws-server] Listening on {}", addr));
 
     match tokio::net::TcpListener::bind(&addr).await {
         Ok(listener) => {
             if let Err(e) = axum::serve(listener, app).await {
-                eprintln!("[ws-server] Error: {}", e);
+                crate::debug_log::log_error(&format!("[ws-server] Error: {}", e));
             }
         }
         Err(e) => {
-            eprintln!("[ws-server] Failed to bind {}: {}", addr, e);
+            crate::debug_log::log_error(&format!("[ws-server] Failed to bind {}: {}", addr, e));
         }
     }
 }
@@ -190,7 +190,7 @@ async fn ws_handler(
 }
 
 async fn handle_socket(mut socket: WebSocket, state: Arc<WsState>) {
-    eprintln!("[ws-server] Client connected");
+    crate::debug_log::log_info("[ws-server] Client connected");
     let mut sessions_rx = state.sessions_tx.subscribe();
     let mut notifications_rx = state.notifications_tx.subscribe();
 
@@ -244,7 +244,7 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<WsState>) {
         }
     }
 
-    eprintln!("[ws-server] Client disconnected");
+    crate::debug_log::log_info("[ws-server] Client disconnected");
 }
 
 // ── Message dispatch ────────────────────────────────────────────────
