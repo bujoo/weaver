@@ -13,11 +13,15 @@
 	let logs = $state<LogEntry[]>([]);
 	let logContainer: HTMLDivElement | undefined = $state();
 	let pollTimer: ReturnType<typeof setInterval> | undefined;
+	let paused = $state(false);
+	let expanded = $state(false);
 
 	async function fetchLogs() {
 		try {
 			logs = await getDebugLogs();
-			scrollToBottom();
+			if (!paused) {
+				scrollToBottom();
+			}
 		} catch {
 			// Silently fail — we are the debug console, don't recurse errors
 		}
@@ -55,6 +59,17 @@
 		logs = [];
 	}
 
+	function togglePause() {
+		paused = !paused;
+		if (!paused) {
+			scrollToBottom();
+		}
+	}
+
+	function toggleExpand() {
+		expanded = !expanded;
+	}
+
 	$effect(() => {
 		if (visible) {
 			fetchLogs();
@@ -73,11 +88,20 @@
 </script>
 
 {#if visible}
-	<div class="debug-console" transition:slide={{ duration: 200 }}>
+	<div class="debug-console" class:expanded transition:slide={{ duration: 200 }}>
 		<div class="console-header">
 			<span class="console-title">DEBUG CONSOLE</span>
 			<span class="console-count">{logs.length}</span>
+			{#if paused}
+				<span class="console-paused">PAUSED</span>
+			{/if}
 			<div class="console-spacer"></div>
+			<button class="console-btn" class:active={paused} onclick={togglePause} title={paused ? 'Resume auto-scroll' : 'Pause auto-scroll'}>
+				{paused ? '▶' : '⏸'}
+			</button>
+			<button class="console-btn" onclick={toggleExpand} title={expanded ? 'Half screen' : 'Full screen'}>
+				{expanded ? '⊟' : '⊞'}
+			</button>
 			<button class="console-btn" onclick={copyAll} title="Copy All">COPY</button>
 			<button class="console-btn" onclick={clearLogs} title="Clear">CLEAR</button>
 			<button class="console-btn close-btn" onclick={onclose} title="Close">&times;</button>
@@ -108,6 +132,11 @@
 		display: flex;
 		flex-direction: column;
 		z-index: 9000;
+		transition: height 0.2s ease;
+	}
+
+	.debug-console.expanded {
+		height: 100vh;
 	}
 
 	.console-header {
@@ -132,6 +161,13 @@
 		color: var(--text-muted);
 	}
 
+	.console-paused {
+		font-family: var(--font-mono);
+		font-size: 10px;
+		color: var(--accent-amber);
+		letter-spacing: 0.08em;
+	}
+
 	.console-spacer {
 		flex: 1;
 	}
@@ -151,6 +187,11 @@
 	.console-btn:hover {
 		color: var(--text-secondary);
 		border-color: var(--text-muted);
+	}
+
+	.console-btn.active {
+		color: var(--accent-amber);
+		border-color: var(--accent-amber);
 	}
 
 	.close-btn {
