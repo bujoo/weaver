@@ -14,10 +14,10 @@ pub fn open_session(pid: u32, project_path: String) -> Result<(), String> {
         .and_then(|n| n.to_str())
         .unwrap_or("");
 
-    eprintln!(
+    crate::debug_log::log_info(&format!(
         "[open_session] App: {}, Project: {}, Path: {}",
         app_name, project_name, project_path
-    );
+    ));
 
     // iTerm2: use tty matching to focus the correct tab (macOS only)
     #[cfg(target_os = "macos")]
@@ -27,10 +27,10 @@ pub fn open_session(pid: u32, project_path: String) -> Result<(), String> {
 
     // Try to use app-specific CLI to open/focus the correct window
     if let Some(cli_path) = get_app_cli(&app_name) {
-        eprintln!(
+        crate::debug_log::log_info(&format!(
             "[open_session] Using CLI: {} to open: {}",
             cli_path, project_path
-        );
+        ));
 
         // VS Code family uses -r flag to reuse window, -g to not open new if exists
         let output =
@@ -48,15 +48,15 @@ pub fn open_session(pid: u32, project_path: String) -> Result<(), String> {
         match output {
             Ok(out) => {
                 if out.status.success() {
-                    eprintln!("[open_session] CLI succeeded");
+                    crate::debug_log::log_info("[open_session] CLI succeeded");
                     return Ok(());
                 } else {
                     let error = String::from_utf8_lossy(&out.stderr);
-                    eprintln!("[open_session] CLI error: {}", error);
+                    crate::debug_log::log_error(&format!("[open_session] CLI error: {}", error));
                 }
             }
             Err(e) => {
-                eprintln!("[open_session] Failed to run CLI: {}", e);
+                crate::debug_log::log_error(&format!("[open_session] Failed to run CLI: {}", e));
             }
         }
     }
@@ -116,7 +116,7 @@ fn get_session_tty(pid: u32) -> Option<String> {
 #[cfg(target_os = "macos")]
 fn focus_iterm2_session(pid: u32) -> Result<(), String> {
     let tty = get_session_tty(pid);
-    eprintln!("[open_session] iTerm2 tty for PID {}: {:?}", pid, tty);
+    crate::debug_log::log_info(&format!("[open_session] iTerm2 tty for PID {}: {:?}", pid, tty));
 
     let Some(tty) = tty else {
         // No tty found — just activate iTerm2
@@ -157,7 +157,7 @@ fn focus_iterm2_session(pid: u32) -> Result<(), String> {
         .map_err(|e| format!("Failed to run AppleScript: {}", e))?;
 
     let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    eprintln!("[open_session] iTerm2 tty match result: {}", result);
+    crate::debug_log::log_info(&format!("[open_session] iTerm2 tty match result: {}", result));
 
     Ok(())
 }
@@ -242,7 +242,7 @@ fn activate_app_fallback(app_name: &str) -> Result<(), String> {
 
     if !output.status.success() {
         let error = String::from_utf8_lossy(&output.stderr);
-        eprintln!("[open_session] AppleScript error: {}", error);
+        crate::debug_log::log_error(&format!("[open_session] AppleScript error: {}", error));
     }
     Ok(())
 }
@@ -283,19 +283,19 @@ fn activate_app_fallback(app_name: &str) -> Result<(), String> {
     match output {
         Ok(out) => {
             if out.status.success() {
-                eprintln!(
+                crate::debug_log::log_info(&format!(
                     "[open_session] xdotool activated window for: {}",
                     search_name
-                );
+                ));
                 return Ok(());
             }
-            eprintln!(
+            crate::debug_log::log_warn(&format!(
                 "[open_session] xdotool failed, window not found for: {}",
                 search_name
-            );
+            ));
         }
         Err(_) => {
-            eprintln!("[open_session] xdotool not available");
+            crate::debug_log::log_warn("[open_session] xdotool not available");
         }
     }
 
@@ -532,7 +532,7 @@ fn get_app_cli(_app_name: &str) -> Option<String> {
 fn find_parent_app(pid: u32) -> Result<String, String> {
     let mut current_pid = pid;
 
-    eprintln!("[open_session] Starting with PID: {}", pid);
+    crate::debug_log::log_info(&format!("[open_session] Starting with PID: {}", pid));
 
     // Walk up the process tree to find a GUI application
     for i in 0..20 {
@@ -548,14 +548,14 @@ fn find_parent_app(pid: u32) -> Result<String, String> {
         let comm = String::from_utf8_lossy(&comm_output.stdout)
             .trim()
             .to_string();
-        eprintln!(
+        crate::debug_log::log_info(&format!(
             "[open_session] Step {}: PID {} -> comm: {}",
             i, current_pid, comm
-        );
+        ));
 
         // Check if this is a known GUI application
         if let Some(app_name) = get_app_name(&comm) {
-            eprintln!("[open_session] Found app: {}", app_name);
+            crate::debug_log::log_info(&format!("[open_session] Found app: {}", app_name));
             return Ok(app_name.to_string());
         }
 
@@ -572,14 +572,14 @@ fn find_parent_app(pid: u32) -> Result<String, String> {
             .trim()
             .to_string();
         let ppid: u32 = ppid_str.parse().unwrap_or(1);
-        eprintln!("[open_session] Parent PID: {}", ppid);
+        crate::debug_log::log_info(&format!("[open_session] Parent PID: {}", ppid));
 
         // Move to parent
         if ppid <= 1 {
-            eprintln!("[open_session] Reached root, checking current comm one more time");
+            crate::debug_log::log_info("[open_session] Reached root, checking current comm one more time");
             // Check current process one more time before giving up
             if let Some(app_name) = get_app_name(&comm) {
-                eprintln!("[open_session] Found app at root: {}", app_name);
+                crate::debug_log::log_info(&format!("[open_session] Found app at root: {}", app_name));
                 return Ok(app_name.to_string());
             }
             break;
@@ -590,12 +590,12 @@ fn find_parent_app(pid: u32) -> Result<String, String> {
     // Platform-specific fallback
     #[cfg(target_os = "macos")]
     {
-        eprintln!("[open_session] Falling back to Terminal");
+        crate::debug_log::log_warn("[open_session] Falling back to Terminal");
         Ok("Terminal".to_string())
     }
     #[cfg(target_os = "linux")]
     {
-        eprintln!("[open_session] Falling back to xterm");
+        crate::debug_log::log_warn("[open_session] Falling back to xterm");
         Ok("xterm".to_string())
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -761,7 +761,7 @@ fn get_app_name(comm: &str) -> Option<&'static str> {
 /// This gracefully terminates the Claude process by sending a SIGTERM signal.
 /// SIGTERM is preferred over SIGINT as Claude Code may trap SIGINT for its own use.
 pub fn stop_session(pid: u32) -> Result<(), String> {
-    eprintln!("[stop_session] Stopping PID: {}", pid);
+    crate::debug_log::log_info(&format!("[stop_session] Stopping PID: {}", pid));
 
     // First try SIGTERM (signal 15) - graceful termination
     let output = Command::new("kill")
@@ -772,13 +772,13 @@ pub fn stop_session(pid: u32) -> Result<(), String> {
 
     if !output.status.success() {
         let error = String::from_utf8_lossy(&output.stderr);
-        eprintln!("[stop_session] SIGTERM failed: {}", error);
+        crate::debug_log::log_error(&format!("[stop_session] SIGTERM failed: {}", error));
 
         // If SIGTERM fails, the process might not exist or we don't have permission
         return Err(format!("Failed to stop process {}: {}", pid, error));
     }
 
-    eprintln!("[stop_session] SIGTERM sent successfully");
+    crate::debug_log::log_info("[stop_session] SIGTERM sent successfully");
     Ok(())
 }
 

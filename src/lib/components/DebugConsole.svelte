@@ -103,7 +103,7 @@
 		left: 0;
 		right: 0;
 		height: 40vh;
-		background: var(--bg-surface);
+		background: var(--bg-base);
 		border-top: 1px solid var(--border-default);
 		display: flex;
 		flex-direction: column;

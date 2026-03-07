@@ -96,12 +96,31 @@ impl SessionDetector {
             return Ok((Vec::new(), diagnostics));
         }
 
+        for proc in &claude_processes {
+            crate::debug_log::log_info(&format!(
+                "Claude process PID={} cwd={:?} start_time={}",
+                proc.pid, proc.cwd, proc.start_time
+            ));
+        }
+
         // Get all session project directories
         let project_dirs = self.enumerate_project_directories()?;
+
+        crate::debug_log::log_info(&format!(
+            "Enumerating {} project directories under {:?}",
+            project_dirs.len(),
+            self.claude_projects_dir
+        ));
 
         // Find recently active sessions (modified in last 30 minutes)
         // and associate them with running processes
         let sessions = self.find_active_sessions(&claude_processes, &project_dirs);
+
+        crate::debug_log::log_info(&format!(
+            "Matched {} sessions from {} processes",
+            sessions.len(),
+            claude_processes.len()
+        ));
 
         Ok((sessions, diagnostics))
     }
@@ -211,6 +230,11 @@ impl SessionDetector {
             let cwd_str = proc_cwd.to_string_lossy();
             let encoded_cwd = encode_path_for_matching(&cwd_str);
 
+            crate::debug_log::log_info(&format!(
+                "PID={}: cwd={} encoded={}",
+                proc.pid, cwd_str, encoded_cwd
+            ));
+
             // Helper closure to check if a session matches the process path
             let path_matches =
                 |project_dir: &Path, project_path: &Path, has_reliable_path: bool| -> bool {
@@ -272,6 +296,10 @@ impl SessionDetector {
                     .and_then(|s| s.to_str())
                     .map(|s| s.to_string())
                 {
+                    crate::debug_log::log_info(&format!(
+                        "PID={}: matched session={} project={} dir={:?}",
+                        proc.pid, session_id, project_name, project_dir
+                    ));
                     used_session_ids.insert(session_id.clone());
 
                     sessions.push(DetectedSession {
@@ -282,6 +310,11 @@ impl SessionDetector {
                         project_name: project_name.clone(),
                     });
                 }
+            } else {
+                crate::debug_log::log_warn(&format!(
+                    "PID={}: no matching session found for cwd={}",
+                    proc.pid, proc_cwd.display()
+                ));
             }
         }
 
