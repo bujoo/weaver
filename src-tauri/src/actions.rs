@@ -205,7 +205,35 @@ pub fn get_iterm2_session_title(pid: u32) -> Option<String> {
 /// Platform-specific fallback to activate/focus an application
 #[cfg(target_os = "macos")]
 fn activate_app_fallback(app_name: &str) -> Result<(), String> {
-    let script = format!(r#"tell application "{}" to activate"#, app_name);
+    // Activate the app and restore any minimized windows.
+    // macOS `activate` alone does NOT un-minimize windows from the Dock,
+    // so we use System Events to set AXMinimized to false.
+    //
+    // This fallback is used by terminals without a dedicated code path or CLI:
+    // Ghostty, Alacritty, kitty, Warp, Hyper, WezTerm, macOS Terminal, etc.
+    // (iTerm2 has its own focus_iterm2_session; VS Code/Cursor/Zed use CLI.)
+    //
+    // Notes:
+    // - Unminimizes ALL windows of the app, not just the target one.
+    // - AXMinimized requires Accessibility permission and may throw;
+    //   wrapped in try/end try so `activate` always succeeds regardless.
+    let script = format!(
+        r#"
+        tell application "{app}" to activate
+        try
+            tell application "System Events"
+                tell process "{app}"
+                    repeat with w in windows
+                        if value of attribute "AXMinimized" of w is true then
+                            set value of attribute "AXMinimized" of w to false
+                        end if
+                    end repeat
+                end tell
+            end tell
+        end try
+        "#,
+        app = app_name
+    );
     let output = Command::new("osascript")
         .arg("-e")
         .arg(&script)
@@ -606,6 +634,9 @@ fn get_app_name(comm: &str) -> Option<&'static str> {
             }
             if comm_lower.contains("kitty.app") {
                 return Some("kitty");
+            }
+            if comm_lower.contains("ghostty.app") {
+                return Some("Ghostty");
             }
             if comm_lower.contains("warp.app") {
                 return Some("Warp");
