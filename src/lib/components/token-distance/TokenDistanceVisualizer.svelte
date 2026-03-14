@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { MILESTONES, tokensToHeight, formatHeight, getCurrentMilestone } from './milestones';
 
 	let { totalTokens, onclose }: { totalTokens: number; onclose: () => void } = $props();
@@ -270,12 +270,12 @@
 		document.addEventListener('keydown', handleKeydown);
 		// Show intro text, then start stacking
 		setTimeout(() => { introVisible = true; }, 300);
-		setTimeout(() => {
+		setTimeout(async () => {
 			introVisible = false;
-			setTimeout(() => {
-				showIntro = false;
-				startAnimation();
-			}, 600);
+			await new Promise(r => setTimeout(r, 600));
+			showIntro = false;
+			await tick(); // wait for Svelte to mount the canvas
+			startAnimation();
 		}, 2800);
 	});
 
