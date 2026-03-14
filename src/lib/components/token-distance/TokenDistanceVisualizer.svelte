@@ -199,9 +199,9 @@
 			const grainsFilled = Math.round(eased * totalGrains);
 			currentTokens = Math.round(eased * totalTokens);
 
-			// Zoom: interpolate from zoomStart to zoomEnd, using eased progress
-			// Use sqrt of eased so zoom starts slow then accelerates
-			const zoomProgress = Math.sqrt(eased);
+			// Zoom: interpolate from zoomStart to zoomEnd
+			// Use pow(eased, 0.35) for aggressive early zoom-out
+			const zoomProgress = Math.pow(eased, 0.35);
 			const zoom = zoomStart + (zoomEnd - zoomStart) * zoomProgress;
 
 			// followTop: 1 during stacking, ease to 0 in the last 15% for smooth settle
