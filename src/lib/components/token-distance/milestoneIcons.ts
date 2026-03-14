@@ -1,263 +1,313 @@
 /**
- * Pixel art icon drawers for each milestone landmark.
- * Each function draws an icon at (x, baseY) where baseY is the bottom of the icon.
- * The icon extends UPWARD by `h` pixels (the real-scale height).
- * `w` is derived from `h` to maintain proportions.
+ * Dot-based landmark icon drawers.
+ * Each landmark is drawn using small dots (same style as rice grains)
+ * arranged in the recognizable shape of the landmark.
+ *
+ * Each function receives (ctx, x, baseY, h, dotSize, color) where:
+ * - x: center X position
+ * - baseY: bottom of the icon (ground level)
+ * - h: total height in pixels (real-scale)
+ * - dotSize: size of each dot (matches grain size at current zoom)
+ * - color: dot color
  */
 
-type IconDrawer = (ctx: CanvasRenderingContext2D, x: number, baseY: number, h: number, color: string) => void;
+type IconDrawer = (
+	ctx: CanvasRenderingContext2D,
+	x: number,
+	baseY: number,
+	h: number,
+	dotSize: number,
+	color: string
+) => void;
+
+/** Draw a single dot (grain) at grid position */
+function dot(ctx: CanvasRenderingContext2D, x: number, y: number, size: number) {
+	ctx.fillRect(x, y, size, size);
+}
+
+/** Fill a row of dots from col startC to endC (inclusive) centered at x */
+function dotRow(
+	ctx: CanvasRenderingContext2D,
+	x: number,
+	y: number,
+	startC: number,
+	endC: number,
+	dotSize: number
+) {
+	for (let c = startC; c <= endC; c++) {
+		dot(ctx, x + c * dotSize, y, dotSize);
+	}
+}
 
 // ── Buildings ────────────────────────────────────────────────
 
-const house: IconDrawer = (ctx, x, baseY, h, color) => {
-	const w = h * 1.2;
+const house: IconDrawer = (ctx, x, baseY, h, ds, color) => {
 	ctx.fillStyle = color;
-	// Body
-	ctx.fillRect(x - w * 0.4, baseY - h * 0.5, w * 0.8, h * 0.5);
-	// Roof
-	ctx.beginPath();
-	ctx.moveTo(x, baseY - h);
-	ctx.lineTo(x - w * 0.5, baseY - h * 0.5);
-	ctx.lineTo(x + w * 0.5, baseY - h * 0.5);
-	ctx.fill();
+	const rows = Math.max(4, Math.round(h / ds));
+	const roofRows = Math.ceil(rows * 0.4);
+	const bodyRows = rows - roofRows;
+	const bodyW = Math.max(3, Math.round(rows * 0.6));
+
+	// Body (rectangle)
+	for (let r = 0; r < bodyRows; r++) {
+		const y = baseY - (r + 1) * ds;
+		dotRow(ctx, x, y, -Math.floor(bodyW / 2), Math.floor(bodyW / 2), ds);
+	}
+	// Roof (triangle)
+	for (let r = 0; r < roofRows; r++) {
+		const y = baseY - (bodyRows + r + 1) * ds;
+		const halfW = Math.round((roofRows - r) * (bodyW / 2) / roofRows);
+		dotRow(ctx, x, y, -halfW, halfW, ds);
+	}
 };
 
-const statueOfLiberty: IconDrawer = (ctx, x, baseY, h, color) => {
-	const w = h * 0.35;
+const statueOfLiberty: IconDrawer = (ctx, x, baseY, h, ds, color) => {
 	ctx.fillStyle = color;
+	const rows = Math.max(6, Math.round(h / ds));
+	const pedastalRows = Math.ceil(rows * 0.35);
+	const bodyRows = Math.ceil(rows * 0.5);
+	const torchRows = rows - pedastalRows - bodyRows;
+	const pedW = Math.max(2, Math.round(rows * 0.3));
+
 	// Pedestal
-	ctx.fillRect(x - w * 0.6, baseY - h * 0.3, w * 1.2, h * 0.3);
-	// Body (tapered)
-	ctx.beginPath();
-	ctx.moveTo(x - w * 0.4, baseY - h * 0.3);
-	ctx.lineTo(x - w * 0.2, baseY - h * 0.85);
-	ctx.lineTo(x + w * 0.2, baseY - h * 0.85);
-	ctx.lineTo(x + w * 0.4, baseY - h * 0.3);
-	ctx.fill();
-	// Head
-	ctx.beginPath();
-	ctx.arc(x, baseY - h * 0.88, h * 0.05, 0, Math.PI * 2);
-	ctx.fill();
-	// Torch arm
-	ctx.fillRect(x + w * 0.15, baseY - h, w * 0.12, h * 0.2);
-	// Flame
-	ctx.beginPath();
-	ctx.arc(x + w * 0.21, baseY - h - h * 0.03, h * 0.03, 0, Math.PI * 2);
-	ctx.fill();
-};
-
-const pyramid: IconDrawer = (ctx, x, baseY, h, color) => {
-	const w = h * 1.4;
-	ctx.fillStyle = color;
-	ctx.beginPath();
-	ctx.moveTo(x, baseY - h);
-	ctx.lineTo(x - w * 0.5, baseY);
-	ctx.lineTo(x + w * 0.5, baseY);
-	ctx.fill();
-};
-
-const eiffelTower: IconDrawer = (ctx, x, baseY, h, color) => {
-	const w = h * 0.35;
-	ctx.strokeStyle = color;
-	ctx.lineWidth = Math.max(1, h * 0.025);
-	// Two legs converging
-	ctx.beginPath();
-	ctx.moveTo(x - w, baseY);
-	ctx.lineTo(x, baseY - h * 0.85);
-	ctx.lineTo(x + w, baseY);
-	ctx.stroke();
-	// Antenna
-	ctx.beginPath();
-	ctx.moveTo(x, baseY - h * 0.85);
-	ctx.lineTo(x, baseY - h);
-	ctx.stroke();
-	// Cross beams
-	const beams = [0.3, 0.55, 0.75];
-	for (const t of beams) {
-		const bw = w * (1 - t);
-		ctx.beginPath();
-		ctx.moveTo(x - bw, baseY - h * t);
-		ctx.lineTo(x + bw, baseY - h * t);
-		ctx.stroke();
+	for (let r = 0; r < pedastalRows; r++) {
+		const y = baseY - (r + 1) * ds;
+		dotRow(ctx, x, y, -Math.floor(pedW / 2), Math.floor(pedW / 2), ds);
+	}
+	// Body (tapers)
+	for (let r = 0; r < bodyRows; r++) {
+		const y = baseY - (pedastalRows + r + 1) * ds;
+		const t = r / bodyRows;
+		const halfW = Math.max(0, Math.round((1 - t * 0.6) * pedW / 2));
+		dotRow(ctx, x, y, -halfW, halfW, ds);
+	}
+	// Torch (offset right)
+	for (let r = 0; r < torchRows + 1; r++) {
+		const y = baseY - (pedastalRows + bodyRows + r + 1) * ds;
+		dot(ctx, x + ds * 2, y, ds);
 	}
 };
 
-const empireState: IconDrawer = (ctx, x, baseY, h, color) => {
-	const w = h * 0.22;
+const pyramid: IconDrawer = (ctx, x, baseY, h, ds, color) => {
 	ctx.fillStyle = color;
-	// Main body
-	ctx.fillRect(x - w, baseY - h * 0.6, w * 2, h * 0.6);
-	// Upper setback
-	ctx.fillRect(x - w * 0.65, baseY - h * 0.78, w * 1.3, h * 0.18);
-	// Tower top
-	ctx.fillRect(x - w * 0.35, baseY - h * 0.88, w * 0.7, h * 0.1);
-	// Antenna
-	ctx.fillRect(x - w * 0.08, baseY - h, w * 0.16, h * 0.12);
+	const rows = Math.max(3, Math.round(h / ds));
+
+	for (let r = 0; r < rows; r++) {
+		const y = baseY - (r + 1) * ds;
+		// Width grows from 1 at top to full at bottom
+		const halfW = Math.round((rows - r) * rows / rows / 2);
+		dotRow(ctx, x, y, -halfW, halfW, ds);
+	}
 };
 
-const taipei101: IconDrawer = (ctx, x, baseY, h, color) => {
-	const w = h * 0.18;
+const eiffelTower: IconDrawer = (ctx, x, baseY, h, ds, color) => {
 	ctx.fillStyle = color;
-	// 8 stacked sections
+	const rows = Math.max(8, Math.round(h / ds));
+
+	for (let r = 0; r < rows; r++) {
+		const y = baseY - (r + 1) * ds;
+		const t = r / rows; // 0=bottom, 1=top
+
+		if (t < 0.85) {
+			// Two legs that converge — only draw the outer dots
+			const spread = Math.round((1 - t) * rows * 0.25);
+			if (spread > 0) {
+				// Left leg
+				dot(ctx, x - spread * ds, y, ds);
+				// Right leg
+				dot(ctx, x + spread * ds, y, ds);
+			} else {
+				dot(ctx, x, y, ds);
+			}
+			// Cross beams at 30%, 55%, 75% height
+			if (Math.abs(t - 0.3) < 1 / rows || Math.abs(t - 0.55) < 1 / rows || Math.abs(t - 0.75) < 1 / rows) {
+				dotRow(ctx, x, y, -spread, spread, ds);
+			}
+		} else {
+			// Antenna — single dot column
+			dot(ctx, x, y, ds);
+		}
+	}
+};
+
+const empireState: IconDrawer = (ctx, x, baseY, h, ds, color) => {
+	ctx.fillStyle = color;
+	const rows = Math.max(8, Math.round(h / ds));
+
+	for (let r = 0; r < rows; r++) {
+		const y = baseY - (r + 1) * ds;
+		const t = r / rows;
+
+		let halfW: number;
+		if (t < 0.55) {
+			halfW = Math.max(1, Math.round(rows * 0.12));
+		} else if (t < 0.75) {
+			halfW = Math.max(1, Math.round(rows * 0.08));
+		} else if (t < 0.88) {
+			halfW = Math.max(0, Math.round(rows * 0.04));
+		} else {
+			halfW = 0; // antenna
+		}
+		dotRow(ctx, x, y, -halfW, halfW, ds);
+	}
+};
+
+const taipei101: IconDrawer = (ctx, x, baseY, h, ds, color) => {
+	ctx.fillStyle = color;
+	const rows = Math.max(10, Math.round(h / ds));
 	const sections = 8;
-	const bodyH = h * 0.75;
-	const sectionH = bodyH / sections;
-	for (let i = 0; i < sections; i++) {
-		const sw = w * (1 - i * 0.06);
-		const sy = baseY - h * 0.1 - i * sectionH;
-		ctx.fillRect(x - sw, sy - sectionH, sw * 2, sectionH - 1);
+	const bodyRows = Math.ceil(rows * 0.8);
+	const sectionH = Math.ceil(bodyRows / sections);
+	const baseRows = Math.ceil(rows * 0.08);
+	const spireRows = rows - bodyRows - baseRows;
+
+	// Base (wide)
+	for (let r = 0; r < baseRows; r++) {
+		const y = baseY - (r + 1) * ds;
+		const halfW = Math.max(2, Math.round(rows * 0.12));
+		dotRow(ctx, x, y, -halfW, halfW, ds);
 	}
-	// Base
-	ctx.fillRect(x - w * 1.2, baseY - h * 0.1, w * 2.4, h * 0.1);
+	// Stacked sections (each slightly narrower)
+	for (let r = 0; r < bodyRows; r++) {
+		const y = baseY - (baseRows + r + 1) * ds;
+		const section = Math.floor(r / sectionH);
+		const halfW = Math.max(1, Math.round(rows * 0.1) - section);
+		dotRow(ctx, x, y, -halfW, halfW, ds);
+	}
 	// Spire
-	ctx.fillRect(x - w * 0.08, baseY - h, w * 0.16, h * 0.15);
+	for (let r = 0; r < spireRows; r++) {
+		const y = baseY - (baseRows + bodyRows + r + 1) * ds;
+		dot(ctx, x, y, ds);
+	}
 };
 
-const burjKhalifa: IconDrawer = (ctx, x, baseY, h, color) => {
-	const w = h * 0.12;
+const burjKhalifa: IconDrawer = (ctx, x, baseY, h, ds, color) => {
 	ctx.fillStyle = color;
-	// Tapered tower with stepped setbacks
-	ctx.beginPath();
-	ctx.moveTo(x, baseY - h);
-	ctx.lineTo(x - w * 0.3, baseY - h * 0.9);
-	ctx.lineTo(x - w * 0.6, baseY - h * 0.7);
-	ctx.lineTo(x - w, baseY - h * 0.4);
-	ctx.lineTo(x - w * 1.2, baseY);
-	ctx.lineTo(x + w * 1.2, baseY);
-	ctx.lineTo(x + w, baseY - h * 0.4);
-	ctx.lineTo(x + w * 0.6, baseY - h * 0.7);
-	ctx.lineTo(x + w * 0.3, baseY - h * 0.9);
-	ctx.fill();
+	const rows = Math.max(10, Math.round(h / ds));
+
+	for (let r = 0; r < rows; r++) {
+		const y = baseY - (r + 1) * ds;
+		const t = r / rows;
+
+		// Y-shaped taper with stepped setbacks
+		let halfW: number;
+		if (t < 0.4) {
+			halfW = Math.max(1, Math.round(rows * 0.08));
+		} else if (t < 0.65) {
+			halfW = Math.max(1, Math.round(rows * 0.05));
+		} else if (t < 0.85) {
+			halfW = Math.max(0, Math.round(rows * 0.025));
+		} else {
+			halfW = 0; // spire
+		}
+		dotRow(ctx, x, y, -halfW, halfW, ds);
+	}
 };
 
 // ── Mountains ────────────────────────────────────────────────
 
-const mountainFn: IconDrawer = (ctx, x, baseY, h, color) => {
-	const w = h * 1.2;
-	ctx.fillStyle = color;
-	ctx.beginPath();
-	ctx.moveTo(x, baseY - h);
-	ctx.lineTo(x - w * 0.5, baseY);
-	ctx.lineTo(x + w * 0.5, baseY);
-	ctx.fill();
-	// Snow cap
+const mountainFn: IconDrawer = (ctx, x, baseY, h, ds, color) => {
+	const rows = Math.max(4, Math.round(h / ds));
+
+	for (let r = 0; r < rows; r++) {
+		const y = baseY - (r + 1) * ds;
+		const halfW = Math.round((rows - r) * 0.6);
+		// Mountain body
+		ctx.fillStyle = color;
+		dotRow(ctx, x, y, -halfW, halfW, ds);
+	}
+	// Snow cap — top 20% in white
 	ctx.fillStyle = '#ffffff';
-	ctx.beginPath();
-	ctx.moveTo(x, baseY - h);
-	ctx.lineTo(x - w * 0.12, baseY - h * 0.75);
-	ctx.lineTo(x + w * 0.12, baseY - h * 0.75);
-	ctx.fill();
+	const snowRows = Math.max(1, Math.ceil(rows * 0.2));
+	for (let r = rows - snowRows; r < rows; r++) {
+		const y = baseY - (r + 1) * ds;
+		const halfW = Math.round((rows - r) * 0.6);
+		dotRow(ctx, x, y, -halfW, halfW, ds);
+	}
 };
 
-// ── Sky ──────────────────────────────────────────────────────
+// ── Sky / Space (capped size — these would be too tall at real scale) ──
 
-const airplane: IconDrawer = (ctx, x, baseY, h, color) => {
-	// h is very large for cruising altitude — cap the visual icon
-	const iconH = Math.min(h, 20);
-	const w = iconH * 2;
-	const cy = baseY - iconH * 0.5;
+const airplane: IconDrawer = (ctx, x, baseY, _h, ds, color) => {
 	ctx.fillStyle = color;
-	// Fuselage
-	ctx.fillRect(x - w * 0.35, cy - iconH * 0.08, w * 0.7, iconH * 0.16);
-	// Wings
-	ctx.beginPath();
-	ctx.moveTo(x - w * 0.08, cy);
-	ctx.lineTo(x, cy - iconH * 0.45);
-	ctx.lineTo(x + w * 0.08, cy);
-	ctx.fill();
-	// Tail
-	ctx.beginPath();
-	ctx.moveTo(x - w * 0.28, cy - iconH * 0.08);
-	ctx.lineTo(x - w * 0.35, cy - iconH * 0.3);
-	ctx.lineTo(x - w * 0.2, cy - iconH * 0.08);
-	ctx.fill();
+	const s = Math.max(ds, 2);
+	// Small fixed-size plane icon
+	//    ·
+	//  · · ·
+	// ·· · ··
+	//    ·
+	dot(ctx, x, baseY - s * 4, s);
+	dotRow(ctx, x, baseY - s * 3, -1, 1, s);
+	dotRow(ctx, x, baseY - s * 2, -2, 2, s);
+	dot(ctx, x, baseY - s, s);
 };
 
-const parachute: IconDrawer = (ctx, x, baseY, h, color) => {
-	const iconH = Math.min(h, 20);
-	const cy = baseY - iconH * 0.5;
-	ctx.strokeStyle = color;
+const parachute: IconDrawer = (ctx, x, baseY, _h, ds, color) => {
 	ctx.fillStyle = color;
-	ctx.lineWidth = Math.max(1, iconH * 0.06);
+	const s = Math.max(ds, 2);
 	// Canopy
-	ctx.beginPath();
-	ctx.arc(x, cy - iconH * 0.1, iconH * 0.35, Math.PI, 0);
-	ctx.stroke();
+	dotRow(ctx, x, baseY - s * 5, -2, 2, s);
+	dotRow(ctx, x, baseY - s * 4, -1, 1, s);
 	// Lines
-	ctx.beginPath();
-	ctx.moveTo(x - iconH * 0.35, cy - iconH * 0.1);
-	ctx.lineTo(x, cy + iconH * 0.35);
-	ctx.moveTo(x + iconH * 0.35, cy - iconH * 0.1);
-	ctx.lineTo(x, cy + iconH * 0.35);
-	ctx.stroke();
+	dot(ctx, x - s * 2, baseY - s * 3, s);
+	dot(ctx, x + s * 2, baseY - s * 3, s);
+	dot(ctx, x - s, baseY - s * 2, s);
+	dot(ctx, x + s, baseY - s * 2, s);
 	// Person
-	ctx.beginPath();
-	ctx.arc(x, cy + iconH * 0.4, iconH * 0.07, 0, Math.PI * 2);
-	ctx.fill();
+	dot(ctx, x, baseY - s, s);
 };
 
-// ── Space ────────────────────────────────────────────────────
-
-const karmanLine: IconDrawer = (ctx, x, baseY, h, color) => {
-	const iconH = Math.min(h, 16);
-	ctx.strokeStyle = color;
-	ctx.lineWidth = Math.max(1, iconH * 0.08);
-	ctx.setLineDash([iconH * 0.15, iconH * 0.1]);
-	ctx.beginPath();
-	ctx.moveTo(x - iconH * 0.8, baseY - iconH * 0.5);
-	ctx.lineTo(x + iconH * 0.8, baseY - iconH * 0.5);
-	ctx.stroke();
-	ctx.setLineDash([]);
-};
-
-const iss: IconDrawer = (ctx, x, baseY, h, color) => {
-	const iconH = Math.min(h, 18);
-	const cy = baseY - iconH * 0.5;
+const karmanLine: IconDrawer = (ctx, x, baseY, _h, ds, color) => {
 	ctx.fillStyle = color;
-	ctx.strokeStyle = color;
-	ctx.lineWidth = Math.max(1, iconH * 0.05);
-	// Solar panels
-	ctx.fillRect(x - iconH * 0.7, cy - iconH * 0.15, iconH * 0.35, iconH * 0.3);
-	ctx.fillRect(x + iconH * 0.35, cy - iconH * 0.15, iconH * 0.35, iconH * 0.3);
-	// Module
-	ctx.fillRect(x - iconH * 0.18, cy - iconH * 0.1, iconH * 0.36, iconH * 0.2);
-	// Truss
-	ctx.beginPath();
-	ctx.moveTo(x - iconH * 0.7, cy);
-	ctx.lineTo(x + iconH * 0.7, cy);
-	ctx.stroke();
+	const s = Math.max(ds, 2);
+	// Dashed horizontal line of dots
+	for (let i = -4; i <= 4; i += 2) {
+		dot(ctx, x + i * s, baseY - s, s);
+	}
 };
 
-const satellite: IconDrawer = (ctx, x, baseY, h, color) => {
-	const iconH = Math.min(h, 16);
-	const cy = baseY - iconH * 0.5;
+const issIcon: IconDrawer = (ctx, x, baseY, _h, ds, color) => {
 	ctx.fillStyle = color;
-	// Body
-	ctx.fillRect(x - iconH * 0.12, cy - iconH * 0.12, iconH * 0.24, iconH * 0.24);
-	// Panels
-	ctx.fillRect(x - iconH * 0.55, cy - iconH * 0.08, iconH * 0.35, iconH * 0.16);
-	ctx.fillRect(x + iconH * 0.2, cy - iconH * 0.08, iconH * 0.35, iconH * 0.16);
-	// Dish
-	ctx.strokeStyle = color;
-	ctx.lineWidth = Math.max(1, iconH * 0.07);
-	ctx.beginPath();
-	ctx.arc(x + iconH * 0.25, cy - iconH * 0.2, iconH * 0.15, -Math.PI * 0.4, Math.PI * 0.3);
-	ctx.stroke();
+	const s = Math.max(ds, 2);
+	// Solar panels + truss in dots
+	// ··   · ·   ··
+	// ·· · · · · ··
+	// ··   · ·   ··
+	dotRow(ctx, x, baseY - s * 3, -4, -3, s);
+	dotRow(ctx, x, baseY - s * 3, 3, 4, s);
+	dotRow(ctx, x, baseY - s * 2, -4, 4, s);
+	dotRow(ctx, x, baseY - s, -4, -3, s);
+	dotRow(ctx, x, baseY - s, 3, 4, s);
+	dotRow(ctx, x, baseY - s, -1, 1, s);
+	dotRow(ctx, x, baseY - s * 3, -1, 1, s);
 };
 
-const moonIcon: IconDrawer = (ctx, x, baseY, h, color) => {
-	const iconH = Math.min(h, 22);
-	const cy = baseY - iconH * 0.5;
-	const r = iconH * 0.4;
+const satellite: IconDrawer = (ctx, x, baseY, _h, ds, color) => {
 	ctx.fillStyle = color;
-	ctx.beginPath();
-	ctx.arc(x, cy, r, 0, Math.PI * 2);
-	ctx.fill();
-	// Crescent cutout
-	ctx.fillStyle = '#000000';
-	ctx.beginPath();
-	ctx.arc(x + r * 0.4, cy - r * 0.2, r * 0.8, 0, Math.PI * 2);
-	ctx.fill();
+	const s = Math.max(ds, 2);
+	//  ·
+	// ·· ··
+	//  ·
+	dot(ctx, x, baseY - s * 3, s);
+	dotRow(ctx, x, baseY - s * 2, -2, -1, s);
+	dotRow(ctx, x, baseY - s * 2, 1, 2, s);
+	dot(ctx, x, baseY - s * 2, s);
+	dot(ctx, x, baseY - s, s);
+};
+
+const moonIcon: IconDrawer = (ctx, x, baseY, _h, ds, color) => {
+	ctx.fillStyle = color;
+	const s = Math.max(ds, 2);
+	//  · ·
+	// ·
+	// ·
+	//  · ·
+	dot(ctx, x - s, baseY - s * 4, s);
+	dot(ctx, x, baseY - s * 4, s);
+	dot(ctx, x - s * 2, baseY - s * 3, s);
+	dot(ctx, x - s * 2, baseY - s * 2, s);
+	dot(ctx, x - s, baseY - s, s);
+	dot(ctx, x, baseY - s, s);
 };
 
 // ── Icon map ─────────────────────────────────────────────────
@@ -277,17 +327,17 @@ const ICON_MAP: Record<string, IconDrawer> = {
 	'Cruising altitude': airplane,
 	"Baumgartner's skydive": parachute,
 	'Kármán line': karmanLine,
-	'ISS': iss,
+	'ISS': issIcon,
 	'Geostationary orbit': satellite,
 	'The Moon': moonIcon,
 };
 
 /**
- * Draw the pixel art icon for a milestone at the given position.
- * For buildings/mountains: `h` is the real-scale pixel height — icon
- * extends upward from baseY by that amount.
- * For sky/space: icon is capped to a fixed size since the real scale
- * would be too large.
+ * Draw a dot-based landmark icon.
+ * For buildings/mountains, h is the real-scale pixel height and dotSize
+ * matches the grain size at current zoom — so the landmark is composed
+ * of the same dots as the rice tower, at true proportional scale.
+ * For sky/space landmarks, h is ignored and a fixed-size icon is drawn.
  */
 export function drawMilestoneIcon(
 	ctx: CanvasRenderingContext2D,
@@ -295,12 +345,13 @@ export function drawMilestoneIcon(
 	x: number,
 	baseY: number,
 	h: number,
+	dotSize: number,
 	color: string
 ): void {
 	const drawer = ICON_MAP[label];
 	if (drawer) {
 		ctx.save();
-		drawer(ctx, x, baseY, h, color);
+		drawer(ctx, x, baseY, h, dotSize, color);
 		ctx.restore();
 	}
 }
