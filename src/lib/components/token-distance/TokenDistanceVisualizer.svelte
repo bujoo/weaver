@@ -9,6 +9,7 @@
 	let animationDone = $state(false);
 	let lastPassedMilestone = $state<string | null>(null);
 	let milestoneFlash = $state(false);
+	let flashTimeoutId: ReturnType<typeof setTimeout> | null = null;
 	let animFrameId: number | null = null;
 
 	const currentHeight = $derived(tokensToHeight(currentTokens));
@@ -44,8 +45,9 @@
 			if (currentIdx > lastMilestoneIdx && currentIdx >= 0) {
 				lastMilestoneIdx = currentIdx;
 				lastPassedMilestone = MILESTONES[currentIdx].label;
+				if (flashTimeoutId) clearTimeout(flashTimeoutId);
 				milestoneFlash = true;
-				setTimeout(() => milestoneFlash = false, 600);
+				flashTimeoutId = setTimeout(() => milestoneFlash = false, 600);
 			}
 
 			if (progress < 1) {

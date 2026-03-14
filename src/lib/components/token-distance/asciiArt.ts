@@ -86,7 +86,7 @@ export const SCENE_MOON: AsciiFrame = {
 	lines: [
 		'              .  .                    ',
 		'           .        .                ',
-		'         .            .               ',
+		'         .    🌙     .               ',
 		'        .              .              ',
 		'         .            .               ',
 		'           .        .                ',
