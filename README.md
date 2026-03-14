@@ -81,6 +81,18 @@ A quick-glance overlay showing all active sessions and their status directly fro
 
 ![Tray popover](docs/screenshots/tray-popover.jpeg)
 
+### Memory -- browse Claude Code memory files
+
+View and inspect all Claude Code memory files in a two-panel layout with quick access to Claude commands.
+
+![Memory tab](docs/screenshots/memory-tab.png)
+
+### Token distance -- visualize your usage
+
+See your total token usage as a rice stack towering past real-world landmarks. Share the result as an Instagram-ready PNG.
+
+![Token distance visualizer](docs/screenshots/token-distance-visualizer.png)
+
 ## Features
 
 - **Zero-integration setup** -- Works with any terminal or IDE, no plugins or extensions required
