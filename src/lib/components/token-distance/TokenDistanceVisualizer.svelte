@@ -36,6 +36,10 @@
 	const BORDER = '#333333';
 	const BG = '#000000';
 
+	// Font families matching CSS design tokens
+	const FONT_PIXEL = "'Geist Pixel Square', 'Geist Mono', 'SF Mono', Monaco, monospace";
+	const FONT_MONO = "'Geist Mono', 'SF Mono', Monaco, monospace";
+
 	// ── Formatting ───────────────────────────────────────────────
 	function formatTokenCount(n: number): string {
 		if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1) + 'B';
@@ -122,7 +126,7 @@
 
 			// Label
 			const fontSize = Math.max(9, Math.min(12, 10 / Math.sqrt(1 / zoom)));
-			ctx.font = `${fontSize}px monospace`;
+			ctx.font = `${fontSize}px ${FONT_MONO}`;
 			ctx.fillStyle = TEXT_PRIMARY;
 			ctx.textBaseline = 'middle';
 			ctx.fillText(m.label, lineStartX + 16, markerY);
@@ -131,7 +135,7 @@
 			const heightStr = formatHeight(tokensToHeight(m.tokens));
 			const labelWidth = ctx.measureText(m.label).width;
 			ctx.fillStyle = TEXT_MUTED;
-			ctx.font = `${Math.max(8, fontSize - 2)}px monospace`;
+			ctx.font = `${Math.max(8, fontSize - 2)}px ${FONT_MONO}`;
 			ctx.fillText(heightStr, lineStartX + 16 + labelWidth + 8, markerY);
 		}
 
@@ -144,29 +148,29 @@
 		// Token count
 		ctx.textAlign = 'right';
 		ctx.textBaseline = 'middle';
-		ctx.font = 'bold 28px monospace';
+		ctx.font = `bold 28px ${FONT_PIXEL}`;
 		ctx.fillStyle = AMBER;
 		ctx.fillText(formatTokenCount(currentTokens), statsX, statsY);
 
 		// "tokens" label
-		ctx.font = '10px monospace';
+		ctx.font = `10px ${FONT_MONO}`;
 		ctx.fillStyle = TEXT_MUTED;
 		ctx.fillText('TOKENS', statsX, statsY + 18);
 
 		// Height
-		ctx.font = 'bold 18px monospace';
+		ctx.font = `bold 18px ${FONT_PIXEL}`;
 		ctx.fillStyle = TEXT_PRIMARY;
 		ctx.fillText(formatHeight(tokensToHeight(currentTokens)), statsX, statsY + 42);
 
 		// "rice stack" label
-		ctx.font = '10px monospace';
+		ctx.font = `10px ${FONT_MONO}`;
 		ctx.fillStyle = TEXT_MUTED;
 		ctx.fillText('RICE STACK', statsX, statsY + 56);
 
 		// Current milestone
 		const currentMilestone = getCurrentMilestone(currentTokens);
 		if (currentMilestone) {
-			ctx.font = 'bold 12px monospace';
+			ctx.font = `bold 12px ${FONT_PIXEL}`;
 			ctx.fillStyle = AMBER;
 			ctx.fillText(`PAST ${currentMilestone.label.toUpperCase()}!`, statsX, statsY + 78);
 		}
@@ -249,7 +253,7 @@
 				const flashAlpha = (milestoneFlashUntil - now) / 800;
 				const flashScale = 1 + (1 - flashAlpha) * 0.3;
 				ctx.save();
-				ctx.font = `bold 16px monospace`;
+				ctx.font = `bold 16px ${FONT_PIXEL}`;
 				ctx.fillStyle = `rgba(255, 102, 0, ${flashAlpha})`;
 				ctx.textAlign = 'center';
 				ctx.textBaseline = 'top';
@@ -328,7 +332,7 @@
 		render(ctx, shareW, shareH, totalGrains, shareZoom, 0, 1);
 
 		// Add title at top
-		ctx.font = 'bold 28px monospace';
+		ctx.font = `bold 28px ${FONT_PIXEL}`;
 		ctx.fillStyle = AMBER;
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'top';
@@ -337,14 +341,14 @@
 		// Date range under title
 		let nextY = 66;
 		if (dateRange) {
-			ctx.font = '14px monospace';
+			ctx.font = `14px ${FONT_MONO}`;
 			ctx.fillStyle = TEXT_MUTED;
 			ctx.fillText(dateRange, shareW / 2, nextY);
 			nextY += 22;
 		}
 
 		// Watermark under date range (export only)
-		ctx.font = '12px monospace';
+		ctx.font = `12px ${FONT_MONO}`;
 		ctx.fillStyle = TEXT_MUTED;
 		ctx.fillText('generated with c9watch', shareW / 2, nextY);
 
