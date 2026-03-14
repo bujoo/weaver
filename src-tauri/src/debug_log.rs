@@ -85,8 +85,7 @@ mod tests {
 
     #[test]
     fn test_log_and_retrieve() {
-        // Use unique messages to avoid interference from parallel tests
-        // sharing the global buffer.
+        clear_buffer();
         log_info("test_lar_hello");
         log_error("test_lar_broke");
 
