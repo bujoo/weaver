@@ -1,76 +1,41 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { MILESTONES, tokensToHeight, formatHeight, getCurrentMilestone } from './milestones';
-	import type { Milestone } from './milestones';
 
 	let { totalTokens, onclose }: { totalTokens: number; onclose: () => void } = $props();
 
-	// ── Animation phases ─────────────────────────────────────────
-	// stacking: zoomed in, single column of dots growing upward
-	// zoomout:  brief transition
-	// final:    zoomed-out full tower with height markers
-	type Phase = 'stacking' | 'zoomout' | 'final';
-	let phase = $state<Phase>('stacking');
-
+	let canvas = $state<HTMLCanvasElement | null>(null);
+	let animationDone = $state(false);
 	let currentTokens = $state(0);
-	let lastPassedMilestone = $state<string | null>(null);
-	let milestoneFlash = $state(false);
-	let flashTimeoutId: ReturnType<typeof setTimeout> | null = null;
 	let animFrameId: number | null = null;
 
-	// ── Stacking phase ───────────────────────────────────────────
-	// Each dot = `scale` tokens. The viewport shows VISIBLE_DOTS rows.
-	// Total dots = totalTokens / scale.
-	const VISIBLE_DOTS = 30; // how many dots visible at once in the viewport
-
-	// Scale: how many tokens per dot. Aim for ~2000 total dots so animation looks good.
-	const scale = $derived(Math.max(1, Math.ceil(totalTokens / 2000)));
-	const totalDots = $derived(Math.ceil(totalTokens / scale));
-	let currentDots = $state(0);
-
-	// The viewport is a sliding window showing VISIBLE_DOTS rows.
-	// We always show the top of the stack (where new dots are landing).
-	const viewportDots = $derived.by((): Array<{ dot: boolean; milestone: Milestone | null }> => {
-		if (phase !== 'stacking' || totalTokens === 0) return [];
-
-		const rows: Array<{ dot: boolean; milestone: Milestone | null }> = [];
-		// viewport top = currentDots, viewport bottom = currentDots - VISIBLE_DOTS
-		const viewBottom = Math.max(0, currentDots - VISIBLE_DOTS);
-
-		for (let i = VISIBLE_DOTS - 1; i >= 0; i--) {
-			const dotIdx = viewBottom + i; // which dot position (0 = ground)
-			const tokensAtDot = dotIdx * scale;
-			const isFilled = dotIdx < currentDots;
-
-			// Check if a milestone lands at this dot position
-			const milestone = MILESTONES.find(m => {
-				const mDot = Math.ceil(m.tokens / scale);
-				return mDot === dotIdx && currentTokens >= m.tokens;
-			}) ?? null;
-
-			rows.push({ dot: isFilled, milestone });
-		}
-
-		return rows;
-	});
-
-	// ── Final phase ──────────────────────────────────────────────
-	const reached = $derived(getCurrentMilestone(totalTokens));
-	const passedMilestones = $derived(MILESTONES.filter(m => totalTokens >= m.tokens));
-
-	const TOWER_HEIGHT = 320; // px
-	const milestoneMarkers = $derived.by((): Array<{ label: string; pct: number; height: string }> => {
-		if (totalTokens === 0) return [];
-		return passedMilestones.map(m => ({
-			label: m.label,
-			pct: Math.min((m.tokens / totalTokens) * 100, 100),
-			height: formatHeight(tokensToHeight(m.tokens)),
-		}));
-	});
-
-	// ── Formatting ───────────────────────────────────────────────
+	const reached = $derived(getCurrentMilestone(currentTokens));
 	const currentHeight = $derived(tokensToHeight(currentTokens));
 
+	// ── Constants ────────────────────────────────────────────────
+	const GRAIN_SIZE = 3;          // px size of each grain dot at 1:1 zoom
+	const GRAINS_PER_ROW = 12;     // grains per row in the tower
+	const TOWER_WIDTH_PX = GRAINS_PER_ROW * GRAIN_SIZE; // tower width at 1:1
+
+	// Scale: tokens per grain. Target ~3000 grains for good animation density.
+	// totalTokens is a prop that doesn't change after mount, so these are stable.
+	// eslint-disable-next-line -- intentional snapshot of prop value
+	const _tokens = $derived(totalTokens);
+	const scale = $derived(Math.max(1, Math.ceil(_tokens / 3000)));
+	const totalGrains = $derived(Math.ceil(_tokens / scale));
+	const totalGrainRows = $derived(Math.ceil(totalGrains / GRAINS_PER_ROW));
+	// Full tower height at 1:1 zoom
+	const towerHeightPx = $derived(totalGrainRows * GRAIN_SIZE);
+
+	// Colors
+	const AMBER = '#ff6600';
+	const AMBER_DIM = 'rgba(255, 102, 0, 0.3)';
+	const TEXT_PRIMARY = '#ffffff';
+	const TEXT_MUTED = '#666666';
+	const BORDER = '#333333';
+	const BG = '#000000';
+
+	// ── Formatting ───────────────────────────────────────────────
 	function formatTokenCount(n: number): string {
 		if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1) + 'B';
 		if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
@@ -78,16 +43,135 @@
 		return n.toString();
 	}
 
+	// ── Canvas rendering ─────────────────────────────────────────
+	function render(ctx: CanvasRenderingContext2D, w: number, h: number, grainsFilled: number, zoom: number) {
+		const dpr = window.devicePixelRatio || 1;
+		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+		ctx.clearRect(0, 0, w, h);
+
+		// The tower is centered horizontally. The camera zooms so
+		// the tower always fits vertically with some padding.
+		const filledRows = Math.ceil(grainsFilled / GRAINS_PER_ROW);
+		const filledHeightPx = filledRows * GRAIN_SIZE;
+
+		// Camera: we want the filled portion to fit in ~70% of canvas height
+		// zoom starts at a high value (zoomed in) and decreases (zooms out)
+		const scaledGrainSize = GRAIN_SIZE * zoom;
+		const scaledTowerWidth = TOWER_WIDTH_PX * zoom;
+
+		// Tower base position: centered horizontally, anchored at canvas bottom
+		const towerBaseX = (w - scaledTowerWidth) / 2;
+		const towerBaseY = h - 40; // 40px padding at bottom
+
+		// Draw ground line
+		ctx.strokeStyle = BORDER;
+		ctx.lineWidth = 1;
+		ctx.beginPath();
+		ctx.moveTo(towerBaseX - 10, towerBaseY);
+		ctx.lineTo(towerBaseX + scaledTowerWidth + 10, towerBaseY);
+		ctx.stroke();
+
+		// Draw grains from bottom to top
+		for (let i = 0; i < grainsFilled; i++) {
+			const row = Math.floor(i / GRAINS_PER_ROW);
+			const col = i % GRAINS_PER_ROW;
+
+			const x = towerBaseX + col * scaledGrainSize;
+			const y = towerBaseY - (row + 1) * scaledGrainSize;
+
+			// Don't draw if above canvas
+			if (y < -scaledGrainSize) continue;
+			// Don't draw if below canvas
+			if (y > h) continue;
+
+			// Grain color: slightly vary brightness for texture
+			const brightness = 0.8 + (((i * 7) % 13) / 13) * 0.2;
+			ctx.fillStyle = `rgba(255, ${Math.round(102 * brightness)}, 0, ${0.7 + brightness * 0.3})`;
+
+			// Draw grain as a small rect with 1px gap for visibility when zoomed in
+			const gap = zoom > 2 ? 1 : 0;
+			ctx.fillRect(x + gap, y + gap, scaledGrainSize - gap * 2, scaledGrainSize - gap * 2);
+		}
+
+		// Draw milestone markers on the right side of the tower
+		const passedMilestones = MILESTONES.filter(m => currentTokens >= m.tokens);
+		for (const m of passedMilestones) {
+			const mGrainRow = Math.ceil(m.tokens / scale / GRAINS_PER_ROW);
+			const markerY = towerBaseY - mGrainRow * scaledGrainSize;
+
+			// Only draw if visible
+			if (markerY < -20 || markerY > h + 20) continue;
+
+			// Marker line
+			const lineStartX = towerBaseX + scaledTowerWidth + 6;
+			ctx.strokeStyle = TEXT_MUTED;
+			ctx.lineWidth = 1;
+			ctx.beginPath();
+			ctx.moveTo(lineStartX, markerY);
+			ctx.lineTo(lineStartX + 12, markerY);
+			ctx.stroke();
+
+			// Label
+			const fontSize = Math.max(9, Math.min(12, 10 / Math.sqrt(1 / zoom)));
+			ctx.font = `${fontSize}px monospace`;
+			ctx.fillStyle = TEXT_PRIMARY;
+			ctx.textBaseline = 'middle';
+			ctx.fillText(m.label, lineStartX + 16, markerY);
+
+			// Height
+			const heightStr = formatHeight(tokensToHeight(m.tokens));
+			const labelWidth = ctx.measureText(m.label).width;
+			ctx.fillStyle = TEXT_MUTED;
+			ctx.font = `${Math.max(8, fontSize - 2)}px monospace`;
+			ctx.fillText(heightStr, lineStartX + 16 + labelWidth + 8, markerY);
+		}
+
+		// Draw the top-of-stack indicator (a small glowing line)
+		if (grainsFilled > 0) {
+			const topY = towerBaseY - filledRows * scaledGrainSize;
+			if (topY > -10 && topY < h) {
+				ctx.strokeStyle = AMBER;
+				ctx.lineWidth = 1;
+				ctx.shadowColor = AMBER;
+				ctx.shadowBlur = 6;
+				ctx.beginPath();
+				ctx.moveTo(towerBaseX, topY);
+				ctx.lineTo(towerBaseX + scaledTowerWidth, topY);
+				ctx.stroke();
+				ctx.shadowBlur = 0;
+			}
+		}
+	}
+
 	// ── Animation ────────────────────────────────────────────────
 	function startAnimation() {
-		if (totalTokens === 0) {
-			phase = 'final';
+		if (totalTokens === 0 || !canvas) {
+			animationDone = true;
 			return;
 		}
 
-		const duration = 5000;
+		const c = canvas;
+		const ctx = c.getContext('2d')!;
+
+		const dpr = window.devicePixelRatio || 1;
+		const rect = c.getBoundingClientRect();
+		const w = rect.width;
+		const h = rect.height;
+		c.width = w * dpr;
+		c.height = h * dpr;
+
+		const duration = 6000;
 		const startTime = performance.now();
+
+		// Zoom range: start zoomed in (big grains), end zoomed out to fit tower
+		// At start: we want ~8 rows visible → zoom = canvasHeight / (8 * GRAIN_SIZE)
+		const zoomStart = Math.min(h / (8 * GRAIN_SIZE), 20);
+		// At end: fit full tower with padding → zoom = (canvasHeight - 80) / towerHeightPx
+		const zoomEnd = Math.min((h - 80) / Math.max(towerHeightPx, 1), zoomStart);
+
+		let lastMilestoneLabel: string | null = null;
 		let lastMilestoneIdx = -1;
+		let milestoneFlashUntil = 0;
 
 		function tick(now: number) {
 			const elapsed = now - startTime;
@@ -95,40 +179,58 @@
 
 			// 3-phase easing: slow → fast → slow
 			let eased: number;
-			if (t < 0.1) {
-				// Very slow start — see individual dots
-				const local = t / 0.1;
-				eased = 0.015 * (local * local);
-			} else if (t < 0.6) {
-				// Accelerate
-				const local = (t - 0.1) / 0.5;
-				eased = 0.015 + 0.685 * local;
+			if (t < 0.08) {
+				const local = t / 0.08;
+				eased = 0.01 * (local * local);
+			} else if (t < 0.55) {
+				const local = (t - 0.08) / 0.47;
+				eased = 0.01 + 0.69 * local;
 			} else {
-				// Decelerate to landing
-				const local = (t - 0.6) / 0.4;
+				const local = (t - 0.55) / 0.45;
 				eased = 0.7 + 0.3 * (1 - Math.pow(1 - local, 3));
 			}
 
+			const grainsFilled = Math.round(eased * totalGrains);
 			currentTokens = Math.round(eased * totalTokens);
-			currentDots = Math.round(eased * totalDots);
+
+			// Zoom: interpolate from zoomStart to zoomEnd, using eased progress
+			// Use sqrt of eased so zoom starts slow then accelerates
+			const zoomProgress = Math.sqrt(eased);
+			const zoom = zoomStart + (zoomEnd - zoomStart) * zoomProgress;
+
+			// Render
+			render(ctx, w, h, grainsFilled, zoom);
 
 			// Check milestones
 			const currentIdx = MILESTONES.findLastIndex(m => currentTokens >= m.tokens);
 			if (currentIdx > lastMilestoneIdx && currentIdx >= 0) {
 				lastMilestoneIdx = currentIdx;
-				lastPassedMilestone = MILESTONES[currentIdx].label;
-				if (flashTimeoutId) clearTimeout(flashTimeoutId);
-				milestoneFlash = true;
-				flashTimeoutId = setTimeout(() => milestoneFlash = false, 800);
+				lastMilestoneLabel = MILESTONES[currentIdx].label;
+				milestoneFlashUntil = now + 800;
+			}
+
+			// Draw milestone flash overlay text
+			if (lastMilestoneLabel && now < milestoneFlashUntil) {
+				const flashAlpha = (milestoneFlashUntil - now) / 800;
+				const flashScale = 1 + (1 - flashAlpha) * 0.3;
+				ctx.save();
+				ctx.font = `bold 16px monospace`;
+				ctx.fillStyle = `rgba(255, 102, 0, ${flashAlpha})`;
+				ctx.textAlign = 'center';
+				ctx.textBaseline = 'top';
+				ctx.translate(w / 2, 60);
+				ctx.scale(flashScale, flashScale);
+				ctx.fillText(`◄ ${lastMilestoneLabel.toUpperCase()}`, 0, 0);
+				ctx.restore();
 			}
 
 			if (t < 1) {
 				animFrameId = requestAnimationFrame(tick);
 			} else {
+				// Final frame
 				currentTokens = totalTokens;
-				currentDots = totalDots;
-				phase = 'zoomout';
-				setTimeout(() => { phase = 'final'; }, 1000);
+				render(ctx, w, h, totalGrains, zoomEnd);
+				animationDone = true;
 			}
 		}
 
@@ -138,36 +240,49 @@
 	function skipToFinal() {
 		if (animFrameId) cancelAnimationFrame(animFrameId);
 		currentTokens = totalTokens;
-		currentDots = totalDots;
-		phase = 'final';
+		animationDone = true;
+
+		if (!canvas) return;
+		const c = canvas;
+		const ctx = c.getContext('2d')!;
+
+		const dpr = window.devicePixelRatio || 1;
+		const rect = c.getBoundingClientRect();
+		const w = rect.width;
+		const h = rect.height;
+		c.width = w * dpr;
+		c.height = h * dpr;
+
+		const zoomEnd = Math.min((h - 80) / Math.max(towerHeightPx, 1), 20);
+		render(ctx, w, h, totalGrains, zoomEnd);
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
-			if (phase === 'final') onclose();
+			if (animationDone) onclose();
 			else skipToFinal();
 		}
 		if (e.key === ' ') {
 			e.preventDefault();
-			if (phase !== 'final') skipToFinal();
+			if (!animationDone) skipToFinal();
 		}
 	}
 
 	onMount(() => {
 		document.addEventListener('keydown', handleKeydown);
-		setTimeout(startAnimation, 400);
+		// Small delay for overlay fade-in, then start
+		setTimeout(startAnimation, 500);
 	});
 
 	onDestroy(() => {
 		if (animFrameId) cancelAnimationFrame(animFrameId);
-		if (flashTimeoutId) clearTimeout(flashTimeoutId);
 		document.removeEventListener('keydown', handleKeydown);
 	});
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="overlay" onclick={phase === 'final' ? onclose : skipToFinal}>
+<div class="overlay" onclick={animationDone ? onclose : skipToFinal}>
 	<div class="visualizer" onclick={(e) => e.stopPropagation()}>
 		<!-- Header -->
 		<div class="viz-header">
@@ -177,88 +292,30 @@
 
 		{#if totalTokens === 0}
 			<div class="empty-state">No tokens yet — start a Claude session to begin your journey!</div>
-
-		{:else if phase === 'stacking'}
-			<!-- ── Phase 1: Zoomed-in single column stacking ──── -->
-			<div class="stacking-view">
-				<!-- Dot column -->
-				<div class="dot-column">
-					{#each viewportDots as row}
-						<div class="dot-row">
-							{#if row.dot}
-								<span class="grain">·</span>
-							{:else}
-								<span class="grain empty"> </span>
-							{/if}
-							{#if row.milestone}
-								<span class="row-milestone">◄ {row.milestone.label}</span>
-							{/if}
-						</div>
-					{/each}
-					<div class="ground-line">─</div>
-				</div>
-
-				<!-- Stats -->
-				<div class="stacking-stats">
-					<div class="token-count-sm">{formatTokenCount(currentTokens)}</div>
-					<div class="stat-label">tokens</div>
-					<div class="height-sm">{formatHeight(currentHeight)}</div>
-					<div class="stat-label">height</div>
-
-					{#if lastPassedMilestone}
-						<div class="milestone-flash" class:flash={milestoneFlash}>
-							{lastPassedMilestone}
-						</div>
-					{/if}
-
-					<div class="milestone-track">
-						{#each MILESTONES as m}
-							<span class="track-dot" class:reached={currentTokens >= m.tokens}>
-								{currentTokens >= m.tokens ? '●' : '○'}
-							</span>
-						{/each}
-					</div>
-				</div>
-			</div>
-
-		{:else if phase === 'zoomout'}
-			<!-- ── Phase 2: Zoom-out transition ────────────────── -->
-			<div class="zoomout-view">
-				<div class="zoomout-text">ZOOMING OUT</div>
-			</div>
-
 		{:else}
-			<!-- ── Phase 3: Final full tower view ──────────────── -->
-			<div class="final-view">
-				<!-- Tower bar with milestone rulers -->
-				<div class="tower-area">
-					<div class="tower-container" style="height: {TOWER_HEIGHT}px">
-						<div class="tower-bar"></div>
-						{#each milestoneMarkers as m}
-							<div class="tower-milestone" style="bottom: {m.pct}%">
-								<span class="tm-line"></span>
-								<span class="tm-label">{m.label}</span>
-								<span class="tm-height">{m.height}</span>
-							</div>
-						{/each}
-					</div>
-				</div>
+			<!-- Canvas area -->
+			<canvas class="journey-canvas" bind:this={canvas}></canvas>
 
-				<!-- Final stats -->
-				<div class="final-stats">
-					<div class="rice-icon">🍚</div>
-					<div class="final-count">{formatTokenCount(totalTokens)}</div>
-					<div class="stat-label">tokens stacked</div>
-					<div class="final-height">{formatHeight(tokensToHeight(totalTokens))}</div>
-					<div class="stat-label">rice stack height</div>
-					{#if reached}
-						<div class="final-reached">Past {reached.label}!</div>
-					{/if}
+			<!-- Bottom stats bar -->
+			<div class="stats-bar">
+				<div class="stat-group">
+					<span class="stat-icon">🍚</span>
+					<span class="stat-value">{formatTokenCount(currentTokens)}</span>
+					<span class="stat-label">tokens</span>
 				</div>
+				<div class="stat-group">
+					<span class="stat-value-alt">{formatHeight(currentHeight)}</span>
+					<span class="stat-label">rice stack</span>
+				</div>
+				{#if reached}
+					<div class="stat-group">
+						<span class="stat-reached">Past {reached.label}!</span>
+					</div>
+				{/if}
 			</div>
 		{/if}
 
-		{#if phase !== 'final'}
+		{#if !animationDone}
 			<div class="skip-hint">PRESS SPACE TO SKIP</div>
 		{:else if totalTokens > 0}
 			<div class="skip-hint">PRESS ESC TO CLOSE</div>
@@ -287,10 +344,12 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: var(--space-lg);
-		padding: var(--space-xl);
-		max-width: 700px;
+		gap: var(--space-md);
+		padding: var(--space-lg);
 		width: 100%;
+		height: 100%;
+		max-width: 800px;
+		max-height: 600px;
 	}
 
 	.viz-header {
@@ -298,6 +357,7 @@
 		align-items: center;
 		justify-content: space-between;
 		width: 100%;
+		flex-shrink: 0;
 	}
 
 	.viz-title {
@@ -325,75 +385,45 @@
 		border-color: var(--text-primary);
 	}
 
-	/* ── Phase 1: Stacking ───────────────── */
-	.stacking-view {
+	/* ── Canvas ──────────────────────────── */
+	.journey-canvas {
+		flex: 1;
+		width: 100%;
+		min-height: 0;
+	}
+
+	/* ── Stats bar ───────────────────────── */
+	.stats-bar {
 		display: flex;
 		gap: var(--space-xl);
 		align-items: center;
 		justify-content: center;
-		width: 100%;
-		animation: fadeIn 0.3s ease-out;
-	}
-
-	.dot-column {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
 		flex-shrink: 0;
+		width: 100%;
+		padding: var(--space-sm) 0;
+		border-top: 1px solid var(--border-default);
 	}
 
-	.dot-row {
+	.stat-group {
 		display: flex;
-		align-items: center;
-		height: 14px;
-		line-height: 14px;
-	}
-
-	.grain {
-		font-family: var(--font-mono);
-		font-size: 18px;
-		color: var(--accent-amber);
-		width: 12px;
-		text-align: center;
-		text-shadow: 0 0 4px var(--status-permission-glow);
-	}
-
-	.grain.empty {
-		color: transparent;
-		text-shadow: none;
-	}
-
-	.row-milestone {
-		font-family: var(--font-mono);
-		font-size: 11px;
-		color: var(--text-primary);
-		text-transform: uppercase;
-		margin-left: 8px;
-		white-space: nowrap;
-		animation: fadeIn 0.3s ease-out;
-	}
-
-	.ground-line {
-		font-family: var(--font-mono);
-		font-size: 14px;
-		color: var(--border-default);
-		width: 12px;
-		text-align: center;
-	}
-
-	.stacking-stats {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
+		align-items: baseline;
 		gap: var(--space-sm);
-		min-width: 140px;
 	}
 
-	.token-count-sm {
+	.stat-icon { font-size: 18px; }
+
+	.stat-value {
 		font-family: var(--font-pixel);
-		font-size: 36px;
+		font-size: 28px;
 		color: var(--accent-amber);
-		text-shadow: 0 0 20px var(--status-permission-glow);
+		text-shadow: 0 0 15px var(--status-permission-glow);
+		line-height: 1;
+	}
+
+	.stat-value-alt {
+		font-family: var(--font-pixel);
+		font-size: 22px;
+		color: var(--text-primary);
 		line-height: 1;
 	}
 
@@ -405,184 +435,11 @@
 		letter-spacing: 0.1em;
 	}
 
-	.height-sm {
-		font-family: var(--font-pixel);
-		font-size: 20px;
-		color: var(--text-primary);
-		margin-top: var(--space-sm);
-	}
-
-	.milestone-flash {
-		font-family: var(--font-pixel);
-		font-size: 13px;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-primary);
-		min-height: 18px;
-		margin-top: var(--space-md);
-		text-align: center;
-		transition: opacity 0.3s;
-	}
-
-	.milestone-flash.flash {
-		color: var(--accent-amber);
-		text-shadow: 0 0 10px var(--status-permission-glow);
-		animation: milestoneFlash 0.8s ease-out;
-	}
-
-	@keyframes milestoneFlash {
-		0% { transform: scale(1.4); opacity: 1; }
-		100% { transform: scale(1); opacity: 0.8; }
-	}
-
-	.milestone-track {
-		display: flex;
-		gap: 4px;
-		align-items: center;
-		margin-top: var(--space-sm);
-	}
-
-	.track-dot {
-		font-size: 6px;
-		color: var(--border-default);
-		transition: color 0.3s;
-	}
-
-	.track-dot.reached { color: var(--accent-amber); }
-
-	/* ── Phase 2: Zoom-out ───────────────── */
-	.zoomout-view {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		min-height: 400px;
-		animation: shrinkDown 1s ease-in-out;
-	}
-
-	.zoomout-text {
+	.stat-reached {
 		font-family: var(--font-pixel);
 		font-size: 14px;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.2em;
-		animation: blink 0.5s infinite;
-	}
-
-	@keyframes shrinkDown {
-		0% { transform: scaleY(1) scaleX(1); opacity: 1; }
-		50% { transform: scaleY(0.5) scaleX(1.2); opacity: 0.4; }
-		100% { transform: scaleY(1) scaleX(1); opacity: 1; }
-	}
-
-	/* ── Phase 3: Final tower view ───────── */
-	.final-view {
-		display: flex;
-		gap: var(--space-xl);
-		align-items: stretch;
-		justify-content: center;
-		width: 100%;
-		animation: revealIn 0.8s ease-out;
-	}
-
-	@keyframes revealIn {
-		from { opacity: 0; transform: scale(0.85); }
-		to { opacity: 1; transform: scale(1); }
-	}
-
-	.tower-area {
-		display: flex;
-		align-items: flex-end;
-		flex-shrink: 0;
-	}
-
-	.tower-container {
-		position: relative;
-		width: 40px;
-	}
-
-	.tower-bar {
-		position: absolute;
-		bottom: 0;
-		left: 0;
-		right: 0;
-		height: 100%;
-		background: linear-gradient(
-			to top,
-			var(--accent-amber),
-			color-mix(in srgb, var(--accent-amber) 40%, transparent)
-		);
-		border: 1px solid var(--accent-amber);
-		animation: towerGrow 0.8s ease-out;
-		transform-origin: bottom;
-	}
-
-	@keyframes towerGrow {
-		from { transform: scaleY(0); }
-		to { transform: scaleY(1); }
-	}
-
-	.tower-milestone {
-		position: absolute;
-		left: calc(100% + 8px);
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		white-space: nowrap;
-		transform: translateY(50%);
-	}
-
-	.tm-line {
-		display: block;
-		width: 10px;
-		height: 1px;
-		background: var(--border-default);
-	}
-
-	.tm-label {
-		font-family: var(--font-mono);
-		font-size: 10px;
-		color: var(--text-primary);
-		text-transform: uppercase;
-	}
-
-	.tm-height {
-		font-family: var(--font-mono);
-		font-size: 9px;
-		color: var(--text-muted);
-	}
-
-	.final-stats {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: var(--space-sm);
-		min-width: 160px;
-	}
-
-	.rice-icon { font-size: 32px; }
-
-	.final-count {
-		font-family: var(--font-pixel);
-		font-size: 48px;
-		color: var(--accent-amber);
-		text-shadow: 0 0 30px var(--status-permission-glow);
-		line-height: 1;
-	}
-
-	.final-height {
-		font-family: var(--font-pixel);
-		font-size: 28px;
-		color: var(--text-primary);
-		margin-top: var(--space-sm);
-	}
-
-	.final-reached {
-		font-family: var(--font-pixel);
-		font-size: 16px;
 		color: var(--accent-amber);
 		text-transform: uppercase;
-		margin-top: var(--space-md);
 	}
 
 	/* ── Shared ──────────────────────────── */
@@ -602,6 +459,7 @@
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
 		animation: blink 2s infinite;
+		flex-shrink: 0;
 	}
 
 	@keyframes blink {
