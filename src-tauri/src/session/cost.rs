@@ -93,6 +93,8 @@ pub struct SessionCostRecord {
     pub project_name: String,
     pub model: String,        // primary model (highest cost)
     pub cost: f64,
+    #[serde(default)]
+    pub total_tokens: u64,    // input_tokens + output_tokens
     pub timestamp: String,    // ISO 8601 — earliest assistant message
     pub date: String,         // "2026-02-28" derived from timestamp
 }
@@ -102,6 +104,7 @@ pub struct SessionCostRecord {
 #[serde(rename_all = "camelCase")]
 pub struct CostData {
     pub total_cost: f64,
+    pub total_tokens: u64,
     pub daily_costs: Vec<DailyCost>,
     pub project_costs: Vec<ProjectCost>,
     pub model_costs: Vec<ModelCost>,
@@ -196,6 +199,7 @@ fn scan_file(path: &std::path::Path) -> Vec<SessionCostRecord> {
             // Sum cost per model within this session
             let mut cost_by_model: HashMap<String, f64> = HashMap::new();
             let mut total_cost = 0.0;
+            let mut total_tokens: u64 = 0;
             let mut earliest_ts = entries[0].timestamp.clone();
             let mut cwd = entries[0].cwd.clone();
 
@@ -208,6 +212,7 @@ fn scan_file(path: &std::path::Path) -> Vec<SessionCostRecord> {
                     e.cache_read_input_tokens,
                 );
                 total_cost += c;
+                total_tokens += e.input_tokens + e.output_tokens;
                 *cost_by_model.entry(e.model.clone()).or_default() += c;
                 if e.timestamp < earliest_ts {
                     earliest_ts = e.timestamp.clone();
@@ -230,6 +235,7 @@ fn scan_file(path: &std::path::Path) -> Vec<SessionCostRecord> {
                 project_name: project_name_from_path(&cwd),
                 model: primary_model,
                 cost: total_cost,
+                total_tokens,
                 timestamp: earliest_ts.clone(),
                 date: date_from_timestamp(&earliest_ts),
             })
@@ -357,6 +363,7 @@ pub fn get_cost_data() -> Result<CostData, String> {
 /// Aggregate flat session records into the CostData structure.
 fn aggregate(sessions: &[SessionCostRecord]) -> CostData {
     let total_cost: f64 = sessions.iter().map(|s| s.cost).sum();
+    let total_tokens: u64 = sessions.iter().map(|s| s.total_tokens).sum();
 
     // --- Daily costs (sorted newest first) ---
     let mut by_date: HashMap<String, Vec<SessionCostRecord>> = HashMap::new();
@@ -410,7 +417,7 @@ fn aggregate(sessions: &[SessionCostRecord]) -> CostData {
         .collect();
     model_costs.sort_by(|a, b| b.cost.partial_cmp(&a.cost).unwrap_or(std::cmp::Ordering::Equal));
 
-    CostData { total_cost, daily_costs, project_costs, model_costs }
+    CostData { total_cost, total_tokens, daily_costs, project_costs, model_costs }
 }
 
 #[cfg(test)]
@@ -479,5 +486,33 @@ mod tests {
     fn test_parse_usage_line_no_usage_returns_none() {
         let line = r#"{"type":"assistant","message":{"model":"claude-sonnet-4-6","role":"assistant","id":"m1","content":[]}}"#;
         assert!(parse_usage_line(line).is_none());
+    }
+
+    #[test]
+    fn test_aggregate_includes_total_tokens() {
+        let sessions = vec![
+            SessionCostRecord {
+                session_id: "s1".into(),
+                project: "/tmp/a".into(),
+                project_name: "a".into(),
+                model: "claude-sonnet-4-6".into(),
+                cost: 1.0,
+                total_tokens: 5000,
+                timestamp: "2026-03-14T10:00:00Z".into(),
+                date: "2026-03-14".into(),
+            },
+            SessionCostRecord {
+                session_id: "s2".into(),
+                project: "/tmp/a".into(),
+                project_name: "a".into(),
+                model: "claude-sonnet-4-6".into(),
+                cost: 2.0,
+                total_tokens: 8000,
+                timestamp: "2026-03-14T11:00:00Z".into(),
+                date: "2026-03-14".into(),
+            },
+        ];
+        let data = aggregate(&sessions);
+        assert_eq!(data.total_tokens, 13000);
     }
 }

@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { getCostData } from '$lib/api';
 	import type { CostData } from '$lib/types';
+	import TokenDistanceVisualizer from './token-distance/TokenDistanceVisualizer.svelte';
 
 	type TimeScale = 'daily' | 'weekly' | 'monthly';
 
@@ -23,6 +24,7 @@
 	let dropdownOpen = $state(false);
 	let hoveredBucket = $state<string | null>(null);
 	let expandedProjects = $state<Set<string>>(new Set());
+	let showVisualizer = $state(false);
 
 	// ── Helpers ──────────────────────────────────────────────────────
 	function formatCost(n: number): string {
@@ -383,6 +385,9 @@
 		<span class="section-title">COST TRACKER</span>
 		{#if costData}
 			<span class="section-total">{formatCost(filteredTotalCost)}</span>
+			<button class="distance-btn" onclick={() => showVisualizer = true}>
+				DISTANCE
+			</button>
 		{/if}
 		<div class="scale-dropdown" onclick={(e) => e.stopPropagation()}>
 			<button class="scale-trigger" onclick={() => dropdownOpen = !dropdownOpen}>
@@ -537,6 +542,21 @@
 			</div>
 		</div>
 	{/if}
+{#if showVisualizer && costData}
+	<TokenDistanceVisualizer
+		totalTokens={costData.totalTokens}
+		dateRange={(() => {
+			const dates = costData.dailyCosts.map(d => d.date).sort();
+			if (dates.length === 0) return '';
+			const fmt = (d: string) => {
+				const dt = new Date(d + 'T00:00:00');
+				return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
+			};
+			return `${fmt(dates[0])} – ${fmt(dates[dates.length - 1])}`;
+		})()}
+		onclose={() => showVisualizer = false}
+	/>
+{/if}
 </div>
 
 <style>
@@ -1009,6 +1029,25 @@
 	.option-btn:hover {
 		color: var(--text-primary);
 		background: rgba(255, 255, 255, 0.1);
+	}
+
+	.distance-btn {
+		font-family: var(--font-pixel);
+		font-size: 11px;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--accent-amber);
+		background: none;
+		border: 1px solid var(--accent-amber);
+		padding: 2px 8px;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+		margin-left: auto;
+	}
+
+	.distance-btn:hover {
+		background: var(--accent-amber);
+		color: var(--bg-base);
 	}
 
 </style>
