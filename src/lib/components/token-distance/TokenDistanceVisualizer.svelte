@@ -49,7 +49,10 @@
 	function render(ctx: CanvasRenderingContext2D, w: number, h: number, grainsFilled: number, zoom: number, followTop: number) {
 		const dpr = window.devicePixelRatio || 1;
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-		ctx.clearRect(0, 0, w, h);
+
+		// Black background (so PNG export isn't transparent)
+		ctx.fillStyle = BG;
+		ctx.fillRect(0, 0, w, h);
 
 		const filledRows = Math.ceil(grainsFilled / GRAINS_PER_ROW);
 
@@ -170,6 +173,14 @@
 		}
 
 		ctx.textAlign = 'left'; // reset
+
+		// Watermark
+		ctx.font = '10px monospace';
+		ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'bottom';
+		ctx.fillText('generated with c9watch', w / 2, h - 8);
+		ctx.textAlign = 'left';
 	}
 
 	// ── Animation ────────────────────────────────────────────────
