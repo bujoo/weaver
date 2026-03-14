@@ -88,3 +88,29 @@ Track your Claude Code spending across all sessions with three views:
 Costs are computed by parsing assistant message metadata from JSONL files, using per-model pricing tables. Results are cached by file modification time so unchanged sessions aren't re-scanned.
 
 ![Cost tracker dashboard showing daily, per-project, and per-model spending](/screenshots/cost-tab.png)
+
+## Token distance visualizer
+
+Ever wonder how much your token usage would look like in the physical world? The token distance visualizer converts your total tokens into a rice stack — one token equals one grain of rice (5mm tall) — and animates grains stacking up past 17 real-world landmarks.
+
+Milestones range from a two-story house to the Moon, with everything from the Eiffel Tower, Taipei 101, and Mount Everest in between. The animation uses a 3-phase easing with continuous camera zoom-out as the stack grows.
+
+Click **SHARE** to open the native macOS share sheet, or export an Instagram-ready PNG (1080×1350) with your stats and c9watch watermark.
+
+![Token distance visualizer showing a rice stack past Burj Khalifa with landmark milestones](/screenshots/token-distance-visualizer.png)
+
+## Memory viewer
+
+Browse all your Claude Code memory files in a two-panel layout. The left panel lists all memory files organized by project, and the right panel shows the full content of the selected file.
+
+Quick access to Claude commands lets you jump into sessions directly from the memory view.
+
+![Memory tab with two-panel viewer showing project memory files](/screenshots/memory-tab.png)
+
+## FDA permission banner
+
+On macOS, c9watch needs Full Disk Access to read the working directory of Claude Code processes. If sessions are found but their paths can't be read, a dismissible banner appears with a direct link to System Settings > Privacy > Full Disk Access.
+
+## Debug console
+
+Press `Cmd+Shift+D` to open a hidden diagnostic panel that shows real-time detection logs — how many processes were found, which sessions matched, and which ones didn't. Useful for troubleshooting when sessions aren't appearing in the dashboard.

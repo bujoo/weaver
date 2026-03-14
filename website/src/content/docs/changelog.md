@@ -5,6 +5,29 @@ description: All notable changes to c9watch.
 
 All notable changes to c9watch are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.0 — 2026-03-14
+
+### Added
+
+- Memory tab with two-panel viewer for browsing Claude Code memory files and Claude command integration ([#41](https://github.com/minchenlee/c9watch/pull/41))
+- Token distance visualizer — animated rice stack overlay with 17 real-world landmarks, native share sheet, and Instagram-ready PNG export ([#62](https://github.com/minchenlee/c9watch/pull/62))
+- FDA permission banner — heuristic detection when Full Disk Access is missing, with deep-link to System Settings ([#48](https://github.com/minchenlee/c9watch/pull/48))
+- Debug console (`Cmd+Shift+D`) — hidden panel showing real-time diagnostic logs for troubleshooting session detection ([#48](https://github.com/minchenlee/c9watch/pull/48))
+- Custom title and ACTIVE badge display in history tab ([#52](https://github.com/minchenlee/c9watch/pull/52))
+- Multi-word AND search in history — search terms are combined with AND logic for more precise results ([#51](https://github.com/minchenlee/c9watch/pull/51))
+- List item numbers in history session rows ([#50](https://github.com/minchenlee/c9watch/pull/50))
+- Restore minimized terminal windows when clicking Open on a session ([#49](https://github.com/minchenlee/c9watch/pull/49))
+- Thinking toggle restored in conversation preview ([#45](https://github.com/minchenlee/c9watch/pull/45))
+- Product website at c9watch.mclee.dev ([#42](https://github.com/minchenlee/c9watch/pull/42))
+- Website migrated to Starlight documentation framework ([#54](https://github.com/minchenlee/c9watch/pull/54))
+
+### Fixed
+
+- Path encoding mismatch — dots in directory names now correctly encoded as dashes for session matching ([#57](https://github.com/minchenlee/c9watch/pull/57))
+- Path encoding aligned with Claude Code's algorithm — all non-alphanumeric characters replaced with dashes ([#48](https://github.com/minchenlee/c9watch/pull/48))
+- Sliding window rendering for large conversations — prevents DOM overload ([#53](https://github.com/minchenlee/c9watch/pull/53))
+- Cloudflare Workers deploy configuration for website ([#43](https://github.com/minchenlee/c9watch/pull/43))
+
 ## 0.4.0 — 2026-03-01
 
 ### Added
