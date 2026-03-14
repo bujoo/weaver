@@ -6,6 +6,8 @@
 
 	let canvas = $state<HTMLCanvasElement | null>(null);
 	let animationDone = $state(false);
+	let showIntro = $state(true);
+	let introVisible = $state(false);
 	let currentTokens = $state(0);
 	let animFrameId: number | null = null;
 
@@ -132,21 +134,6 @@
 			ctx.fillText(heightStr, lineStartX + 16 + labelWidth + 8, markerY);
 		}
 
-		// Draw the top-of-stack indicator (a small glowing line)
-		if (grainsFilled > 0) {
-			const topY = towerBaseY - filledRows * scaledGrainSize;
-			if (topY > -10 && topY < h) {
-				ctx.strokeStyle = AMBER;
-				ctx.lineWidth = 1;
-				ctx.shadowColor = AMBER;
-				ctx.shadowBlur = 6;
-				ctx.beginPath();
-				ctx.moveTo(towerBaseX, topY);
-				ctx.lineTo(towerBaseX + scaledTowerWidth, topY);
-				ctx.stroke();
-				ctx.shadowBlur = 0;
-			}
-		}
 	}
 
 	// ── Animation ────────────────────────────────────────────────
@@ -249,6 +236,7 @@
 
 	function skipToFinal() {
 		if (animFrameId) cancelAnimationFrame(animFrameId);
+		showIntro = false;
 		currentTokens = totalTokens;
 		animationDone = true;
 
@@ -280,8 +268,15 @@
 
 	onMount(() => {
 		document.addEventListener('keydown', handleKeydown);
-		// Small delay for overlay fade-in, then start
-		setTimeout(startAnimation, 500);
+		// Show intro text, then start stacking
+		setTimeout(() => { introVisible = true; }, 300);
+		setTimeout(() => {
+			introVisible = false;
+			setTimeout(() => {
+				showIntro = false;
+				startAnimation();
+			}, 600);
+		}, 2800);
 	});
 
 	onDestroy(() => {
@@ -302,6 +297,16 @@
 
 		{#if totalTokens === 0}
 			<div class="empty-state">No tokens yet — start a Claude session to begin your journey!</div>
+		{:else if showIntro}
+			<!-- Intro text -->
+			<div class="intro-container">
+				<p class="intro-text" class:visible={introVisible}>
+					If every token were a grain of rice...
+				</p>
+				<p class="intro-text sub" class:visible={introVisible}>
+					here is what your stack looks like.
+				</p>
+			</div>
 		{:else}
 			<!-- Canvas area -->
 			<canvas class="journey-canvas" bind:this={canvas}></canvas>
@@ -453,6 +458,38 @@
 	}
 
 	/* ── Shared ──────────────────────────── */
+	/* ── Intro text ─────────────────────── */
+	.intro-container {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-md);
+	}
+
+	.intro-text {
+		font-family: var(--font-pixel);
+		font-size: 20px;
+		color: var(--text-primary);
+		text-align: center;
+		opacity: 0;
+		transform: translateY(10px);
+		transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+		margin: 0;
+	}
+
+	.intro-text.visible {
+		opacity: 1;
+		transform: translateY(0);
+	}
+
+	.intro-text.sub {
+		font-size: 16px;
+		color: var(--accent-amber);
+		transition-delay: 0.4s;
+	}
+
 	.empty-state {
 		font-family: var(--font-mono);
 		font-size: 13px;
