@@ -6,10 +6,9 @@
 	let { totalTokens, onclose }: { totalTokens: number; onclose: () => void } = $props();
 
 	// ── Animation phases ─────────────────────────────────────────
-	// Phase 1: "stacking" — zoomed in, grains appear, viewport scrolls up
-	// Phase 2: "zoomout"  — transition to zoomed-out full-stack view
-	// Phase 3: "final"    — static final view with height markers
-
+	// stacking: zoomed in, single column of dots growing upward
+	// zoomout:  brief transition
+	// final:    zoomed-out full tower with height markers
 	type Phase = 'stacking' | 'zoomout' | 'final';
 	let phase = $state<Phase>('stacking');
 
@@ -19,70 +18,47 @@
 	let flashTimeoutId: ReturnType<typeof setTimeout> | null = null;
 	let animFrameId: number | null = null;
 
-	// ── Stacking phase state ─────────────────────────────────────
-	// The viewport shows VIEWPORT_ROWS rows of COLS width.
-	// The total stack can be much taller — we track the scroll offset.
-	const COLS = 30;
-	const VIEWPORT_ROWS = 20;
+	// ── Stacking phase ───────────────────────────────────────────
+	// Each dot = `scale` tokens. The viewport shows VISIBLE_DOTS rows.
+	// Total dots = totalTokens / scale.
+	const VISIBLE_DOTS = 30; // how many dots visible at once in the viewport
 
-	// Total rows needed = totalTokens / COLS (each row = COLS grains)
-	// We render a sliding window of VIEWPORT_ROWS from the top of the fill.
-	let filledGrains = $state(0);
+	// Scale: how many tokens per dot. Aim for ~2000 total dots so animation looks good.
+	const scale = $derived(Math.max(1, Math.ceil(totalTokens / 2000)));
+	const totalDots = $derived(Math.ceil(totalTokens / scale));
+	let currentDots = $state(0);
 
-	const totalRows = $derived(Math.ceil(totalTokens / COLS));
-	const filledRows = $derived(Math.ceil(filledGrains / COLS));
-	const topPartialCount = $derived(filledGrains % COLS);
-
-	// The viewport shows rows around the current fill line
-	const viewportLines = $derived.by((): string[] => {
+	// The viewport is a sliding window showing VISIBLE_DOTS rows.
+	// We always show the top of the stack (where new dots are landing).
+	const viewportDots = $derived.by((): Array<{ dot: boolean; milestone: Milestone | null }> => {
 		if (phase !== 'stacking' || totalTokens === 0) return [];
 
-		const lines: string[] = [];
-		// Show VIEWPORT_ROWS rows, with the fill-line near the top (row 3-4)
-		const fillRow = filledRows; // 1-indexed: row where grains are being added
-		const viewTop = Math.max(0, fillRow - 3); // scroll so fill is near top
+		const rows: Array<{ dot: boolean; milestone: Milestone | null }> = [];
+		// viewport top = currentDots, viewport bottom = currentDots - VISIBLE_DOTS
+		const viewBottom = Math.max(0, currentDots - VISIBLE_DOTS);
 
-		for (let i = 0; i < VIEWPORT_ROWS; i++) {
-			const rowIdx = viewTop + VIEWPORT_ROWS - 1 - i; // top-down rendering
+		for (let i = VISIBLE_DOTS - 1; i >= 0; i--) {
+			const dotIdx = viewBottom + i; // which dot position (0 = ground)
+			const tokensAtDot = dotIdx * scale;
+			const isFilled = dotIdx < currentDots;
 
-			// Check if a milestone lands at this row
-			const milestoneAtRow = MILESTONES.find(m => {
-				const mRow = Math.ceil(m.tokens / COLS);
-				return mRow === rowIdx && currentTokens >= m.tokens;
-			});
+			// Check if a milestone lands at this dot position
+			const milestone = MILESTONES.find(m => {
+				const mDot = Math.ceil(m.tokens / scale);
+				return mDot === dotIdx && currentTokens >= m.tokens;
+			}) ?? null;
 
-			let content: string;
-			if (rowIdx > filledRows) {
-				// Above fill — empty
-				content = ' '.repeat(COLS);
-			} else if (rowIdx === filledRows && topPartialCount > 0) {
-				// Partially filled top row
-				content = '·'.repeat(topPartialCount) + ' '.repeat(COLS - topPartialCount);
-			} else if (rowIdx <= filledRows && rowIdx > 0) {
-				// Fully filled row
-				content = '·'.repeat(COLS);
-			} else {
-				content = ' '.repeat(COLS);
-			}
-
-			const marker = milestoneAtRow ? ` ◄ ${milestoneAtRow.label}` : '';
-			lines.push(`│${content}│${marker}`);
+			rows.push({ dot: isFilled, milestone });
 		}
 
-		// Ground line at bottom (only if we can see the ground)
-		if (viewTop <= 0) {
-			lines[lines.length - 1] = `└${'─'.repeat(COLS)}┘`;
-		}
-
-		return lines;
+		return rows;
 	});
 
-	// ── Zoom-out phase: full stack with milestone rulers ──────────
+	// ── Final phase ──────────────────────────────────────────────
 	const reached = $derived(getCurrentMilestone(totalTokens));
 	const passedMilestones = $derived(MILESTONES.filter(m => totalTokens >= m.tokens));
 
-	// For the zoomed-out view, we show a compact bar with milestone markers
-	const ZOOMOUT_HEIGHT = 300; // px height of the zoomed-out bar
+	const TOWER_HEIGHT = 320; // px
 	const milestoneMarkers = $derived.by((): Array<{ label: string; pct: number; height: string }> => {
 		if (totalTokens === 0) return [];
 		return passedMilestones.map(m => ({
@@ -109,32 +85,32 @@
 			return;
 		}
 
-		const stackDuration = 4500; // ms for stacking phase
+		const duration = 5000;
 		const startTime = performance.now();
 		let lastMilestoneIdx = -1;
 
 		function tick(now: number) {
 			const elapsed = now - startTime;
-			const t = Math.min(elapsed / stackDuration, 1);
+			const t = Math.min(elapsed / duration, 1);
 
 			// 3-phase easing: slow → fast → slow
 			let eased: number;
-			if (t < 0.12) {
-				// Phase A: Very slow start — individual grains visible
-				const local = t / 0.12;
-				eased = 0.02 * (local * local);
-			} else if (t < 0.65) {
-				// Phase B: Accelerate through the middle
-				const local = (t - 0.12) / 0.53;
-				eased = 0.02 + 0.68 * local;
+			if (t < 0.1) {
+				// Very slow start — see individual dots
+				const local = t / 0.1;
+				eased = 0.015 * (local * local);
+			} else if (t < 0.6) {
+				// Accelerate
+				const local = (t - 0.1) / 0.5;
+				eased = 0.015 + 0.685 * local;
 			} else {
-				// Phase C: Decelerate to landing
-				const local = (t - 0.65) / 0.35;
+				// Decelerate to landing
+				const local = (t - 0.6) / 0.4;
 				eased = 0.7 + 0.3 * (1 - Math.pow(1 - local, 3));
 			}
 
 			currentTokens = Math.round(eased * totalTokens);
-			filledGrains = Math.round(eased * totalTokens);
+			currentDots = Math.round(eased * totalDots);
 
 			// Check milestones
 			const currentIdx = MILESTONES.findLastIndex(m => currentTokens >= m.tokens);
@@ -149,14 +125,10 @@
 			if (t < 1) {
 				animFrameId = requestAnimationFrame(tick);
 			} else {
-				// Stacking done — transition to zoom-out
 				currentTokens = totalTokens;
-				filledGrains = totalTokens;
+				currentDots = totalDots;
 				phase = 'zoomout';
-				// After a brief pause, switch to final
-				setTimeout(() => {
-					phase = 'final';
-				}, 1200);
+				setTimeout(() => { phase = 'final'; }, 1000);
 			}
 		}
 
@@ -166,7 +138,7 @@
 	function skipToFinal() {
 		if (animFrameId) cancelAnimationFrame(animFrameId);
 		currentTokens = totalTokens;
-		filledGrains = totalTokens;
+		currentDots = totalDots;
 		phase = 'final';
 	}
 
@@ -207,27 +179,41 @@
 			<div class="empty-state">No tokens yet — start a Claude session to begin your journey!</div>
 
 		{:else if phase === 'stacking'}
-			<!-- ── Phase 1: Zoomed-in stacking ─────────────────── -->
+			<!-- ── Phase 1: Zoomed-in single column stacking ──── -->
 			<div class="stacking-view">
-				<div class="stack-viewport">
-					<pre class="rice-stack">{viewportLines.join('\n')}</pre>
+				<!-- Dot column -->
+				<div class="dot-column">
+					{#each viewportDots as row}
+						<div class="dot-row">
+							{#if row.dot}
+								<span class="grain">·</span>
+							{:else}
+								<span class="grain empty"> </span>
+							{/if}
+							{#if row.milestone}
+								<span class="row-milestone">◄ {row.milestone.label}</span>
+							{/if}
+						</div>
+					{/each}
+					<div class="ground-line">─</div>
 				</div>
 
+				<!-- Stats -->
 				<div class="stacking-stats">
 					<div class="token-count-sm">{formatTokenCount(currentTokens)}</div>
-					<div class="token-label">tokens</div>
-					<div class="height-display-sm">{formatHeight(currentHeight)}</div>
+					<div class="stat-label">tokens</div>
+					<div class="height-sm">{formatHeight(currentHeight)}</div>
+					<div class="stat-label">height</div>
 
 					{#if lastPassedMilestone}
-						<div class="milestone-flash-label" class:flash={milestoneFlash}>
+						<div class="milestone-flash" class:flash={milestoneFlash}>
 							{lastPassedMilestone}
 						</div>
 					{/if}
 
-					<!-- Milestone dot track -->
 					<div class="milestone-track">
 						{#each MILESTONES as m}
-							<span class="dot" class:reached={currentTokens >= m.tokens}>
+							<span class="track-dot" class:reached={currentTokens >= m.tokens}>
 								{currentTokens >= m.tokens ? '●' : '○'}
 							</span>
 						{/each}
@@ -238,24 +224,21 @@
 		{:else if phase === 'zoomout'}
 			<!-- ── Phase 2: Zoom-out transition ────────────────── -->
 			<div class="zoomout-view">
-				<div class="zoomout-text">ZOOMING OUT...</div>
+				<div class="zoomout-text">ZOOMING OUT</div>
 			</div>
 
 		{:else}
-			<!-- ── Phase 3: Final zoomed-out view ──────────────── -->
+			<!-- ── Phase 3: Final full tower view ──────────────── -->
 			<div class="final-view">
-				<!-- Full stack bar with milestone rulers -->
-				<div class="final-stack-area">
-					<div class="final-bar-container" style="height: {ZOOMOUT_HEIGHT}px">
-						<!-- The filled bar -->
-						<div class="final-bar"></div>
-
-						<!-- Milestone markers -->
+				<!-- Tower bar with milestone rulers -->
+				<div class="tower-area">
+					<div class="tower-container" style="height: {TOWER_HEIGHT}px">
+						<div class="tower-bar"></div>
 						{#each milestoneMarkers as m}
-							<div class="final-milestone" style="bottom: {m.pct}%">
-								<span class="final-milestone-line"></span>
-								<span class="final-milestone-label">{m.label}</span>
-								<span class="final-milestone-height">{m.height}</span>
+							<div class="tower-milestone" style="bottom: {m.pct}%">
+								<span class="tm-line"></span>
+								<span class="tm-label">{m.label}</span>
+								<span class="tm-height">{m.height}</span>
 							</div>
 						{/each}
 					</div>
@@ -264,10 +247,10 @@
 				<!-- Final stats -->
 				<div class="final-stats">
 					<div class="rice-icon">🍚</div>
-					<div class="final-token-count">{formatTokenCount(totalTokens)}</div>
-					<div class="token-label">tokens stacked</div>
+					<div class="final-count">{formatTokenCount(totalTokens)}</div>
+					<div class="stat-label">tokens stacked</div>
 					<div class="final-height">{formatHeight(tokensToHeight(totalTokens))}</div>
-					<div class="height-sub">rice stack height</div>
+					<div class="stat-label">rice stack height</div>
 					{#if reached}
 						<div class="final-reached">Past {reached.label}!</div>
 					{/if}
@@ -306,7 +289,7 @@
 		align-items: center;
 		gap: var(--space-lg);
 		padding: var(--space-xl);
-		max-width: 750px;
+		max-width: 700px;
 		width: 100%;
 	}
 
@@ -342,7 +325,7 @@
 		border-color: var(--text-primary);
 	}
 
-	/* ── Phase 1: Stacking view ──────────── */
+	/* ── Phase 1: Stacking ───────────────── */
 	.stacking-view {
 		display: flex;
 		gap: var(--space-xl);
@@ -352,18 +335,50 @@
 		animation: fadeIn 0.3s ease-out;
 	}
 
-	.stack-viewport {
+	.dot-column {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
 		flex-shrink: 0;
-		overflow: hidden;
 	}
 
-	.rice-stack {
+	.dot-row {
+		display: flex;
+		align-items: center;
+		height: 14px;
+		line-height: 14px;
+	}
+
+	.grain {
 		font-family: var(--font-mono);
-		font-size: 12px;
-		line-height: 1.15;
-		white-space: pre;
-		margin: 0;
+		font-size: 18px;
 		color: var(--accent-amber);
+		width: 12px;
+		text-align: center;
+		text-shadow: 0 0 4px var(--status-permission-glow);
+	}
+
+	.grain.empty {
+		color: transparent;
+		text-shadow: none;
+	}
+
+	.row-milestone {
+		font-family: var(--font-mono);
+		font-size: 11px;
+		color: var(--text-primary);
+		text-transform: uppercase;
+		margin-left: 8px;
+		white-space: nowrap;
+		animation: fadeIn 0.3s ease-out;
+	}
+
+	.ground-line {
+		font-family: var(--font-mono);
+		font-size: 14px;
+		color: var(--border-default);
+		width: 12px;
+		text-align: center;
 	}
 
 	.stacking-stats {
@@ -382,22 +397,22 @@
 		line-height: 1;
 	}
 
-	.token-label {
+	.stat-label {
 		font-family: var(--font-mono);
-		font-size: 11px;
+		font-size: 10px;
 		text-transform: uppercase;
 		color: var(--text-muted);
 		letter-spacing: 0.1em;
 	}
 
-	.height-display-sm {
+	.height-sm {
 		font-family: var(--font-pixel);
-		font-size: 18px;
+		font-size: 20px;
 		color: var(--text-primary);
 		margin-top: var(--space-sm);
 	}
 
-	.milestone-flash-label {
+	.milestone-flash {
 		font-family: var(--font-pixel);
 		font-size: 13px;
 		text-transform: uppercase;
@@ -409,7 +424,7 @@
 		transition: opacity 0.3s;
 	}
 
-	.milestone-flash-label.flash {
+	.milestone-flash.flash {
 		color: var(--accent-amber);
 		text-shadow: 0 0 10px var(--status-permission-glow);
 		animation: milestoneFlash 0.8s ease-out;
@@ -427,39 +442,39 @@
 		margin-top: var(--space-sm);
 	}
 
-	.dot {
+	.track-dot {
 		font-size: 6px;
 		color: var(--border-default);
 		transition: color 0.3s;
 	}
 
-	.dot.reached { color: var(--accent-amber); }
+	.track-dot.reached { color: var(--accent-amber); }
 
-	/* ── Phase 2: Zoom-out transition ────── */
+	/* ── Phase 2: Zoom-out ───────────────── */
 	.zoomout-view {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		min-height: 350px;
-		animation: zoomPulse 1.2s ease-in-out;
+		min-height: 400px;
+		animation: shrinkDown 1s ease-in-out;
 	}
 
 	.zoomout-text {
 		font-family: var(--font-pixel);
-		font-size: 16px;
+		font-size: 14px;
 		color: var(--text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.2em;
-		animation: blink 0.6s infinite;
+		animation: blink 0.5s infinite;
 	}
 
-	@keyframes zoomPulse {
-		0% { transform: scale(1); opacity: 1; }
-		50% { transform: scale(0.8); opacity: 0.5; }
-		100% { transform: scale(1); opacity: 1; }
+	@keyframes shrinkDown {
+		0% { transform: scaleY(1) scaleX(1); opacity: 1; }
+		50% { transform: scaleY(0.5) scaleX(1.2); opacity: 0.4; }
+		100% { transform: scaleY(1) scaleX(1); opacity: 1; }
 	}
 
-	/* ── Phase 3: Final zoomed-out view ──── */
+	/* ── Phase 3: Final tower view ───────── */
 	.final-view {
 		display: flex;
 		gap: var(--space-xl);
@@ -470,22 +485,22 @@
 	}
 
 	@keyframes revealIn {
-		from { opacity: 0; transform: scale(0.9); }
+		from { opacity: 0; transform: scale(0.85); }
 		to { opacity: 1; transform: scale(1); }
 	}
 
-	.final-stack-area {
+	.tower-area {
 		display: flex;
 		align-items: flex-end;
 		flex-shrink: 0;
 	}
 
-	.final-bar-container {
+	.tower-container {
 		position: relative;
-		width: 60px;
+		width: 40px;
 	}
 
-	.final-bar {
+	.tower-bar {
 		position: absolute;
 		bottom: 0;
 		left: 0;
@@ -494,19 +509,19 @@
 		background: linear-gradient(
 			to top,
 			var(--accent-amber),
-			color-mix(in srgb, var(--accent-amber) 60%, transparent)
+			color-mix(in srgb, var(--accent-amber) 40%, transparent)
 		);
 		border: 1px solid var(--accent-amber);
-		animation: barGrow 0.8s ease-out;
+		animation: towerGrow 0.8s ease-out;
 		transform-origin: bottom;
 	}
 
-	@keyframes barGrow {
+	@keyframes towerGrow {
 		from { transform: scaleY(0); }
 		to { transform: scaleY(1); }
 	}
 
-	.final-milestone {
+	.tower-milestone {
 		position: absolute;
 		left: calc(100% + 8px);
 		display: flex;
@@ -516,21 +531,21 @@
 		transform: translateY(50%);
 	}
 
-	.final-milestone-line {
+	.tm-line {
 		display: block;
-		width: 12px;
+		width: 10px;
 		height: 1px;
 		background: var(--border-default);
 	}
 
-	.final-milestone-label {
+	.tm-label {
 		font-family: var(--font-mono);
 		font-size: 10px;
 		color: var(--text-primary);
 		text-transform: uppercase;
 	}
 
-	.final-milestone-height {
+	.tm-height {
 		font-family: var(--font-mono);
 		font-size: 9px;
 		color: var(--text-muted);
@@ -547,7 +562,7 @@
 
 	.rice-icon { font-size: 32px; }
 
-	.final-token-count {
+	.final-count {
 		font-family: var(--font-pixel);
 		font-size: 48px;
 		color: var(--accent-amber);
@@ -560,14 +575,6 @@
 		font-size: 28px;
 		color: var(--text-primary);
 		margin-top: var(--space-sm);
-	}
-
-	.height-sub {
-		font-family: var(--font-mono);
-		font-size: 10px;
-		text-transform: uppercase;
-		color: var(--text-muted);
-		letter-spacing: 0.05em;
 	}
 
 	.final-reached {
