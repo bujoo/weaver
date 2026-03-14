@@ -473,10 +473,11 @@
 
 	.viz-header {
 		display: flex;
+		flex-direction: column;
 		align-items: center;
-		justify-content: center;
 		width: 100%;
 		flex-shrink: 0;
+		gap: 4px;
 	}
 
 	.viz-title {
