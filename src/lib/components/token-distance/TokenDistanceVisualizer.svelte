@@ -172,14 +172,6 @@
 		}
 
 		ctx.textAlign = 'left'; // reset
-
-		// Watermark
-		ctx.font = '11px monospace';
-		ctx.fillStyle = 'rgba(255, 102, 0, 0.4)';
-		ctx.textAlign = 'center';
-		ctx.textBaseline = 'bottom';
-		ctx.fillText('generated with c9watch', w / 2, h - 10);
-		ctx.textAlign = 'left';
 	}
 
 	// ── Animation ────────────────────────────────────────────────
@@ -341,6 +333,11 @@
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'top';
 		ctx.fillText('YOUR TOKEN JOURNEY', shareW / 2, 30);
+
+		// Watermark under title (export only)
+		ctx.font = '13px monospace';
+		ctx.fillStyle = TEXT_PRIMARY;
+		ctx.fillText('generated with c9watch', shareW / 2, 66);
 
 		return offscreen.toDataURL('image/png');
 	}
