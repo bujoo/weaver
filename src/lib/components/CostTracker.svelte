@@ -278,6 +278,17 @@
 			.reduce((sum, d) => sum + d.cost, 0);
 	});
 
+	/** Total tokens filtered to the active time window */
+	let filteredTotalTokens = $derived.by(() => {
+		if (!costData) return 0;
+		const tw = getTimeWindow();
+		if (!tw) return costData.totalTokens;
+		return costData.dailyCosts
+			.filter(d => d.date >= tw.start && d.date < tw.end)
+			.flatMap(d => d.sessions)
+			.reduce((sum, s) => sum + s.totalTokens, 0);
+	});
+
 	let allCollapsed = $derived(
 		filteredProjectCosts.length > 0 &&
 		filteredProjectCosts.every(p => collapsedProjects.has(p.project))
@@ -544,7 +555,7 @@
 	{/if}
 {#if showVisualizer && costData}
 	<TokenDistanceVisualizer
-		totalTokens={costData.totalTokens}
+		costData={costData}
 		onclose={() => showVisualizer = false}
 	/>
 {/if}
