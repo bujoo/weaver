@@ -175,11 +175,11 @@
 		ctx.textAlign = 'left'; // reset
 
 		// Watermark
-		ctx.font = '10px monospace';
-		ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+		ctx.font = '11px monospace';
+		ctx.fillStyle = 'rgba(255, 102, 0, 0.4)';
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'bottom';
-		ctx.fillText('generated with c9watch', w / 2, h - 8);
+		ctx.fillText('generated with c9watch', w / 2, h - 10);
 		ctx.textAlign = 'left';
 	}
 
@@ -281,11 +281,16 @@
 		animFrameId = requestAnimationFrame(tick);
 	}
 
-	function skipToFinal() {
+	async function skipToFinal() {
 		if (animFrameId) cancelAnimationFrame(animFrameId);
-		showIntro = false;
 		currentTokens = totalTokens;
 		animationDone = true;
+
+		// If still showing intro, switch to canvas and wait for mount
+		if (showIntro) {
+			showIntro = false;
+			await tick();
+		}
 
 		if (!canvas) return;
 		const c = canvas;
@@ -315,6 +320,31 @@
 
 	let sharing = $state(false);
 
+	function renderShareImage(): string {
+		// Render to an offscreen canvas at 1080x1350 (4:5 ratio, Instagram optimal)
+		const shareW = 1080;
+		const shareH = 1350;
+		const offscreen = document.createElement('canvas');
+		offscreen.width = shareW;
+		offscreen.height = shareH;
+		const ctx = offscreen.getContext('2d')!;
+
+		// Render the tower at a zoom that fits nicely with padding
+		const shareTowerHeight = totalGrainRows * GRAIN_SIZE;
+		const shareZoom = Math.min((shareH - 200) / Math.max(shareTowerHeight, 1), 20);
+		// Use identity transform (no dpr scaling for export)
+		render(ctx, shareW, shareH, totalGrains, shareZoom, 0);
+
+		// Add title at top
+		ctx.font = 'bold 28px monospace';
+		ctx.fillStyle = AMBER;
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'top';
+		ctx.fillText('YOUR TOKEN JOURNEY', shareW / 2, 30);
+
+		return offscreen.toDataURL('image/png');
+	}
+
 	async function shareImage(e: MouseEvent) {
 		e.stopPropagation(); // don't close overlay
 		if (!canvas || sharing) return;
@@ -323,7 +353,7 @@
 		const rect = btn.getBoundingClientRect();
 		sharing = true;
 		try {
-			const dataUrl = canvas.toDataURL('image/png');
+			const dataUrl = renderShareImage();
 			const filePath = await invoke<string>('save_temp_image', { data: dataUrl });
 			const { shareFile } = await import('@choochmeque/tauri-plugin-sharekit-api');
 			await shareFile(filePath, {
