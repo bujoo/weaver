@@ -326,7 +326,7 @@
 		     centered in the whole tab bar so they appear at the window midpoint.
 		     Hidden in fullscreen where window dragging is unavailable. -->
 		<div class="tab-drag-region" data-tauri-drag-region>
-			{#if !isFullscreen}
+			{#if isMacOS && !isFullscreen}
 				<span class="drag-dots" transition:fade={{ duration: 250 }}>⠿ ⠿ ⠿</span>
 			{/if}
 		</div>
