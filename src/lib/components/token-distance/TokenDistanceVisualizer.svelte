@@ -44,24 +44,30 @@
 	}
 
 	// ── Canvas rendering ─────────────────────────────────────────
-	function render(ctx: CanvasRenderingContext2D, w: number, h: number, grainsFilled: number, zoom: number) {
+	// followTop: 0 = anchored at bottom, 1 = camera follows top of stack
+	function render(ctx: CanvasRenderingContext2D, w: number, h: number, grainsFilled: number, zoom: number, followTop: number) {
 		const dpr = window.devicePixelRatio || 1;
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		ctx.clearRect(0, 0, w, h);
 
-		// The tower is centered horizontally. The camera zooms so
-		// the tower always fits vertically with some padding.
 		const filledRows = Math.ceil(grainsFilled / GRAINS_PER_ROW);
-		const filledHeightPx = filledRows * GRAIN_SIZE;
 
-		// Camera: we want the filled portion to fit in ~70% of canvas height
-		// zoom starts at a high value (zoomed in) and decreases (zooms out)
 		const scaledGrainSize = GRAIN_SIZE * zoom;
 		const scaledTowerWidth = TOWER_WIDTH_PX * zoom;
 
-		// Tower base position: centered horizontally, anchored at canvas bottom
+		// Tower base X: centered horizontally
 		const towerBaseX = (w - scaledTowerWidth) / 2;
-		const towerBaseY = h - 40; // 40px padding at bottom
+
+		// Camera Y: blend between "follow top" and "anchored at bottom"
+		// followTop=1: top of stack stays at 30% from canvas top
+		// followTop=0: tower base at canvas bottom (settled final view)
+		const anchoredBaseY = h - 40;
+		let followBaseY = anchoredBaseY;
+		if (filledRows > 0) {
+			const topTargetY = h * 0.3;
+			followBaseY = topTargetY + filledRows * scaledGrainSize;
+		}
+		const towerBaseY = anchoredBaseY + (followBaseY - anchoredBaseY) * followTop;
 
 		// Draw ground line
 		ctx.strokeStyle = BORDER;
@@ -198,8 +204,12 @@
 			const zoomProgress = Math.sqrt(eased);
 			const zoom = zoomStart + (zoomEnd - zoomStart) * zoomProgress;
 
+			// followTop: 1 during stacking, ease to 0 in the last 15% for smooth settle
+			const settleT = t > 0.85 ? (t - 0.85) / 0.15 : 0;
+			const follow = 1 - settleT * settleT; // ease-in settle
+
 			// Render
-			render(ctx, w, h, grainsFilled, zoom);
+			render(ctx, w, h, grainsFilled, zoom, follow);
 
 			// Check milestones
 			const currentIdx = MILESTONES.findLastIndex(m => currentTokens >= m.tokens);
@@ -227,9 +237,9 @@
 			if (t < 1) {
 				animFrameId = requestAnimationFrame(tick);
 			} else {
-				// Final frame
+				// Final frame — settled at bottom
 				currentTokens = totalTokens;
-				render(ctx, w, h, totalGrains, zoomEnd);
+				render(ctx, w, h, totalGrains, zoomEnd, 0);
 				animationDone = true;
 			}
 		}
@@ -254,7 +264,7 @@
 		c.height = h * dpr;
 
 		const zoomEnd = Math.min((h - 80) / Math.max(towerHeightPx, 1), 20);
-		render(ctx, w, h, totalGrains, zoomEnd);
+		render(ctx, w, h, totalGrains, zoomEnd, 0);
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
