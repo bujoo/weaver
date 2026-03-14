@@ -93,6 +93,7 @@ pub struct SessionCostRecord {
     pub project_name: String,
     pub model: String,        // primary model (highest cost)
     pub cost: f64,
+    #[serde(default)]
     pub total_tokens: u64,    // input_tokens + output_tokens
     pub timestamp: String,    // ISO 8601 — earliest assistant message
     pub date: String,         // "2026-02-28" derived from timestamp
