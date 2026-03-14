@@ -326,11 +326,10 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="overlay" onclick={animationDone ? onclose : skipToFinal}>
-	<div class="visualizer" onclick={(e) => e.stopPropagation()}>
+	<div class="visualizer">
 		<!-- Header -->
 		<div class="viz-header">
 			<span class="viz-title">YOUR TOKEN JOURNEY</span>
-			<button class="viz-close" onclick={onclose}>✕</button>
 		</div>
 
 		{#if totalTokens === 0}
@@ -353,7 +352,7 @@
 		{#if !animationDone}
 			<div class="skip-hint">PRESS SPACE TO SKIP</div>
 		{:else if totalTokens > 0}
-			<div class="skip-hint">PRESS ESC TO CLOSE</div>
+			<div class="skip-hint">CLICK ANYWHERE TO CLOSE</div>
 		{/if}
 	</div>
 </div>
@@ -390,7 +389,7 @@
 	.viz-header {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		justify-content: center;
 		width: 100%;
 		flex-shrink: 0;
 	}
@@ -402,22 +401,6 @@
 		letter-spacing: 0.1em;
 		color: var(--accent-amber);
 		text-shadow: 0 0 20px var(--status-permission-glow);
-	}
-
-	.viz-close {
-		background: none;
-		border: 1px solid var(--border-default);
-		color: var(--text-muted);
-		font-family: var(--font-mono);
-		font-size: 14px;
-		padding: 4px 8px;
-		cursor: pointer;
-		transition: color 0.15s, border-color 0.15s;
-	}
-
-	.viz-close:hover {
-		color: var(--text-primary);
-		border-color: var(--text-primary);
 	}
 
 	/* ── Canvas ──────────────────────────── */
