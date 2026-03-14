@@ -312,7 +312,18 @@
 			const dataUrl = canvas.toDataURL('image/png');
 			const filePath = await invoke<string>('save_temp_image', { data: dataUrl });
 			const { shareFile } = await import('@choochmeque/tauri-plugin-sharekit-api');
-			await shareFile(`file://${filePath}`, { mimeType: 'image/png', title: 'My Token Journey' });
+			// Pass button position so macOS can anchor the share sheet popover
+			const btn = e.currentTarget as HTMLElement;
+			const rect = btn.getBoundingClientRect();
+			await shareFile(`file://${filePath}`, {
+				mimeType: 'image/png',
+				title: 'My Token Journey',
+				position: {
+					x: Math.round(rect.left + rect.width / 2),
+					y: Math.round(rect.top),
+					preferredEdge: 'top',
+				},
+			});
 		} catch (err) {
 			console.error('Share failed:', err);
 		} finally {
@@ -485,8 +496,9 @@
 
 	.bottom-actions {
 		display: flex;
+		flex-direction: column;
 		align-items: center;
-		gap: var(--space-lg);
+		gap: var(--space-sm);
 		flex-shrink: 0;
 	}
 
