@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy, tick } from 'svelte';
+	import { invoke } from '@tauri-apps/api/core';
 	import { MILESTONES, tokensToHeight, formatHeight, getCurrentMilestone } from './milestones';
 
 	let { totalTokens, onclose }: { totalTokens: number; onclose: () => void } = $props();
@@ -301,6 +302,24 @@
 		}
 	}
 
+	let sharing = $state(false);
+
+	async function shareImage(e: MouseEvent) {
+		e.stopPropagation(); // don't close overlay
+		if (!canvas || sharing) return;
+		sharing = true;
+		try {
+			const dataUrl = canvas.toDataURL('image/png');
+			const filePath = await invoke<string>('save_temp_image', { data: dataUrl });
+			const { shareFile } = await import('@choochmeque/tauri-plugin-sharekit-api');
+			await shareFile(`file://${filePath}`, { mimeType: 'image/png', title: 'My Token Journey' });
+		} catch (err) {
+			console.error('Share failed:', err);
+		} finally {
+			sharing = false;
+		}
+	}
+
 	onMount(() => {
 		document.addEventListener('keydown', handleKeydown);
 		// Show intro text, then start stacking
@@ -349,7 +368,12 @@
 		{#if !animationDone}
 			<div class="skip-hint">PRESS SPACE TO SKIP</div>
 		{:else if totalTokens > 0}
-			<div class="skip-hint">CLICK ANYWHERE TO CLOSE</div>
+			<div class="bottom-actions">
+				<button class="share-btn" onclick={shareImage} disabled={sharing}>
+					{sharing ? 'SHARING...' : 'SHARE'}
+				</button>
+				<span class="close-hint">CLICK ANYWHERE TO CLOSE</span>
+			</div>
 		{/if}
 	</div>
 </div>
@@ -457,6 +481,44 @@
 		letter-spacing: 0.1em;
 		animation: blink 2s infinite;
 		flex-shrink: 0;
+	}
+
+	.bottom-actions {
+		display: flex;
+		align-items: center;
+		gap: var(--space-lg);
+		flex-shrink: 0;
+	}
+
+	.share-btn {
+		font-family: var(--font-pixel);
+		font-size: 12px;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--accent-amber);
+		background: none;
+		border: 1px solid var(--accent-amber);
+		padding: 4px 16px;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.share-btn:hover:not(:disabled) {
+		background: var(--accent-amber);
+		color: var(--bg-base);
+	}
+
+	.share-btn:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+
+	.close-hint {
+		font-family: var(--font-mono);
+		font-size: 11px;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
 	}
 
 	@keyframes blink {

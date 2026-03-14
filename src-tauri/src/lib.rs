@@ -155,6 +155,31 @@ async fn get_memory_files() -> Result<Vec<session::ProjectMemory>, String> {
     session::get_memory_files()
 }
 
+/// Save base64-encoded PNG data to a temp file and return the path.
+/// Used by the token distance visualizer to share canvas screenshots.
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn save_temp_image(data: String) -> Result<String, String> {
+    use std::fs;
+
+    let temp_dir = std::env::temp_dir();
+    let file_path = temp_dir.join("c9watch-token-journey.png");
+
+    // data is base64-encoded PNG (no data URL prefix)
+    let bytes = data
+        .strip_prefix("data:image/png;base64,")
+        .unwrap_or(&data);
+
+    use base64::Engine;
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(bytes)
+        .map_err(|e| format!("Failed to decode base64: {}", e))?;
+
+    fs::write(&file_path, decoded).map_err(|e| format!("Failed to write temp file: {}", e))?;
+
+    Ok(file_path.to_string_lossy().to_string())
+}
+
 /// Open a directory in the system file manager (Finder on macOS)
 #[cfg(not(mobile))]
 #[tauri::command]
@@ -289,7 +314,8 @@ pub fn run() {
     let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_notification::init());
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_sharekit::init());
 
     // macOS: NSPanel plugin for popover (must appear above fullscreen apps)
     #[cfg(target_os = "macos")]
@@ -484,6 +510,7 @@ pub fn run() {
             deep_search_sessions,
             get_cost_data,
             get_memory_files,
+            save_temp_image,
             reveal_in_file_manager,
             stop_session,
             open_session,
