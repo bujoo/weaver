@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { MILESTONES, tokensToHeight, formatHeight, getCurrentMilestone } from './milestones';
+	import { drawMilestoneIcon } from './milestoneIcons';
 
 	let { totalTokens, onclose }: { totalTokens: number; onclose: () => void } = $props();
 
@@ -110,7 +111,12 @@
 			// Only draw if visible
 			if (markerY < -20 || markerY > h + 20) continue;
 
-			// Marker line
+			// Icon on the left side of the tower
+			const iconSize = Math.max(12, Math.min(24, 16 * Math.sqrt(zoom)));
+			const iconX = towerBaseX - iconSize * 0.8;
+			drawMilestoneIcon(ctx, m.label, iconX, markerY, iconSize, TEXT_MUTED);
+
+			// Marker line on the right side
 			const lineStartX = towerBaseX + scaledTowerWidth + 6;
 			ctx.strokeStyle = TEXT_MUTED;
 			ctx.lineWidth = 1;
