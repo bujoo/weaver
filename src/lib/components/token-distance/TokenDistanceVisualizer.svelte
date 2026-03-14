@@ -315,7 +315,7 @@
 			const dataUrl = canvas.toDataURL('image/png');
 			const filePath = await invoke<string>('save_temp_image', { data: dataUrl });
 			const { shareFile } = await import('@choochmeque/tauri-plugin-sharekit-api');
-			await shareFile(`file://${filePath}`, {
+			await shareFile(filePath, {
 				mimeType: 'image/png',
 				title: 'My Token Journey',
 				position: {
