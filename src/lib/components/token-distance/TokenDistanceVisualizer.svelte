@@ -1,12 +1,8 @@
 <script lang="ts">
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { MILESTONES, tokensToHeight, formatHeight, getCurrentMilestone } from './milestones';
-	import type { CostData } from '$lib/types';
 
-	let { costData, onclose }: { costData: CostData; onclose: () => void } = $props();
-
-	type Period = 'today' | 'week' | 'month' | 'all';
-	let period = $state<Period>('all');
+	let { totalTokens, onclose }: { totalTokens: number; onclose: () => void } = $props();
 
 	let canvas = $state<HTMLCanvasElement | null>(null);
 	let animationDone = $state(false);
@@ -15,63 +11,20 @@
 	let currentTokens = $state(0);
 	let animFrameId: number | null = null;
 
-	// ── Time filtering ───────────────────────────────────────────
-	function toLocalDateStr(d: Date): string {
-		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-	}
-
-	function getTimeWindow(p: Period): { start: string; end: string } | null {
-		if (p === 'all') return null;
-		const now = new Date();
-		const todayStr = toLocalDateStr(now);
-		const tomorrow = new Date(now);
-		tomorrow.setDate(tomorrow.getDate() + 1);
-
-		if (p === 'today') {
-			return { start: todayStr, end: toLocalDateStr(tomorrow) };
-		}
-		if (p === 'week') {
-			const day = now.getDay();
-			const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-			const monday = new Date(now);
-			monday.setDate(diff);
-			const weekEnd = new Date(monday);
-			weekEnd.setDate(weekEnd.getDate() + 7);
-			return { start: toLocalDateStr(monday), end: toLocalDateStr(weekEnd) };
-		}
-		// month
-		const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-		const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-		return { start: monthStart, end: toLocalDateStr(nextMonth) };
-	}
-
-	const totalTokens = $derived.by(() => {
-		const tw = getTimeWindow(period);
-		if (!tw) return costData.totalTokens;
-		return costData.dailyCosts
-			.filter(d => d.date >= tw.start && d.date < tw.end)
-			.flatMap(d => d.sessions)
-			.reduce((sum, s) => sum + s.totalTokens, 0);
-	});
-
-	const periodLabel = $derived(
-		period === 'today' ? "today's" :
-		period === 'week' ? "this week's" :
-		period === 'month' ? "this month's" :
-		'all'
-	);
-
-	const reached = $derived(getCurrentMilestone(currentTokens));
-	const currentHeight = $derived(tokensToHeight(currentTokens));
 
 	// ── Constants ────────────────────────────────────────────────
-	const GRAIN_SIZE = 3;
-	const GRAINS_PER_ROW = 12;
-	const TOWER_WIDTH_PX = GRAINS_PER_ROW * GRAIN_SIZE;
+	const GRAIN_SIZE = 3;          // px size of each grain dot at 1:1 zoom
+	const GRAINS_PER_ROW = 12;     // grains per row in the tower
+	const TOWER_WIDTH_PX = GRAINS_PER_ROW * GRAIN_SIZE; // tower width at 1:1
 
-	const scale = $derived(Math.max(1, Math.ceil(totalTokens / 3000)));
-	const totalGrains = $derived(Math.ceil(totalTokens / scale));
+	// Scale: tokens per grain. Target ~3000 grains for good animation density.
+	// totalTokens is a prop that doesn't change after mount, so these are stable.
+	// eslint-disable-next-line -- intentional snapshot of prop value
+	const _tokens = $derived(totalTokens);
+	const scale = $derived(Math.max(1, Math.ceil(_tokens / 3000)));
+	const totalGrains = $derived(Math.ceil(_tokens / scale));
 	const totalGrainRows = $derived(Math.ceil(totalGrains / GRAINS_PER_ROW));
+	// Full tower height at 1:1 zoom
 	const towerHeightPx = $derived(totalGrainRows * GRAIN_SIZE);
 
 	// Colors
@@ -179,6 +132,46 @@
 			ctx.fillText(heightStr, lineStartX + 16 + labelWidth + 8, markerY);
 		}
 
+		// Draw stats on the left side of the tower
+		const statsX = towerBaseX - 20;
+		const topOfStack = towerBaseY - filledRows * scaledGrainSize;
+		// Position stats near the top of the stack, clamped to visible area
+		const statsY = Math.max(30, Math.min(topOfStack, h - 80));
+
+		// Token count
+		ctx.textAlign = 'right';
+		ctx.textBaseline = 'middle';
+		ctx.font = 'bold 28px monospace';
+		ctx.fillStyle = AMBER;
+		ctx.shadowColor = AMBER;
+		ctx.shadowBlur = 15;
+		ctx.fillText(formatTokenCount(currentTokens), statsX, statsY);
+		ctx.shadowBlur = 0;
+
+		// "tokens" label
+		ctx.font = '10px monospace';
+		ctx.fillStyle = TEXT_MUTED;
+		ctx.fillText('TOKENS', statsX, statsY + 18);
+
+		// Height
+		ctx.font = 'bold 18px monospace';
+		ctx.fillStyle = TEXT_PRIMARY;
+		ctx.fillText(formatHeight(tokensToHeight(currentTokens)), statsX, statsY + 42);
+
+		// "rice stack" label
+		ctx.font = '10px monospace';
+		ctx.fillStyle = TEXT_MUTED;
+		ctx.fillText('RICE STACK', statsX, statsY + 56);
+
+		// Current milestone
+		const currentMilestone = getCurrentMilestone(currentTokens);
+		if (currentMilestone) {
+			ctx.font = 'bold 12px monospace';
+			ctx.fillStyle = AMBER;
+			ctx.fillText(`PAST ${currentMilestone.label.toUpperCase()}!`, statsX, statsY + 78);
+		}
+
+		ctx.textAlign = 'left'; // reset
 	}
 
 	// ── Animation ────────────────────────────────────────────────
@@ -300,18 +293,6 @@
 		render(ctx, w, h, totalGrains, zoomEnd, 0);
 	}
 
-	async function changePeriod(p: Period) {
-		if (p === period) return;
-		// Stop current animation
-		if (animFrameId) cancelAnimationFrame(animFrameId);
-		period = p;
-		currentTokens = 0;
-		animationDone = false;
-		showIntro = false;
-		await tick();
-		startAnimation();
-	}
-
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
 			if (animationDone) onclose();
@@ -349,20 +330,11 @@
 		<!-- Header -->
 		<div class="viz-header">
 			<span class="viz-title">YOUR TOKEN JOURNEY</span>
-			<div class="period-selector">
-				{#each [['today', 'TODAY'], ['week', 'WEEK'], ['month', 'MONTH'], ['all', 'ALL TIME']] as [key, label]}
-					<button
-						class="period-btn"
-						class:active={period === key}
-						onclick={() => changePeriod(key as Period)}
-					>{label}</button>
-				{/each}
-			</div>
 			<button class="viz-close" onclick={onclose}>✕</button>
 		</div>
 
 		{#if totalTokens === 0}
-			<div class="empty-state">No tokens for {periodLabel === 'all' ? 'any period' : periodLabel} — try a different time range!</div>
+			<div class="empty-state">No tokens yet — start a Claude session to begin your journey!</div>
 		{:else if showIntro}
 			<!-- Intro text -->
 			<div class="intro-container">
@@ -370,30 +342,12 @@
 					If every token were a grain of rice...
 				</p>
 				<p class="intro-text sub" class:visible={introVisible}>
-					here is what {periodLabel} stack looks like.
+					here is what your stack looks like.
 				</p>
 			</div>
 		{:else}
 			<!-- Canvas area -->
 			<canvas class="journey-canvas" bind:this={canvas}></canvas>
-
-			<!-- Bottom stats bar -->
-			<div class="stats-bar">
-				<div class="stat-group">
-					<span class="stat-icon">🍚</span>
-					<span class="stat-value">{formatTokenCount(currentTokens)}</span>
-					<span class="stat-label">tokens</span>
-				</div>
-				<div class="stat-group">
-					<span class="stat-value-alt">{formatHeight(currentHeight)}</span>
-					<span class="stat-label">rice stack</span>
-				</div>
-				{#if reached}
-					<div class="stat-group">
-						<span class="stat-reached">Past {reached.label}!</span>
-					</div>
-				{/if}
-			</div>
 		{/if}
 
 		{#if !animationDone}
@@ -466,91 +420,11 @@
 		border-color: var(--text-primary);
 	}
 
-	/* ── Period selector ─────────────────── */
-	.period-selector {
-		display: flex;
-		gap: 2px;
-	}
-
-	.period-btn {
-		font-family: var(--font-mono);
-		font-size: 10px;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
-		background: none;
-		border: 1px solid var(--border-default);
-		padding: 2px 8px;
-		cursor: pointer;
-		transition: color 0.15s, border-color 0.15s, background 0.15s;
-	}
-
-	.period-btn:hover {
-		color: var(--text-primary);
-		border-color: var(--text-primary);
-	}
-
-	.period-btn.active {
-		color: var(--accent-amber);
-		border-color: var(--accent-amber);
-		background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
-	}
-
 	/* ── Canvas ──────────────────────────── */
 	.journey-canvas {
 		flex: 1;
 		width: 100%;
 		min-height: 0;
-	}
-
-	/* ── Stats bar ───────────────────────── */
-	.stats-bar {
-		display: flex;
-		gap: var(--space-xl);
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		width: 100%;
-		padding: var(--space-sm) 0;
-		border-top: 1px solid var(--border-default);
-	}
-
-	.stat-group {
-		display: flex;
-		align-items: baseline;
-		gap: var(--space-sm);
-	}
-
-	.stat-icon { font-size: 18px; }
-
-	.stat-value {
-		font-family: var(--font-pixel);
-		font-size: 28px;
-		color: var(--accent-amber);
-		text-shadow: 0 0 15px var(--status-permission-glow);
-		line-height: 1;
-	}
-
-	.stat-value-alt {
-		font-family: var(--font-pixel);
-		font-size: 22px;
-		color: var(--text-primary);
-		line-height: 1;
-	}
-
-	.stat-label {
-		font-family: var(--font-mono);
-		font-size: 10px;
-		text-transform: uppercase;
-		color: var(--text-muted);
-		letter-spacing: 0.1em;
-	}
-
-	.stat-reached {
-		font-family: var(--font-pixel);
-		font-size: 14px;
-		color: var(--accent-amber);
-		text-transform: uppercase;
 	}
 
 	/* ── Shared ──────────────────────────── */
