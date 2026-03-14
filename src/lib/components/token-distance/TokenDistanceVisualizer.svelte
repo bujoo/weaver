@@ -259,7 +259,7 @@
 				ctx.textBaseline = 'top';
 				ctx.translate(w / 2, 60);
 				ctx.scale(flashScale, flashScale);
-				ctx.fillText(`◄ ${lastMilestoneLabel.toUpperCase()}`, 0, 0);
+				ctx.fillText(lastMilestoneLabel.toUpperCase(), 0, 0);
 				ctx.restore();
 			}
 
@@ -348,6 +348,14 @@
 			nextY += 22;
 		}
 
+		// Explain text
+		ctx.font = `11px ${FONT_MONO}`;
+		ctx.fillStyle = TEXT_MUTED;
+		ctx.globalAlpha = 0.7;
+		ctx.fillText('1 TOKEN = 1 GRAIN OF RICE', shareW / 2, nextY);
+		ctx.globalAlpha = 1;
+		nextY += 20;
+
 		// Watermark under date range (export only)
 		ctx.font = `12px ${FONT_MONO}`;
 		ctx.fillStyle = TEXT_MUTED;
@@ -417,6 +425,7 @@
 			{#if dateRange}
 				<span class="viz-date-range">{dateRange}</span>
 			{/if}
+			<span class="viz-explain">1 TOKEN = 1 GRAIN OF RICE</span>
 		</div>
 
 		{#if totalTokens === 0}
@@ -502,6 +511,15 @@
 		color: var(--text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
+	}
+
+	.viz-explain {
+		font-family: var(--font-mono);
+		font-size: 10px;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		opacity: 0.7;
 	}
 
 	/* ── Canvas ──────────────────────────── */
