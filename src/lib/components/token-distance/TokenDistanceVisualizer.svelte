@@ -3,7 +3,7 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { MILESTONES, tokensToHeight, formatHeight, getCurrentMilestone } from './milestones';
 
-	let { totalTokens, onclose }: { totalTokens: number; onclose: () => void } = $props();
+	let { totalTokens, dateRange, onclose }: { totalTokens: number; dateRange: string; onclose: () => void } = $props();
 
 	let canvas = $state<HTMLCanvasElement | null>(null);
 	let animationDone = $state(false);
@@ -334,10 +334,17 @@
 		ctx.textBaseline = 'top';
 		ctx.fillText('YOUR TOKEN JOURNEY', shareW / 2, 30);
 
-		// Watermark under title (export only)
+		// Date range under title
+		if (dateRange) {
+			ctx.font = '14px monospace';
+			ctx.fillStyle = TEXT_MUTED;
+			ctx.fillText(dateRange, shareW / 2, 66);
+		}
+
+		// Watermark at bottom (export only)
 		ctx.font = '13px monospace';
 		ctx.fillStyle = TEXT_PRIMARY;
-		ctx.fillText('generated with c9watch', shareW / 2, 66);
+		ctx.fillText('generated with c9watch', shareW / 2, shareH - 20);
 
 		return offscreen.toDataURL('image/png');
 	}
@@ -400,6 +407,9 @@
 		<!-- Header -->
 		<div class="viz-header">
 			<span class="viz-title">YOUR TOKEN JOURNEY</span>
+			{#if dateRange}
+				<span class="viz-date-range">{dateRange}</span>
+			{/if}
 		</div>
 
 		{#if totalTokens === 0}
@@ -476,6 +486,14 @@
 		letter-spacing: 0.1em;
 		color: var(--accent-amber);
 		text-shadow: 0 0 20px var(--status-permission-glow);
+	}
+
+	.viz-date-range {
+		font-family: var(--font-mono);
+		font-size: 11px;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
 	}
 
 	/* ── Canvas ──────────────────────────── */

@@ -278,17 +278,6 @@
 			.reduce((sum, d) => sum + d.cost, 0);
 	});
 
-	/** Total tokens filtered to the active time window */
-	let filteredTotalTokens = $derived.by(() => {
-		if (!costData) return 0;
-		const tw = getTimeWindow();
-		if (!tw) return costData.totalTokens;
-		return costData.dailyCosts
-			.filter(d => d.date >= tw.start && d.date < tw.end)
-			.flatMap(d => d.sessions)
-			.reduce((sum, s) => sum + s.totalTokens, 0);
-	});
-
 	let allCollapsed = $derived(
 		filteredProjectCosts.length > 0 &&
 		filteredProjectCosts.every(p => collapsedProjects.has(p.project))
@@ -555,7 +544,16 @@
 	{/if}
 {#if showVisualizer && costData}
 	<TokenDistanceVisualizer
-		costData={costData}
+		totalTokens={costData.totalTokens}
+		dateRange={(() => {
+			const dates = costData.dailyCosts.map(d => d.date).sort();
+			if (dates.length === 0) return '';
+			const fmt = (d: string) => {
+				const dt = new Date(d + 'T00:00:00');
+				return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
+			};
+			return `${fmt(dates[0])} – ${fmt(dates[dates.length - 1])}`;
+		})()}
 		onclose={() => showVisualizer = false}
 	/>
 {/if}
