@@ -307,14 +307,14 @@
 	async function shareImage(e: MouseEvent) {
 		e.stopPropagation(); // don't close overlay
 		if (!canvas || sharing) return;
+		// Capture button rect synchronously — currentTarget is null after await
+		const btn = e.currentTarget as HTMLElement;
+		const rect = btn.getBoundingClientRect();
 		sharing = true;
 		try {
 			const dataUrl = canvas.toDataURL('image/png');
 			const filePath = await invoke<string>('save_temp_image', { data: dataUrl });
 			const { shareFile } = await import('@choochmeque/tauri-plugin-sharekit-api');
-			// Pass button position so macOS can anchor the share sheet popover
-			const btn = e.currentTarget as HTMLElement;
-			const rect = btn.getBoundingClientRect();
 			await shareFile(`file://${filePath}`, {
 				mimeType: 'image/png',
 				title: 'My Token Journey',
