@@ -318,18 +318,19 @@
 	let sharing = $state(false);
 
 	function renderShareImage(): string {
-		// Render to an offscreen canvas at 1080x1350 (4:5 ratio, Instagram optimal)
+		// Render at 2x resolution (2160x2700 pixels, 1080x1350 logical, 4:5 ratio)
+		const shareDpr = 2;
 		const shareW = 1080;
 		const shareH = 1350;
 		const offscreen = document.createElement('canvas');
-		offscreen.width = shareW;
-		offscreen.height = shareH;
+		offscreen.width = shareW * shareDpr;
+		offscreen.height = shareH * shareDpr;
 		const ctx = offscreen.getContext('2d')!;
 
-		// Render the tower at a zoom that fits with padding, dpr=1 for export
+		// Render the tower with dpr=2 so grains and text are crisp
 		const shareTowerHeight = totalGrainRows * GRAIN_SIZE;
 		const shareZoom = Math.min((shareH - 200) / Math.max(shareTowerHeight, 1), 20);
-		render(ctx, shareW, shareH, totalGrains, shareZoom, 0, 1);
+		render(ctx, shareW, shareH, totalGrains, shareZoom, 0, shareDpr);
 
 		// Add title at top
 		ctx.font = `bold 28px ${FONT_PIXEL}`;
