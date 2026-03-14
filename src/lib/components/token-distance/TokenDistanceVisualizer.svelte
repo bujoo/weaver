@@ -111,10 +111,15 @@
 			// Only draw if visible
 			if (markerY < -20 || markerY > h + 20) continue;
 
-			// Icon on the left side of the tower
-			const iconSize = Math.max(12, Math.min(24, 16 * Math.sqrt(zoom)));
-			const iconX = towerBaseX - iconSize * 0.8;
-			drawMilestoneIcon(ctx, m.label, iconX, markerY, iconSize, TEXT_MUTED);
+			// Icon on the left side of the tower — drawn to real scale
+			// Convert landmark's real height (meters) to pixels using the same
+			// scale as the rice tower: 1 grain row = GRAINS_PER_ROW * 0.005m
+			const metersPerGrainRow = GRAINS_PER_ROW * 0.005;
+			const iconHeightPx = (m.height / metersPerGrainRow) * scaledGrainSize;
+			// Clamp: min 4px so tiny landmarks are visible, max so it doesn't explode
+			const clampedH = Math.max(4, Math.min(iconHeightPx, h * 0.8));
+			const iconX = towerBaseX - clampedH * 0.4 - 8;
+			drawMilestoneIcon(ctx, m.label, iconX, markerY, clampedH, TEXT_MUTED);
 
 			// Marker line on the right side
 			const lineStartX = towerBaseX + scaledTowerWidth + 6;
