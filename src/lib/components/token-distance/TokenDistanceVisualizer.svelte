@@ -46,8 +46,7 @@
 
 	// ── Canvas rendering ─────────────────────────────────────────
 	// followTop: 0 = anchored at bottom, 1 = camera follows top of stack
-	function render(ctx: CanvasRenderingContext2D, w: number, h: number, grainsFilled: number, zoom: number, followTop: number) {
-		const dpr = window.devicePixelRatio || 1;
+	function render(ctx: CanvasRenderingContext2D, w: number, h: number, grainsFilled: number, zoom: number, followTop: number, dpr = window.devicePixelRatio || 1) {
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
 		// Black background (so PNG export isn't transparent)
@@ -283,6 +282,8 @@
 
 	async function skipToFinal() {
 		if (animFrameId) cancelAnimationFrame(animFrameId);
+		if (introTimeoutId) { clearTimeout(introTimeoutId); introTimeoutId = null; }
+		if (introFadeId) { clearTimeout(introFadeId); introFadeId = null; }
 		currentTokens = totalTokens;
 		animationDone = true;
 
@@ -329,11 +330,10 @@
 		offscreen.height = shareH;
 		const ctx = offscreen.getContext('2d')!;
 
-		// Render the tower at a zoom that fits nicely with padding
+		// Render the tower at a zoom that fits with padding, dpr=1 for export
 		const shareTowerHeight = totalGrainRows * GRAIN_SIZE;
 		const shareZoom = Math.min((shareH - 200) / Math.max(shareTowerHeight, 1), 20);
-		// Use identity transform (no dpr scaling for export)
-		render(ctx, shareW, shareH, totalGrains, shareZoom, 0);
+		render(ctx, shareW, shareH, totalGrains, shareZoom, 0, 1);
 
 		// Add title at top
 		ctx.font = 'bold 28px monospace';
@@ -372,15 +372,20 @@
 		}
 	}
 
+	let introTimeoutId: ReturnType<typeof setTimeout> | null = null;
+	let introFadeId: ReturnType<typeof setTimeout> | null = null;
+
 	onMount(() => {
 		document.addEventListener('keydown', handleKeydown);
 		// Show intro text, then start stacking
-		setTimeout(() => { introVisible = true; }, 300);
-		setTimeout(async () => {
+		introFadeId = setTimeout(() => { introVisible = true; }, 300);
+		introTimeoutId = setTimeout(async () => {
+			if (animationDone) return; // already skipped
 			introVisible = false;
 			await new Promise(r => setTimeout(r, 600));
+			if (animationDone) return; // skipped during fade-out
 			showIntro = false;
-			await tick(); // wait for Svelte to mount the canvas
+			await tick();
 			startAnimation();
 		}, 2800);
 	});
