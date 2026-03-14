@@ -40,13 +40,21 @@
       "contributions": [
         "code"
       ]
-    }
-    ,
+    },
     {
       "login": "stanimir93",
       "name": "Stanimir",
       "avatar_url": "https://github.com/stanimir93.png",
       "profile": "https://github.com/stanimir93",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "josh-dev-cho",
+      "name": "josh.dev",
+      "avatar_url": "https://github.com/josh-dev-cho.png",
+      "profile": "https://github.com/josh-dev-cho",
       "contributions": [
         "code"
       ]

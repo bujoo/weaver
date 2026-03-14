@@ -20,10 +20,20 @@ We appreciate all contributions, big and small. Thank you to the following peopl
 - **Grimmer Kang** ([@grimmerk](https://github.com/grimmerk)) - Added iTerm2 tab focusing via TTY matching ([#5](https://github.com/minchenlee/c9watch/pull/5))
 - **Grimmer Kang** ([@grimmerk](https://github.com/grimmerk)) - Show iTerm2 tab title as hint when renaming session ([#9](https://github.com/minchenlee/c9watch/pull/9))
 - **Stanimir** ([@stanimir93](https://github.com/stanimir93)) - Added JetBrains IDE support for open session ([#26](https://github.com/minchenlee/c9watch/pull/26))
+- **Grimmer Kang** ([@grimmerk](https://github.com/grimmerk)) - Restore thinking toggle in conversation preview ([#45](https://github.com/minchenlee/c9watch/pull/45))
+- **Grimmer Kang** ([@grimmerk](https://github.com/grimmerk)) - Restore minimized terminal windows on Open click ([#49](https://github.com/minchenlee/c9watch/pull/49))
+- **Grimmer Kang** ([@grimmerk](https://github.com/grimmerk)) - Add list item numbers to history session rows ([#50](https://github.com/minchenlee/c9watch/pull/50))
+- **Grimmer Kang** ([@grimmerk](https://github.com/grimmerk)) - Multi-word AND search in history ([#51](https://github.com/minchenlee/c9watch/pull/51))
+- **Grimmer Kang** ([@grimmerk](https://github.com/grimmerk)) - Custom title and ACTIVE badge in history ([#52](https://github.com/minchenlee/c9watch/pull/52))
 
 ### Performance
 
 - **Grimmer Kang** ([@grimmerk](https://github.com/grimmerk)) - Reduce CPU usage by optimizing sysinfo process scanning ([#14](https://github.com/minchenlee/c9watch/pull/14))
+- **Grimmer Kang** ([@grimmerk](https://github.com/grimmerk)) - Sliding window rendering for large conversations ([#53](https://github.com/minchenlee/c9watch/pull/53))
+
+### Bug Fixes
+
+- **josh.dev** ([@josh-dev-cho](https://github.com/josh-dev-cho)) - Fix dot character in path encoding for session matching ([#57](https://github.com/minchenlee/c9watch/pull/57))
 
 ---
 
