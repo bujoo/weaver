@@ -150,6 +150,8 @@ export interface SessionCostRecord {
   timestamp: string;
   /** Date portion "YYYY-MM-DD" */
   date: string;
+  /** Total tokens (input + output) for this session */
+  totalTokens: number;
 }
 
 /**
@@ -186,6 +188,8 @@ export interface ModelCost {
  */
 export interface CostData {
   totalCost: number;
+  /** Sum of all input + output tokens across all sessions */
+  totalTokens: number;
   dailyCosts: DailyCost[];
   projectCosts: ProjectCost[];
   modelCosts: ModelCost[];
