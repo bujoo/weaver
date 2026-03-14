@@ -95,6 +95,7 @@ A quick-glance overlay showing all active sessions and their status directly fro
 - **Session history** -- Browse and search all past sessions with instant metadata filter and deep content search; click a result to scroll to and highlight the matching message
 - **Memory viewer** -- Browse and inspect Claude Code memory files with a two-panel layout and quick Claude command access
 - **Cost tracker** -- Track Claude Code spending with daily, per-project, and per-model breakdowns using cached JSONL scanning
+- **Token distance visualizer** -- See your token usage as a rice stack towering past 17 real-world landmarks, with animated stacking, native share sheet, and Instagram-ready PNG export
 - **Debug console** -- Hidden diagnostic panel (`Cmd+Shift+D`) for troubleshooting session detection issues
 
 ## How it works

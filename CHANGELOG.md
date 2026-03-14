@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Thinking toggle restored in conversation preview ([#45](https://github.com/minchenlee/c9watch/pull/45))
 - Product website at c9watch.mclee.dev ([#42](https://github.com/minchenlee/c9watch/pull/42))
 - Website migrated to Starlight documentation framework ([#54](https://github.com/minchenlee/c9watch/pull/54))
+- Token distance visualizer — full-screen animated overlay that converts token usage into a rice stack height with 17 real-world landmark milestones, native share sheet, and Instagram-ready PNG export ([#62](https://github.com/minchenlee/c9watch/pull/62))
 
 ### Fixed
 - Path encoding mismatch — dots in directory names now correctly encoded as dashes for session matching ([#57](https://github.com/minchenlee/c9watch/pull/57))
