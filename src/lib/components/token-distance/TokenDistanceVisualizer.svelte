@@ -335,16 +335,18 @@
 		ctx.fillText('YOUR TOKEN JOURNEY', shareW / 2, 30);
 
 		// Date range under title
+		let nextY = 66;
 		if (dateRange) {
 			ctx.font = '14px monospace';
 			ctx.fillStyle = TEXT_MUTED;
-			ctx.fillText(dateRange, shareW / 2, 66);
+			ctx.fillText(dateRange, shareW / 2, nextY);
+			nextY += 22;
 		}
 
-		// Watermark at bottom (export only)
-		ctx.font = '13px monospace';
-		ctx.fillStyle = TEXT_PRIMARY;
-		ctx.fillText('generated with c9watch', shareW / 2, shareH - 20);
+		// Watermark under date range (export only)
+		ctx.font = '12px monospace';
+		ctx.fillStyle = TEXT_MUTED;
+		ctx.fillText('generated with c9watch', shareW / 2, nextY);
 
 		return offscreen.toDataURL('image/png');
 	}
