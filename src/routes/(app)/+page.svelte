@@ -53,9 +53,11 @@
 	// We use Tauri's window resize event + a short delay so isFullscreen()
 	// is queried after the transition has settled (avoids stale values).
 	let isFullscreen = $state(false);
+	let isMacOS = $state(false);
 
 	onMount(() => {
 		if (browser) {
+			isMacOS = /Mac/.test(navigator.platform);
 			const saved = localStorage.getItem('sessionViewMode');
 			if (saved === 'project' || saved === 'all') {
 				viewMode = saved;
@@ -287,7 +289,7 @@
 {:else}
 <div class="dashboard">
 	<FdaBanner {fdaLikelyNeeded} />
-	<div class="tab-bar" class:fullscreen={isFullscreen} data-tauri-drag-region>
+	<div class="tab-bar" class:fullscreen={isFullscreen} class:macos={isMacOS} data-tauri-drag-region>
 		<button
 			class="tab-btn"
 			class:active={activeTab === 'monitor'}
@@ -645,9 +647,7 @@
 		background: transparent;
 		z-index: 1000;
 		position: relative;
-		/* Left padding clears the macOS traffic light buttons (~80px) on
-		   titleBarStyle: Overlay windows. Right padding matches. */
-		padding: 0 var(--space-md) 0 80px;
+		padding: 0 var(--space-md);
 		transition: padding-left 0.35s ease;
 		/* Make the whole bar draggable (including the 80px padding over the
 		   traffic lights). Child buttons opt out via -webkit-app-region: no-drag. */
@@ -1071,6 +1071,15 @@
 
 	.empty-header-row :global(.status-bar) {
 		flex: 1;
+	}
+
+	/* ── macOS: clear traffic light buttons ────────────────────── */
+	/* On macOS the titleBarStyle: Overlay places traffic lights at top-left.
+	   80px left padding prevents tabs from sitting underneath them.
+	   On Windows the overlay controls are on the right, so no extra left
+	   padding is needed — the base rule already uses var(--space-md). */
+	.tab-bar.macos {
+		padding-left: 80px;
 	}
 
 	/* ── Fullscreen: align tab padding with content padding ────── */
