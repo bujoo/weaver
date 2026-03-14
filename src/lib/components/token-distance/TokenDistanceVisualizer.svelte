@@ -143,10 +143,7 @@
 		ctx.textBaseline = 'middle';
 		ctx.font = 'bold 28px monospace';
 		ctx.fillStyle = AMBER;
-		ctx.shadowColor = AMBER;
-		ctx.shadowBlur = 15;
 		ctx.fillText(formatTokenCount(currentTokens), statsX, statsY);
-		ctx.shadowBlur = 0;
 
 		// "tokens" label
 		ctx.font = '10px monospace';
