@@ -4,11 +4,37 @@ import Compatibility from './Compatibility.astro';
 import Features from './Features.astro';
 import TechStack from './TechStack.astro';
 import InstallCTA from './InstallCTA.astro';
+import FAQ from './FAQ.astro';
 import Footer from './Footer.astro';
 import DotGrid from './DotGrid.astro';
 ---
 
 <div class="landing-wrapper">
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "c9watch",
+    "description": "A free, open-source macOS desktop app that provides a real-time dashboard for monitoring all your Claude Code sessions across different projects.",
+    "url": "https://c9watch.mclee.dev",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "macOS",
+    "license": "https://opensource.org/licenses/MIT",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "author": {
+      "@type": "Person",
+      "name": "Min-Chen Lee",
+      "url": "https://github.com/minchenlee"
+    },
+    "sameAs": [
+      "https://github.com/minchenlee/c9watch"
+    ],
+    "downloadUrl": "https://github.com/minchenlee/c9watch/releases",
+    "screenshot": "https://c9watch.mclee.dev/og-image.png"
+  })} />
   <nav class="c9-nav">
     <a href="/" class="c9-nav-logo">
       <img src="/icon.png" alt="c9watch" width="24" height="24" />
@@ -39,6 +65,10 @@ import DotGrid from './DotGrid.astro';
     <div class="glow-orb orb-4"></div>
   </div>
   <div class="fade-in"><InstallCTA /></div>
+  <div class="glow-divider">
+    <div class="glow-orb orb-5"></div>
+  </div>
+  <div class="fade-in"><FAQ /></div>
   <Footer />
 </div>
 
@@ -194,5 +224,15 @@ import DotGrid from './DotGrid.astro';
     25% { opacity: 0.25; transform: translate(-50%, -50%) scale(1.2); }
     55% { opacity: 0.12; transform: translate(-50%, -50%) scale(1.05); }
     80% { opacity: 0.3; transform: translate(-50%, -50%) scale(1.15); }
+  }
+
+  .orb-5 {
+    background: var(--accent-green);
+    width: 320px;
+    height: 80px;
+    filter: blur(60px);
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation: pulse-1 7s ease-in-out 1s infinite;
   }
 </style>
