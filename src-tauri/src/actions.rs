@@ -25,6 +25,11 @@ pub fn open_session(pid: u32, project_path: String) -> Result<(), String> {
         return focus_iterm2_session(pid);
     }
 
+    // JetBrains IDEs: use URL scheme to focus the correct project window
+    if is_jetbrains_ide(&app_name) {
+        return focus_jetbrains_window(&app_name, &project_path);
+    }
+
     // Try to use app-specific CLI to open/focus the correct window
     if let Some(cli_path) = get_app_cli(&app_name) {
         crate::debug_log::log_info(&format!(
@@ -159,6 +164,41 @@ fn focus_iterm2_session(pid: u32) -> Result<(), String> {
     let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
     crate::debug_log::log_info(&format!("[open_session] iTerm2 tty match result: {}", result));
 
+    Ok(())
+}
+
+/// Focus the correct JetBrains IDE project window using the IDE's URL scheme.
+///
+/// JetBrains IDEs register custom URL schemes (e.g., phpstorm://, idea://) that
+/// can open files and focus the correct project window. Using the system URL
+/// opener brings the right window to front without requiring Accessibility or
+/// Screen Recording permissions.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn focus_jetbrains_window(app_name: &str, project_path: &str) -> Result<(), String> {
+    let scheme = jetbrains_url_scheme(app_name)
+        .unwrap_or("idea");
+    let root = find_jetbrains_project_root(project_path);
+
+    crate::debug_log::log_info(&format!(
+        "[open_session] JetBrains URL scheme: {}://open?file={} (from: {})",
+        scheme, root, project_path
+    ));
+
+    let encoded_path = encode_path_for_url(&root);
+    let url = format!("{}://open?file={}", scheme, encoded_path);
+    let cmd = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+    let output = Command::new(cmd)
+        .arg(&url)
+        .output()
+        .map_err(|e| format!("Failed to open JetBrains URL: {}", e))?;
+
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr);
+        crate::debug_log::log_error(&format!("[open_session] URL scheme failed: {}", error));
+        return activate_app_fallback(app_name);
+    }
+
+    crate::debug_log::log_info("[open_session] JetBrains URL scheme succeeded");
     Ok(())
 }
 
@@ -305,6 +345,67 @@ fn activate_app_fallback(app_name: &str) -> Result<(), String> {
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn activate_app_fallback(_app_name: &str) -> Result<(), String> {
     Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn focus_jetbrains_window(_app_name: &str, _project_path: &str) -> Result<(), String> {
+    Ok(())
+}
+
+/// Percent-encode a file path for use in a URL query parameter
+fn encode_path_for_url(path: &str) -> String {
+    path.chars()
+        .map(|c| match c {
+            ' ' => "%20".to_string(),
+            '#' => "%23".to_string(),
+            '%' => "%25".to_string(),
+            '&' => "%26".to_string(),
+            '?' => "%3F".to_string(),
+            _ => c.to_string(),
+        })
+        .collect()
+}
+
+/// Walk up from a directory to find the JetBrains project root (contains `.idea/`).
+///
+/// When a Claude session starts in a subfolder (e.g., `/monorepo/backend`),
+/// the actual JetBrains project root may be an ancestor containing `.idea/`.
+/// In monorepos, multiple directories may have `.idea/`, so we use the topmost
+/// one to match the root project that JetBrains has open.
+/// Returns the original path if no `.idea/` is found.
+fn find_jetbrains_project_root(path: &str) -> String {
+    let mut current = std::path::PathBuf::from(path);
+    let mut topmost: Option<String> = None;
+    loop {
+        if current.join(".idea").is_dir() {
+            topmost = Some(current.to_string_lossy().to_string());
+        }
+        if !current.pop() {
+            break;
+        }
+    }
+    topmost.unwrap_or_else(|| path.to_string())
+}
+
+/// Map JetBrains IDE app names to their registered URL scheme.
+/// Returns `None` for non-JetBrains IDEs.
+fn jetbrains_url_scheme(app_name: &str) -> Option<&'static str> {
+    match app_name {
+        "PhpStorm" => Some("phpstorm"),
+        "IntelliJ IDEA" | "IntelliJ IDEA CE" => Some("idea"),
+        "WebStorm" => Some("webstorm"),
+        "PyCharm" | "PyCharm CE" => Some("pycharm"),
+        "GoLand" => Some("goland"),
+        "CLion" => Some("clion"),
+        "Rider" => Some("rider"),
+        "RubyMine" => Some("rubymine"),
+        "DataGrip" => Some("datagrip"),
+        "Android Studio" => Some("studio"),
+        "Aqua" => Some("aqua"),
+        "Fleet" => Some("fleet"),
+        "RustRover" => Some("rustrover"),
+        _ => None,
+    }
 }
 
 /// Get the JetBrains Toolbox scripts directory
@@ -756,6 +857,11 @@ fn get_app_name(comm: &str) -> Option<&'static str> {
     }
 }
 
+/// Returns true if the app_name is a JetBrains IDE
+fn is_jetbrains_ide(app_name: &str) -> bool {
+    jetbrains_url_scheme(app_name).is_some()
+}
+
 /// Stop a session by sending SIGTERM to the process
 ///
 /// This gracefully terminates the Claude process by sending a SIGTERM signal.
@@ -988,6 +1094,69 @@ mod tests {
             get_app_name("/Applications/PyCharm.app/Contents/MacOS/pycharm"),
             Some("PyCharm")
         );
+    }
+
+    #[test]
+    fn test_is_jetbrains_ide() {
+        assert!(is_jetbrains_ide("PhpStorm"));
+        assert!(is_jetbrains_ide("IntelliJ IDEA"));
+        assert!(is_jetbrains_ide("IntelliJ IDEA CE"));
+        assert!(is_jetbrains_ide("WebStorm"));
+        assert!(is_jetbrains_ide("PyCharm"));
+        assert!(is_jetbrains_ide("PyCharm CE"));
+        assert!(is_jetbrains_ide("GoLand"));
+        assert!(is_jetbrains_ide("CLion"));
+        assert!(is_jetbrains_ide("Rider"));
+        assert!(is_jetbrains_ide("RubyMine"));
+        assert!(is_jetbrains_ide("DataGrip"));
+        assert!(is_jetbrains_ide("Android Studio"));
+        assert!(is_jetbrains_ide("Aqua"));
+        assert!(is_jetbrains_ide("Fleet"));
+        assert!(is_jetbrains_ide("RustRover"));
+
+        assert!(!is_jetbrains_ide("Visual Studio Code"));
+        assert!(!is_jetbrains_ide("Cursor"));
+        assert!(!is_jetbrains_ide("Zed"));
+        assert!(!is_jetbrains_ide("iTerm"));
+        assert!(!is_jetbrains_ide("Terminal"));
+    }
+
+    #[test]
+    fn test_encode_path_for_url() {
+        assert_eq!(encode_path_for_url("/Users/foo/project"), "/Users/foo/project");
+        assert_eq!(encode_path_for_url("/Users/John Smith/My Project"), "/Users/John%20Smith/My%20Project");
+        assert_eq!(encode_path_for_url("/path/with#hash"), "/path/with%23hash");
+        assert_eq!(encode_path_for_url("/path/with&amp"), "/path/with%26amp");
+    }
+
+    #[test]
+    fn test_find_jetbrains_project_root() {
+        // No .idea anywhere — returns original path
+        assert_eq!(find_jetbrains_project_root("/tmp/nonexistent/sub"), "/tmp/nonexistent/sub");
+
+        // Root path — returns as-is
+        assert_eq!(find_jetbrains_project_root("/"), "/");
+    }
+
+    #[test]
+    fn test_jetbrains_url_scheme() {
+        assert_eq!(jetbrains_url_scheme("PhpStorm"), Some("phpstorm"));
+        assert_eq!(jetbrains_url_scheme("IntelliJ IDEA"), Some("idea"));
+        assert_eq!(jetbrains_url_scheme("IntelliJ IDEA CE"), Some("idea"));
+        assert_eq!(jetbrains_url_scheme("WebStorm"), Some("webstorm"));
+        assert_eq!(jetbrains_url_scheme("PyCharm"), Some("pycharm"));
+        assert_eq!(jetbrains_url_scheme("PyCharm CE"), Some("pycharm"));
+        assert_eq!(jetbrains_url_scheme("GoLand"), Some("goland"));
+        assert_eq!(jetbrains_url_scheme("CLion"), Some("clion"));
+        assert_eq!(jetbrains_url_scheme("Rider"), Some("rider"));
+        assert_eq!(jetbrains_url_scheme("RubyMine"), Some("rubymine"));
+        assert_eq!(jetbrains_url_scheme("DataGrip"), Some("datagrip"));
+        assert_eq!(jetbrains_url_scheme("Android Studio"), Some("studio"));
+        assert_eq!(jetbrains_url_scheme("Aqua"), Some("aqua"));
+        assert_eq!(jetbrains_url_scheme("Fleet"), Some("fleet"));
+        assert_eq!(jetbrains_url_scheme("RustRover"), Some("rustrover"));
+        assert_eq!(jetbrains_url_scheme("Visual Studio Code"), None);
+        assert_eq!(jetbrains_url_scheme("Unknown IDE"), None);
     }
 
     #[cfg(target_os = "macos")]
