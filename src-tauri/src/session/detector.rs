@@ -48,6 +48,7 @@ pub struct DetectionDiagnostics {
 pub struct SessionDetector {
     system: System,
     claude_projects_dir: PathBuf,
+    claude_sessions_dir: PathBuf,
 }
 
 impl SessionDetector {
@@ -56,6 +57,7 @@ impl SessionDetector {
         let home_dir = dirs::home_dir().ok_or(SessionDetectorError::HomeDirectoryNotFound)?;
 
         let claude_projects_dir = home_dir.join(".claude").join("projects");
+        let claude_sessions_dir = home_dir.join(".claude").join("sessions");
 
         Ok(Self {
             system: System::new_with_specifics(
@@ -66,6 +68,7 @@ impl SessionDetector {
                 ),
             ),
             claude_projects_dir,
+            claude_sessions_dir,
         })
     }
 
@@ -207,7 +210,32 @@ impl SessionDetector {
                 None => continue, // Skip processes without cwd
             };
 
-            // Encode the process cwd for matching against Claude's project directory names.
+            // Primary: try to resolve session ID from ~/.claude/sessions/<pid>.json
+            // This file is the authoritative source and is updated after /clear,
+            // so we always get the correct current session.
+            if let Some(meta) = self.read_session_metadata(proc.pid) {
+                if !used_session_ids.contains(&meta.session_id) {
+                    // Find the matching session file and project info
+                    if let Some((_, _, project_dir, _, project_name, _)) =
+                        session_files.iter().find(|(_, path, _, _, _, _)| {
+                            path.file_stem().and_then(|s| s.to_str()) == Some(&meta.session_id)
+                        })
+                    {
+                        used_session_ids.insert(meta.session_id.clone());
+                        sessions.push(DetectedSession {
+                            pid: proc.pid,
+                            cwd: proc_cwd.clone(),
+                            project_path: project_dir.clone(),
+                            session_id: Some(meta.session_id),
+                            project_name: project_name.clone(),
+                        });
+                        continue;
+                    }
+                }
+            }
+
+            // Fallback: heuristic matching by encoded CWD + modification time.
+            // Used when pid.json doesn't exist (e.g., older Claude Code versions).
             let cwd_str = proc_cwd.to_string_lossy();
             let encoded_cwd = encode_path_for_matching(&cwd_str);
 
@@ -291,6 +319,13 @@ impl SessionDetector {
         }
 
         sessions
+    }
+
+    /// Reads session metadata from ~/.claude/sessions/<pid>.json if it exists.
+    fn read_session_metadata(&self, pid: u32) -> Option<PidSessionMeta> {
+        let meta_path = self.claude_sessions_dir.join(format!("{}.json", pid));
+        let content = fs::read_to_string(&meta_path).ok()?;
+        serde_json::from_str::<PidSessionMeta>(&content).ok()
     }
 
     /// Get project info from sessions-index.json for a given session ID
@@ -407,6 +442,14 @@ struct ClaudeProcess {
     pid: u32,
     cwd: Option<PathBuf>,
     start_time: u64, // Process start time (seconds since epoch)
+}
+
+/// Session metadata from ~/.claude/sessions/<pid>.json
+/// Written by Claude Code with the authoritative session ID for each process.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PidSessionMeta {
+    session_id: String,
 }
 
 /// Structure of sessions-index.json
