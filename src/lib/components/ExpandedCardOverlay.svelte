@@ -353,7 +353,6 @@
 		width: 100%;
 		max-width: 1100px;
 		height: 85vh;
-		max-height: 900px;
 		pointer-events: none; /* Allow clicks through empty layout area */
 	}
 
