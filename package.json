@@ -1,7 +1,7 @@
 {
-  "name": "c9watch",
-  "version": "0.6.0",
-  "description": "Monitor and control all your Claude Code sessions from one place",
+  "name": "@contexthub/weaver",
+  "version": "0.1.0",
+  "description": "Fleet orchestration and session monitoring for Claude Code agents with MQTT-based Brain connectivity",
   "type": "module",
   "scripts": {
     "dev": "vite dev",

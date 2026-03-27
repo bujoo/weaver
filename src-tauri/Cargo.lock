@@ -387,35 +387,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "c9watch"
-version = "0.6.0"
-dependencies = [
- "anyhow",
- "axum",
- "base64 0.22.1",
- "chrono",
- "dirs 5.0.1",
- "libc",
- "mime_guess",
- "qr2term",
- "rand 0.8.5",
- "rust-embed",
- "serde",
- "serde_json",
- "sysinfo",
- "tauri",
- "tauri-build",
- "tauri-nspanel",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
- "tauri-plugin-process",
- "tauri-plugin-sharekit",
- "tauri-plugin-updater",
- "thiserror 1.0.69",
- "tokio",
-]
-
-[[package]]
 name = "cairo-rs"
 version = "0.18.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -556,6 +527,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ca0197aee26d1ae37445ee532fefce43251d24cc7c166799f4d46817f1d3973"
 dependencies = [
  "crossbeam-utils",
+]
+
+[[package]]
+name = "contexthub-weaver"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "base64 0.22.1",
+ "chrono",
+ "dirs 5.0.1",
+ "libc",
+ "mime_guess",
+ "qr2term",
+ "rand 0.8.5",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "tauri",
+ "tauri-build",
+ "tauri-nspanel",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "tauri-plugin-process",
+ "tauri-plugin-sharekit",
+ "tauri-plugin-updater",
+ "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]
