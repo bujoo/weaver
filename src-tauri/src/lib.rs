@@ -497,10 +497,14 @@ async fn clone_repo_cmd(url: String, branch: Option<String>) -> Result<String, S
 
 #[cfg(not(mobile))]
 fn default_workspace_mount() -> std::path::PathBuf {
-    // Default to ~/Workspace, configurable via settings later
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join("Workspace")
+    let saved = settings::load_settings();
+    if !saved.workspace_mount.is_empty() {
+        std::path::PathBuf::from(&saved.workspace_mount)
+    } else {
+        dirs::home_dir()
+            .unwrap_or_default()
+            .join("Workspace")
+    }
 }
 
 // ── NSPanel definition for macOS popover ────────────────────────────
