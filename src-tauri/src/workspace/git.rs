@@ -333,7 +333,15 @@ pub fn setup_mission_worktrees(
 
 /// Open a VS Code workspace file.
 pub fn open_vscode_workspace(workspace_file: &Path) -> Result<(), String> {
-    Command::new("code")
+    // Try `code` in PATH first, then macOS app bundle path
+    let result = Command::new("code").arg(workspace_file).spawn();
+    if result.is_ok() {
+        return Ok(());
+    }
+
+    // macOS: VS Code app bundle
+    let macos_code = "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code";
+    Command::new(macos_code)
         .arg(workspace_file)
         .spawn()
         .map_err(|e| format!("Failed to open VS Code: {}", e))?;
