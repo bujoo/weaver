@@ -15,6 +15,8 @@ pub struct MqttClient {
 impl MqttClient {
     pub async fn new(config: MqttConfig) -> Self {
         let client_id = format!("weaver-{}", &config.instance_id);
+        eprintln!("[MQTT] Connecting as '{}' to {}:{}", client_id, config.host, config.port);
+
         let mut mqtt_opts = MqttOptions::new(&client_id, &config.host, config.port);
         mqtt_opts.set_credentials(&config.username, &config.password);
         mqtt_opts.set_keep_alive(Duration::from_secs(30));
@@ -30,13 +32,26 @@ impl MqttClient {
         let config_clone = config.clone();
         let client_clone = client.clone();
 
-        // Spawn event loop processor
-        tokio::spawn(async move {
+        // Spawn event loop processor on Tauri's async runtime
+        tauri::async_runtime::spawn(async move {
+            eprintln!("[MQTT] Event loop started, beginning poll cycle");
+            let _ = std::fs::write("/tmp/weaver-mqtt-eventloop.log", "eventloop started\n");
+            let mut poll_count = 0u64;
             loop {
+                poll_count += 1;
+                if poll_count <= 5 || poll_count % 100 == 0 {
+                    let _ = std::fs::write("/tmp/weaver-mqtt-eventloop.log",
+                        format!("poll #{}\n", poll_count));
+                }
                 match eventloop.poll().await {
                     Ok(event) => {
+                        if poll_count <= 10 {
+                            let _ = std::fs::write("/tmp/weaver-mqtt-eventloop.log",
+                                format!("poll #{}: event={:?}\n", poll_count, event));
+                        }
                         match &event {
-                            Event::Incoming(Packet::ConnAck(_)) => {
+                            Event::Incoming(Packet::ConnAck(ack)) => {
+                                eprintln!("[MQTT] ConnAck received: {:?}", ack);
                                 *connected_clone.lock().await = true;
                                 debug_log::log_info("[MQTT] Connected to broker");
 
@@ -63,6 +78,7 @@ impl MqttClient {
                         }
                     }
                     Err(e) => {
+                        eprintln!("[MQTT] Connection error: {}", e);
                         *connected_clone.lock().await = false;
                         debug_log::log_error(&format!("[MQTT] Connection error: {}", e));
                         tokio::time::sleep(Duration::from_secs(5)).await;

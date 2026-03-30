@@ -611,6 +611,12 @@ pub fn run() {
                         return;
                     }
 
+                    eprintln!("[MQTT] Auto-connecting as {} to {}:{}", username, host, port);
+                    // Debug: write to file for troubleshooting
+                    let _ = std::fs::write("/tmp/weaver-mqtt-debug.log", format!(
+                        "Auto-connect: host={} port={} user={} pass_len={} instance={} ws={}\n",
+                        host, port, username, password.len(), instance_id, workspace
+                    ));
                     debug_log::log_info(&format!(
                         "[MQTT] Auto-connecting as {} to {}:{}",
                         username, host, port
@@ -627,37 +633,35 @@ pub fn run() {
 
                     let client = mqtt::client::MqttClient::new(config).await;
 
-                    let mqtt_arc = Arc::new(Mutex::new(Some(client)));
+                    // Store client in managed state first
+                    {
+                        let mut guard = mqtt_s.lock().await;
+                        *guard = Some(client);
+                    }
 
-                    // Start heartbeat
+                    // Start heartbeat (uses managed state)
                     mqtt::heartbeat::start_heartbeat(
-                        mqtt_arc.clone(),
+                        mqtt_s.clone(),
                         instance_id.clone(),
                         workspace.clone(),
                         2,
                         std::time::Instant::now(),
                     );
 
-                    // Start handlers
-                    let rx1 = {
-                        let g = mqtt_arc.lock().await;
-                        g.as_ref().unwrap().subscribe_incoming()
+                    // Get broadcast receivers from the client
+                    let (rx1, rx2, rx3) = {
+                        let g = mqtt_s.lock().await;
+                        let c = g.as_ref().unwrap();
+                        (c.subscribe_incoming(), c.subscribe_incoming(), c.subscribe_incoming())
                     };
-                    ah.start(
-                        {
-                            let g = mqtt_arc.lock().await;
-                            g.as_ref().unwrap().subscribe_incoming()
-                        },
-                        app_h.clone(),
-                    );
-                    ch.start(rx1, app_h.clone());
+
+                    // Start handlers
+                    ah.start(rx1, app_h.clone());
+                    ch.start(rx2, app_h.clone());
 
                     ah.start_auto_execute(
-                        {
-                            let g = mqtt_arc.lock().await;
-                            g.as_ref().unwrap().subscribe_incoming()
-                        },
-                        mqtt_arc.clone(),
+                        rx3,
+                        mqtt_s.clone(),
                         sp,
                         ch,
                         instance_id,
@@ -665,14 +669,8 @@ pub fn run() {
                         app_h,
                     );
 
-                    // Move to managed state
-                    let inner = Arc::try_unwrap(mqtt_arc)
-                        .ok()
-                        .map(|m| m.into_inner());
-                    if let Some(c) = inner {
-                        *mqtt_s.lock().await = c;
-                        debug_log::log_info("[MQTT] Auto-connect complete, all handlers started");
-                    }
+                    eprintln!("[MQTT] Auto-connect complete, all handlers started");
+                    debug_log::log_info("[MQTT] Auto-connect complete, all handlers started");
                 });
             }
 
