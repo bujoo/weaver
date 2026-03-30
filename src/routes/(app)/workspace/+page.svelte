@@ -85,18 +85,10 @@
     try {
       const { invoke } = await import('@tauri-apps/api/core');
 
-      // Build phase specs: each phase gets all mission repos
-      // For now, assign all repos to a single phase structure
-      // TODO: get actual phase->repo mapping from plan state
-      const phases = [
-        { phase_id: 'P0', repos: mission.repos.map((r) => r.repo_id) },
-        { phase_id: 'P1', repos: mission.repos.map((r) => r.repo_id) },
-        { phase_id: 'P2', repos: mission.repos.map((r) => r.repo_id) },
-      ];
-
+      const repos = mission.repos.map((r) => r.repo_id);
       const result = await invoke<SetupResult>('setup_mission_cmd', {
         missionId,
-        phases,
+        repos,
       });
 
       setupResults.set(missionId, result);

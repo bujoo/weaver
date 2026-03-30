@@ -234,13 +234,6 @@ fn parse_worktree_list(output: &str) -> Vec<WorktreeInfo> {
 
 // ── Mission workspace setup ─────────────────────────────────────────
 
-/// Phase + repo info for setting up mission worktrees.
-#[derive(Debug, Clone)]
-pub struct PhaseRepoSpec {
-    pub phase_id: String,
-    pub repos: Vec<String>, // repo_ids (folder names in workspace mount)
-}
-
 /// Result of setting up a mission workspace.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -251,17 +244,17 @@ pub struct MissionWorkspaceResult {
     pub errors: Vec<String>,
 }
 
-/// Set up all worktrees for a mission and generate a VS Code workspace file.
+/// Set up worktrees for a mission: one worktree per repo, shared across all phases.
 ///
 /// Structure:
 ///   {mount}/.worktrees/{mid_short}/
 ///     mission.code-workspace
-///     P0/repo-name/  (worktree)
-///     P1/repo-name/  (worktree)
+///     contexthub-brain/   (worktree, branch: weaver/{mid_short})
+///     ocxp-engine/        (worktree, branch: weaver/{mid_short})
 pub fn setup_mission_worktrees(
     mount: &Path,
     mission_id: &str,
-    phases: &[PhaseRepoSpec],
+    repo_ids: &[String],
 ) -> MissionWorkspaceResult {
     let short_mid = if mission_id.len() > 8 {
         &mission_id[..8]
@@ -276,29 +269,27 @@ pub fn setup_mission_worktrees(
     let mut created = 0u32;
     let mut errors = Vec::new();
 
-    for phase in phases {
-        for repo_id in &phase.repos {
-            // Find the repo in workspace mount
-            let repo_path = mount.join(repo_id);
-            if !repo_path.join(".git").exists() {
-                errors.push(format!("Repo '{}' not found at {}", repo_id, repo_path.display()));
-                continue;
+    let branch = format!("weaver/{}", short_mid);
+
+    for repo_id in repo_ids {
+        let repo_path = mount.join(repo_id);
+        if !repo_path.join(".git").exists() {
+            errors.push(format!("Repo '{}' not found at {}", repo_id, repo_path.display()));
+            continue;
+        }
+
+        let wt_path = worktrees_dir.join(repo_id);
+
+        match create_worktree(&repo_path, &wt_path, &branch) {
+            Ok(_) => {
+                created += 1;
+                folders.push(serde_json::json!({
+                    "path": repo_id,
+                    "name": repo_id
+                }));
             }
-
-            let branch = mission_branch_name(mission_id, &phase.phase_id);
-            let wt_path = worktrees_dir.join(&phase.phase_id).join(repo_id);
-
-            match create_worktree(&repo_path, &wt_path, &branch) {
-                Ok(_) => {
-                    created += 1;
-                    folders.push(serde_json::json!({
-                        "path": format!("{}/{}", phase.phase_id, repo_id),
-                        "name": format!("{}: {}", phase.phase_id, repo_id)
-                    }));
-                }
-                Err(e) => {
-                    errors.push(format!("{}/{}: {}", phase.phase_id, repo_id, e));
-                }
+            Err(e) => {
+                errors.push(format!("{}: {}", repo_id, e));
             }
         }
     }
@@ -317,10 +308,8 @@ pub fn setup_mission_worktrees(
     }
 
     crate::debug_log::log_info(&format!(
-        "[Git] Mission workspace setup: {} worktrees, {} errors, workspace: {}",
-        created,
-        errors.len(),
-        workspace_file.display()
+        "[Git] Mission workspace: {} worktrees created, branch '{}', workspace: {}",
+        created, branch, workspace_file.display()
     ));
 
     MissionWorkspaceResult {

@@ -490,23 +490,10 @@ async fn create_worktree_cmd(
 #[tauri::command]
 async fn setup_mission_cmd(
     mission_id: String,
-    phases: Vec<serde_json::Value>,
+    repos: Vec<String>,
 ) -> Result<workspace::git::MissionWorkspaceResult, String> {
     let mount = default_workspace_mount();
-    let phase_specs: Vec<workspace::git::PhaseRepoSpec> = phases
-        .iter()
-        .filter_map(|p| {
-            let phase_id = p.get("phase_id")?.as_str()?.to_string();
-            let repos: Vec<String> = p
-                .get("repos")?
-                .as_array()?
-                .iter()
-                .filter_map(|r| r.as_str().map(String::from))
-                .collect();
-            Some(workspace::git::PhaseRepoSpec { phase_id, repos })
-        })
-        .collect();
-    Ok(workspace::git::setup_mission_worktrees(&mount, &mission_id, &phase_specs))
+    Ok(workspace::git::setup_mission_worktrees(&mount, &mission_id, &repos))
 }
 
 #[cfg(not(mobile))]
