@@ -18,6 +18,8 @@ pub mod executor;
 #[cfg(not(mobile))]
 pub mod mqtt;
 #[cfg(not(mobile))]
+pub mod settings;
+#[cfg(not(mobile))]
 pub mod workspace;
 
 // Shared modules (types used by both desktop and mobile builds)
@@ -456,6 +458,20 @@ async fn connect_mqtt(
     Ok(())
 }
 
+// ── Settings commands ───────────────────────────────────────────────
+
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn get_settings() -> Result<settings::WeaverSettings, String> {
+    Ok(settings::load_settings())
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn save_settings_cmd(s: settings::WeaverSettings) -> Result<(), String> {
+    settings::save_settings(&s)
+}
+
 // ── Workspace commands ─────────────────────────────────────────────
 
 #[cfg(not(mobile))]
@@ -734,7 +750,9 @@ pub fn run() {
             get_task_queue,
             get_workspace_status,
             clone_repo_cmd,
-            connect_mqtt
+            connect_mqtt,
+            get_settings,
+            save_settings_cmd
         ]);
 
     // Mobile: minimal shell (all communication via WebSocket from the frontend)

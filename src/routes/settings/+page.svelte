@@ -1,0 +1,279 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { invoke } from '@tauri-apps/api/core';
+
+  interface WeaverSettings {
+    mqttHost: string;
+    mqttPort: number;
+    mqttUsername: string;
+    mqttPassword: string;
+    instanceId: string;
+    workspace: string;
+    workspaceMount: string;
+    capacity: number;
+    brainApiUrl: string;
+    autoConnect: boolean;
+  }
+
+  let settings: WeaverSettings = $state({
+    mqttHost: 'localhost',
+    mqttPort: 1883,
+    mqttUsername: 'weaver-dev',
+    mqttPassword: 'weaver-dev-secret',
+    instanceId: '',
+    workspace: 'dev',
+    workspaceMount: '',
+    capacity: 2,
+    brainApiUrl: 'http://localhost:8000',
+    autoConnect: false,
+  });
+
+  let saving = $state(false);
+  let connecting = $state(false);
+  let connected = $state(false);
+  let message = $state('');
+
+  onMount(async () => {
+    try {
+      settings = await invoke('get_settings');
+      connected = await invoke('get_mqtt_status');
+    } catch (e) {
+      console.error('Failed to load settings:', e);
+    }
+  });
+
+  async function save() {
+    saving = true;
+    message = '';
+    try {
+      await invoke('save_settings_cmd', { s: settings });
+      message = 'Settings saved';
+      setTimeout(() => (message = ''), 2000);
+    } catch (e) {
+      message = `Error: ${e}`;
+    }
+    saving = false;
+  }
+
+  async function connect() {
+    connecting = true;
+    message = '';
+    try {
+      await invoke('connect_mqtt', {
+        host: settings.mqttHost,
+        port: settings.mqttPort,
+        username: settings.mqttUsername,
+        password: settings.mqttPassword,
+        instanceId: settings.instanceId,
+        workspace: settings.workspace,
+      });
+      connected = true;
+      message = 'Connected to MQTT';
+      setTimeout(() => (message = ''), 3000);
+    } catch (e) {
+      message = `Connection failed: ${e}`;
+    }
+    connecting = false;
+  }
+</script>
+
+<div class="settings">
+  <h1>Settings</h1>
+
+  <section>
+    <h2>MQTT Connection</h2>
+    <div class="field-row">
+      <div class="field">
+        <label for="host">Host</label>
+        <input id="host" bind:value={settings.mqttHost} />
+      </div>
+      <div class="field field-sm">
+        <label for="port">Port</label>
+        <input id="port" type="number" bind:value={settings.mqttPort} />
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="user">Username</label>
+        <input id="user" bind:value={settings.mqttUsername} />
+      </div>
+      <div class="field">
+        <label for="pass">Password</label>
+        <input id="pass" type="password" bind:value={settings.mqttPassword} />
+      </div>
+    </div>
+    <div class="status-row">
+      <button class="btn-connect" onclick={connect} disabled={connecting}>
+        {connecting ? 'Connecting...' : connected ? 'Reconnect' : 'Connect'}
+      </button>
+      <span class="status-dot" class:connected></span>
+      <span class="status-text">{connected ? 'Connected' : 'Disconnected'}</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Instance</h2>
+    <div class="field-row">
+      <div class="field">
+        <label for="iid">Instance ID</label>
+        <input id="iid" bind:value={settings.instanceId} class="mono" />
+      </div>
+      <div class="field field-sm">
+        <label for="cap">Capacity</label>
+        <input id="cap" type="number" bind:value={settings.capacity} />
+      </div>
+    </div>
+    <div class="field">
+      <label for="ws">Workspace</label>
+      <input id="ws" bind:value={settings.workspace} />
+    </div>
+  </section>
+
+  <section>
+    <h2>Paths</h2>
+    <div class="field">
+      <label for="mount">Workspace Mount</label>
+      <input id="mount" bind:value={settings.workspaceMount} class="mono" />
+    </div>
+    <div class="field">
+      <label for="brain">Brain API URL</label>
+      <input id="brain" bind:value={settings.brainApiUrl} class="mono" />
+    </div>
+  </section>
+
+  <div class="actions">
+    <button class="btn-save" onclick={save} disabled={saving}>
+      {saving ? 'Saving...' : 'Save Settings'}
+    </button>
+    {#if message}
+      <span class="message">{message}</span>
+    {/if}
+  </div>
+</div>
+
+<style>
+  .settings {
+    padding: 24px;
+    max-width: 600px;
+  }
+
+  h1 {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary, #888);
+    margin-bottom: 24px;
+  }
+
+  h2 {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted, #666);
+    margin-bottom: 12px;
+  }
+
+  section {
+    margin-bottom: 24px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .field-row {
+    display: flex;
+    gap: 12px;
+  }
+
+  .field {
+    flex: 1;
+    margin-bottom: 8px;
+  }
+
+  .field-sm {
+    flex: 0 0 100px;
+  }
+
+  label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-muted, #666);
+    margin-bottom: 4px;
+  }
+
+  input {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-primary, #fff);
+    padding: 6px 8px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+
+  input:focus {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  input.mono {
+    font-family: 'Geist Mono', monospace;
+    font-size: 12px;
+  }
+
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-red, #ff4444);
+  }
+
+  .status-dot.connected {
+    background: var(--accent-green, #00ff88);
+  }
+
+  .status-text {
+    font-size: 11px;
+    color: var(--text-muted, #666);
+  }
+
+  .btn-connect,
+  .btn-save {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-primary, #fff);
+    padding: 6px 16px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .btn-connect:hover,
+  .btn-save:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .btn-connect:disabled,
+  .btn-save:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .message {
+    font-size: 12px;
+    color: var(--accent-green, #00ff88);
+  }
+</style>
