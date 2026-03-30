@@ -17,14 +17,20 @@ pub struct MqttClient {
 
 impl MqttClient {
     pub async fn new(config: MqttConfig) -> Self {
-        let client_id = format!("weaver-{}", &config.instance_id);
+        // Unique client ID per process to avoid EMQX kicking duplicate sessions
+        let short_id = if config.instance_id.starts_with("weaver-") {
+            config.instance_id.trim_start_matches("weaver-").to_string()
+        } else {
+            config.instance_id.clone()
+        };
+        let client_id = format!("wvr-{}", short_id);
         eprintln!("[MQTT] Connecting as '{}' to {}:{}", client_id, config.host, config.port);
 
         let mut mqtt_opts = MqttOptions::new(&client_id, &config.host, config.port);
         mqtt_opts.set_credentials(&config.username, &config.password);
-        mqtt_opts.set_keep_alive(Duration::from_secs(30));
+        mqtt_opts.set_keep_alive(Duration::from_secs(60));
         mqtt_opts.set_clean_session(true);
-        mqtt_opts.set_max_packet_size(10 * 1024 * 1024, 10 * 1024 * 1024); // 10MB
+        mqtt_opts.set_max_packet_size(10 * 1024 * 1024, 10 * 1024 * 1024);
 
         let (client, mut eventloop) = AsyncClient::new(mqtt_opts, 64);
         let (incoming_tx, _) = broadcast::channel::<MqttIncoming>(128);
@@ -81,10 +87,14 @@ impl MqttClient {
                         }
                     }
                     Err(e) => {
-                        eprintln!("[MQTT] Connection error: {}", e);
+                        let msg = format!("{}", e);
+                        // Only log if not a routine reconnect
+                        if !msg.contains("ConnectionAborted") {
+                            eprintln!("[MQTT] Connection error: {}", e);
+                        }
                         *connected_clone.lock().await = false;
                         debug_log::log_error(&format!("[MQTT] Connection error: {}", e));
-                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        tokio::time::sleep(Duration::from_secs(10)).await;
                     }
                 }
             }
