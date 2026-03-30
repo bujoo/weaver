@@ -373,6 +373,18 @@ async fn get_mqtt_status(
 
 #[cfg(not(mobile))]
 #[tauri::command]
+async fn get_registry(
+    state: tauri::State<'_, Arc<Mutex<Option<mqtt::types::WorkspaceRegistryMessage>>>>,
+) -> Result<Option<serde_json::Value>, String> {
+    let guard = state.lock().await;
+    match guard.as_ref() {
+        Some(reg) => Ok(Some(serde_json::to_value(reg).map_err(|e| e.to_string())?)),
+        None => Ok(None),
+    }
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
 async fn get_task_queue(
     handler: tauri::State<'_, Arc<mqtt::assignment::AssignmentHandler>>,
 ) -> Result<Vec<mqtt::assignment::TaskQueueEntry>, String> {
@@ -608,6 +620,9 @@ pub fn run() {
             app.manage(control_handler.clone());
             let spawner = Arc::new(executor::spawner::ClaudeCodeSpawner::new());
             app.manage(spawner.clone());
+            let registry_state: Arc<Mutex<Option<mqtt::types::WorkspaceRegistryMessage>>> =
+                Arc::new(Mutex::new(None));
+            app.manage(registry_state);
 
             // ── Auto-connect MQTT from env vars or saved settings ──
             {
@@ -862,6 +877,7 @@ pub fn run() {
             get_server_info,
             get_debug_logs,
             get_mqtt_status,
+            get_registry,
             get_task_queue,
             get_workspace_status,
             clone_repo_cmd,

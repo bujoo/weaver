@@ -53,7 +53,12 @@ impl AssignmentHandler {
                         handle_context_bundle(&queue, &todo_id, bundle).await;
                     }
                     Ok(MqttIncoming::Registry(reg)) => {
-                        use tauri::Emitter;
+                        use tauri::{Emitter, Manager};
+                        // Store in managed state for later retrieval
+                        let state: tauri::State<'_, std::sync::Arc<tokio::sync::Mutex<Option<crate::mqtt::types::WorkspaceRegistryMessage>>>> = app.state();
+                        let mut guard = state.lock().await;
+                        *guard = Some(reg.clone());
+                        drop(guard);
                         let _ = app.emit("mqtt-registry", &serde_json::to_value(&reg).unwrap_or_default());
                     }
                     Ok(_) => {}

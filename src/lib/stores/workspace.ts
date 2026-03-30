@@ -49,6 +49,15 @@ export const registry = writable<WorkspaceRegistry | null>(null);
 
 export async function initRegistryListener() {
 	if (!isTauri()) return;
+
+	// Fetch cached registry from Rust (may already have it from auto-connect)
+	try {
+		const { invoke } = await import('@tauri-apps/api/core');
+		const cached = await invoke<WorkspaceRegistry | null>('get_registry');
+		if (cached) registry.set(cached);
+	} catch {}
+
+	// Also listen for live updates
 	const { listen } = await import('@tauri-apps/api/event');
 	listen<WorkspaceRegistry>('mqtt-registry', (event) => {
 		registry.set(event.payload);
