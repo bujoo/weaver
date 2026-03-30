@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { isTauri } from '$lib/ws';
+  import PageHeader from '$lib/components/PageHeader.svelte';
 
   interface WeaverSettings {
     mqttHost: string;
@@ -93,8 +94,9 @@
   }
 </script>
 
+<PageHeader title="Settings" />
+
 <div class="settings">
-  <h1>Settings</h1>
 
   {#if !tauriAvailable}
     <div class="browser-warning">
@@ -177,15 +179,6 @@
   .settings {
     padding: 24px;
     max-width: 600px;
-  }
-
-  h1 {
-    font-size: 14px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-secondary, #888);
-    margin-bottom: 24px;
   }
 
   h2 {

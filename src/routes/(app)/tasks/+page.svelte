@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { tasks, taskCounts, initializeTaskListeners } from '$lib/stores/tasks';
   import TaskCard from '$lib/components/TaskCard.svelte';
+  import PageHeader from '$lib/components/PageHeader.svelte';
 
   let expandedId = $state<string | null>(null);
   let counts = $derived($taskCounts);
@@ -16,9 +17,10 @@
   }
 </script>
 
+<PageHeader title="Tasks" />
+
 <div class="page">
   <div class="header">
-    <h1>Tasks</h1>
     <div class="counts">
       {#if counts.executing > 0}
         <span class="count executing">{counts.executing} executing</span>
@@ -58,16 +60,8 @@
   .header {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 8px;
     margin-bottom: 16px;
-  }
-
-  h1 {
-    font-size: 14px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-secondary, #888);
   }
 
   .counts {

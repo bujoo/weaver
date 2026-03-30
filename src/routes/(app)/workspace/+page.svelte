@@ -8,6 +8,7 @@
     type ToolInfo,
   } from '$lib/stores/workspace';
   import { isTauri } from '$lib/ws';
+  import PageHeader from '$lib/components/PageHeader.svelte';
 
   let ws = $derived($workspaceStatus);
   let isLoading = $derived($loading);
@@ -34,9 +35,10 @@
   }
 </script>
 
+<PageHeader title="Workspace" />
+
 <div class="page">
   <div class="header">
-    <h1>Workspace</h1>
     <button class="btn-refresh" onclick={refreshWorkspace} disabled={isLoading}>
       {isLoading ? 'Scanning...' : 'Refresh'}
     </button>
@@ -97,16 +99,8 @@
   .header {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 8px;
     margin-bottom: 16px;
-  }
-
-  h1 {
-    font-size: 14px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-secondary, #888);
   }
 
   h2 {
