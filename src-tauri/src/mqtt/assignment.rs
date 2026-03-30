@@ -52,7 +52,11 @@ impl AssignmentHandler {
                     Ok(MqttIncoming::ContextBundle(todo_id, bundle)) => {
                         handle_context_bundle(&queue, &todo_id, bundle).await;
                     }
-                    Ok(_) => {} // Other message types handled elsewhere
+                    Ok(MqttIncoming::Registry(reg)) => {
+                        use tauri::Emitter;
+                        let _ = app.emit("mqtt-registry", &serde_json::to_value(&reg).unwrap_or_default());
+                    }
+                    Ok(_) => {}
                     Err(broadcast::error::RecvError::Lagged(n)) => {
                         crate::debug_log::log_warn(&format!(
                             "[Assignment] Skipped {} messages (lagged)",

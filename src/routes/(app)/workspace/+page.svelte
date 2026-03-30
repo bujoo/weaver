@@ -4,22 +4,28 @@
     workspaceStatus,
     loading,
     refreshWorkspace,
+    registry,
+    initRegistryListener,
   } from '$lib/stores/workspace';
   import { isTauri } from '$lib/ws';
   import PageHeader from '$lib/components/PageHeader.svelte';
 
   let ws = $derived($workspaceStatus);
+  let reg = $derived($registry);
   let isLoading = $derived($loading);
-  let activeTab = $state('repos');
+  let activeTab = $state('missions');
 
   const tabs = [
+    { id: 'missions', icon: '◈', label: 'MISSIONS' },
     { id: 'repos', icon: '◇', label: 'REPOS' },
     { id: 'tools', icon: '⚙', label: 'TOOLS' },
-    { id: 'worktrees', icon: '⑂', label: 'WORKTREES' },
   ];
+
+  let cloning = $state<string | null>(null);
 
   onMount(() => {
     refreshWorkspace();
+    initRegistryListener();
     const interval = setInterval(refreshWorkspace, 30000);
     return () => clearInterval(interval);
   });
@@ -34,6 +40,30 @@
         const { invoke } = await import('@tauri-apps/api/core');
         await invoke('reveal_in_file_manager', { path });
       } catch {}
+    }
+  }
+
+  async function cloneRepo(repoId: string, repoUrl: string | null, branch: string | null) {
+    if (!isTauri() || !repoUrl) return;
+    cloning = repoId;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('clone_repo_cmd', { url: repoUrl, branch });
+      await refreshWorkspace();
+    } catch (e) {
+      console.error('Clone failed:', e);
+    }
+    cloning = null;
+  }
+
+  async function setupMission(missionId: string) {
+    if (!reg) return;
+    const mission = reg.missions.find((m) => m.missionId === missionId);
+    if (!mission) return;
+    for (const repo of mission.repos) {
+      if (repo.repoUrl) {
+        await cloneRepo(repo.repoId, repo.repoUrl, repo.branch);
+      }
     }
   }
 
@@ -60,7 +90,51 @@
         </button>
       </div>
 
-      {#if activeTab === 'repos'}
+      {#if activeTab === 'missions'}
+        {#if reg && reg.missions.length > 0}
+          <div class="mission-list">
+            {#each reg.missions as mission}
+              <div class="mission-card">
+                <div class="mission-header">
+                  <span class="mission-title">{mission.title}</span>
+                  <span class="mission-status" class:executing={mission.status === 'executing'}>{mission.status}</span>
+                </div>
+                <div class="mission-meta">
+                  <span class="mono">{mission.missionId.slice(0, 8)}</span>
+                  <span>{mission.phaseCount} phases</span>
+                  <span>{mission.todoCount} todos</span>
+                </div>
+                {#if mission.repos.length > 0}
+                  <div class="mission-repos">
+                    {#each mission.repos as repo}
+                      <div class="mission-repo-row">
+                        <span class="repo-id">{repo.repoId}</span>
+                        {#if repo.branch}
+                          <span class="branch">{repo.branch}</span>
+                        {/if}
+                        {#if repo.repoUrl}
+                          <button class="btn-clone" onclick={() => cloneRepo(repo.repoId, repo.repoUrl, repo.branch)} disabled={cloning === repo.repoId}>
+                            {cloning === repo.repoId ? '...' : 'Clone'}
+                          </button>
+                        {/if}
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+                <button class="btn-setup" onclick={() => setupMission(mission.missionId)} disabled={!!cloning}>
+                  Setup All Repos
+                </button>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <div class="empty">
+            <p class="empty-title">No missions discovered</p>
+            <p class="empty-hint">Brain publishes missions via MQTT. Make sure a weaver plan exists.</p>
+          </div>
+        {/if}
+
+      {:else if activeTab === 'repos'}
         {#if ws.repos.length === 0}
           <div class="empty">
             <p class="empty-title">No repositories found</p>
@@ -271,6 +345,69 @@
     white-space: nowrap;
     margin-left: auto;
   }
+
+  .mission-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .mission-card {
+    background: var(--bg-card, #111);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 12px;
+  }
+
+  .mission-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .mission-title { color: var(--text-primary); font-size: 13px; flex: 1; }
+
+  .mission-status {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    padding: 1px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .mission-status.executing {
+    color: var(--task-executing);
+    border-color: var(--task-executing);
+  }
+
+  .mission-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+
+  .mission-repos { margin-bottom: 8px; }
+
+  .mission-repo-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0;
+    font-size: 12px;
+  }
+
+  .repo-id { font-family: var(--font-mono); color: var(--text-secondary); flex: 1; }
+
+  .btn-clone, .btn-setup {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    padding: 2px 8px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .btn-clone:hover, .btn-setup:hover { background: rgba(255, 255, 255, 0.1); }
+  .btn-clone:disabled, .btn-setup:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .empty { padding: 48px 0; text-align: center; }
   .empty-title { font-family: var(--font-pixel, monospace); font-size: 16px; color: var(--text-muted); }

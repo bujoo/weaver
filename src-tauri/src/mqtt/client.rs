@@ -1,5 +1,8 @@
 use crate::debug_log;
-use crate::mqtt::types::*;
+use crate::mqtt::types::{
+    ControlMessage, MqttConfig, MqttIncoming, PhaseAssignment, PhaseStateMessage,
+    PlanStateMessage, TodoStateMessage, WorkspaceRegistryMessage,
+};
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS};
 use std::sync::Arc;
 use std::time::Duration;
@@ -134,6 +137,7 @@ async fn subscribe_topics(client: &AsyncClient, config: &MqttConfig) -> Result<(
         format!("weaver/{}/control/{}", ws, iid),
         format!("weaver/{}/control/all", ws),
         format!("weaver/{}/state/#", ws),
+        format!("weaver/{}/registry", ws),
     ];
 
     for topic in &topics {
@@ -176,6 +180,21 @@ fn dispatch_message(
             }
             Err(e) => {
                 debug_log::log_error(&format!("[MQTT] Failed to parse assignment: {}", e));
+                MqttIncoming::Unknown(topic.to_string(), payload.to_vec())
+            }
+        }
+    } else if topic == format!("weaver/{}/registry", ws) {
+        // Workspace registry
+        match serde_json::from_slice::<WorkspaceRegistryMessage>(payload) {
+            Ok(registry) => {
+                debug_log::log_info(&format!(
+                    "[MQTT] Registry received: {} missions",
+                    registry.missions.len()
+                ));
+                MqttIncoming::Registry(registry)
+            }
+            Err(e) => {
+                debug_log::log_error(&format!("[MQTT] Failed to parse registry: {}", e));
                 MqttIncoming::Unknown(topic.to_string(), payload.to_vec())
             }
         }

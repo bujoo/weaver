@@ -1,4 +1,4 @@
-import { writable } from 'svelte/store';
+import { writable, derived } from 'svelte/store';
 import { isTauri } from '$lib/ws';
 
 export interface RepoStatus {
@@ -28,6 +28,32 @@ export interface WorkspaceStatus {
 
 export const workspaceStatus = writable<WorkspaceStatus | null>(null);
 export const loading = writable(false);
+
+// MQTT registry: missions and their repos discovered via retained message
+export interface MissionSummary {
+	missionId: string;
+	title: string;
+	status: string;
+	repoUrl: string | null;
+	repos: { repoId: string; repoUrl: string | null; branch: string | null }[];
+	phaseCount: number;
+	todoCount: number;
+}
+
+export interface WorkspaceRegistry {
+	workspace: string;
+	missions: MissionSummary[];
+}
+
+export const registry = writable<WorkspaceRegistry | null>(null);
+
+export async function initRegistryListener() {
+	if (!isTauri()) return;
+	const { listen } = await import('@tauri-apps/api/event');
+	listen<WorkspaceRegistry>('mqtt-registry', (event) => {
+		registry.set(event.payload);
+	});
+}
 
 export async function refreshWorkspace() {
 	if (!isTauri()) return;

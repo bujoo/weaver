@@ -122,6 +122,39 @@ pub struct TodoStateMessage {
     pub published_at: String,
 }
 
+// ── Workspace registry (Brain -> Weaver, retained) ─────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceRegistryMessage {
+    pub workspace: String,
+    pub missions: Vec<MissionSummary>,
+    pub published_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MissionSummary {
+    pub mission_id: String,
+    pub title: String,
+    pub status: String,
+    #[serde(default)]
+    pub repo_url: Option<String>,
+    #[serde(default)]
+    pub repos: Vec<RepoInfoMqtt>,
+    #[serde(default)]
+    pub phase_count: u32,
+    #[serde(default)]
+    pub todo_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepoInfoMqtt {
+    pub repo_id: String,
+    #[serde(default)]
+    pub repo_url: Option<String>,
+    #[serde(default)]
+    pub branch: Option<String>,
+}
+
 // ── MQTT connection config ──────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -153,6 +186,7 @@ impl Default for MqttConfig {
 pub enum MqttIncoming {
     Assignment(PhaseAssignment),
     Control(ControlMessage),
+    Registry(WorkspaceRegistryMessage),
     PlanState(PlanStateMessage),
     PhaseState(PhaseStateMessage),
     TodoState(TodoStateMessage),
