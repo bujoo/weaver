@@ -43,6 +43,17 @@
     }
   }
 
+  // Check if a repo_id matches a local repo in workspace
+  function findLocalRepo(repoId: string): { path: string; name: string } | null {
+    if (!ws) return null;
+    // Match by name (repo_id often matches folder name or is a suffix)
+    return ws.repos.find((r) =>
+      r.name === repoId ||
+      r.name.endsWith(repoId) ||
+      repoId.endsWith(r.name)
+    ) as { path: string; name: string } | null;
+  }
+
   async function cloneRepo(repoId: string, repoUrl: string | null, branch: string | null) {
     if (!isTauri() || !repoUrl) return;
     cloning = repoId;
@@ -56,12 +67,33 @@
     cloning = null;
   }
 
+  async function createWorktree(repoPath: string, missionId: string, phaseId: string) {
+    if (!isTauri()) return;
+    cloning = `wt-${phaseId}`;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const wtPath = await invoke<string>('create_worktree_cmd', {
+        repoPath,
+        missionId,
+        phaseId,
+      });
+      console.log('Worktree created at:', wtPath);
+      await refreshWorkspace();
+    } catch (e) {
+      console.error('Worktree creation failed:', e);
+    }
+    cloning = null;
+  }
+
   async function setupMission(missionId: string) {
     if (!reg) return;
     const mission = reg.missions.find((m) => m.mission_id === missionId);
     if (!mission) return;
     for (const repo of mission.repos) {
-      if (repo.repo_url) {
+      const local = findLocalRepo(repo.repo_id);
+      if (local) {
+        await createWorktree(local.path, missionId, 'P0');
+      } else if (repo.repo_url) {
         await cloneRepo(repo.repo_id, repo.repo_url, repo.branch);
       }
     }
@@ -98,22 +130,31 @@
                 {#if mission.repos.length > 0}
                   <div class="mission-repos">
                     {#each mission.repos as repo}
+                      {@const local = findLocalRepo(repo.repo_id)}
                       <div class="mission-repo-row">
+                        <span class="repo-dot" class:found={!!local}></span>
                         <span class="repo-id">{repo.repo_id}</span>
                         {#if repo.branch}
                           <span class="branch">{repo.branch}</span>
                         {/if}
-                        {#if repo.repo_url}
+                        {#if local}
+                          <span class="local-path">{local.name}</span>
+                          <button class="btn-clone" onclick={() => createWorktree(local.path, mission.mission_id, 'P0')} disabled={!!cloning}>
+                            {cloning === `wt-P0` ? '...' : 'Worktree'}
+                          </button>
+                        {:else if repo.repo_url}
                           <button class="btn-clone" onclick={() => cloneRepo(repo.repo_id, repo.repo_url, repo.branch)} disabled={cloning === repo.repo_id}>
                             {cloning === repo.repo_id ? '...' : 'Clone'}
                           </button>
+                        {:else}
+                          <span class="not-found">not found</span>
                         {/if}
                       </div>
                     {/each}
                   </div>
                 {/if}
                 <button class="btn-setup" onclick={() => setupMission(mission.mission_id)} disabled={!!cloning}>
-                  Setup All Repos
+                  Setup Worktrees
                 </button>
               </div>
             {/each}
@@ -373,7 +414,11 @@
     font-size: 12px;
   }
 
+  .repo-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-red); flex-shrink: 0; }
+  .repo-dot.found { background: var(--accent-green); }
   .repo-id { font-family: var(--font-mono); color: var(--text-secondary); flex: 1; }
+  .local-path { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+  .not-found { font-size: 10px; color: var(--text-muted); }
 
   .btn-clone, .btn-setup {
     background: rgba(255, 255, 255, 0.06);

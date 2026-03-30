@@ -483,6 +483,25 @@ async fn get_workspace_status() -> Result<workspace::scanner::WorkspaceStatus, S
 
 #[cfg(not(mobile))]
 #[tauri::command]
+async fn create_worktree_cmd(
+    repo_path: String,
+    mission_id: String,
+    phase_id: String,
+) -> Result<String, String> {
+    let repo = std::path::PathBuf::from(&repo_path);
+    let branch = workspace::git::mission_branch_name(&mission_id, &phase_id);
+    let worktree_path = repo
+        .parent()
+        .unwrap_or(&repo)
+        .join(".worktrees")
+        .join(&mission_id[..8.min(mission_id.len())])
+        .join(&phase_id);
+    let path = workspace::git::create_worktree(&repo, &worktree_path, &branch)?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
 async fn clone_repo_cmd(url: String, branch: Option<String>) -> Result<String, String> {
     let mount = default_workspace_mount();
     let repo_name = url
@@ -844,6 +863,7 @@ pub fn run() {
             get_task_queue,
             get_workspace_status,
             clone_repo_cmd,
+            create_worktree_cmd,
             connect_mqtt,
             get_settings,
             save_settings_cmd
