@@ -15,6 +15,8 @@ pub mod web_server;
 pub mod debug_log;
 #[cfg(not(mobile))]
 pub mod mqtt;
+#[cfg(not(mobile))]
+pub mod workspace;
 
 // Shared modules (types used by both desktop and mobile builds)
 pub mod session;
@@ -373,6 +375,37 @@ async fn get_task_queue(
     Ok(handler.get_queue().await)
 }
 
+// ── Workspace commands ─────────────────────────────────────────────
+
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn get_workspace_status() -> Result<workspace::scanner::WorkspaceStatus, String> {
+    let mount = default_workspace_mount();
+    Ok(workspace::scanner::scan_workspace(&mount))
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn clone_repo_cmd(url: String, branch: Option<String>) -> Result<String, String> {
+    let mount = default_workspace_mount();
+    let repo_name = url
+        .rsplit('/')
+        .next()
+        .unwrap_or("repo")
+        .trim_end_matches(".git");
+    let target = mount.join(repo_name);
+    let path = workspace::git::clone_repo(&url, &target, branch.as_deref())?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[cfg(not(mobile))]
+fn default_workspace_mount() -> std::path::PathBuf {
+    // Default to ~/Workspace, configurable via settings later
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join("Workspace")
+}
+
 // ── NSPanel definition for macOS popover ────────────────────────────
 #[cfg(target_os = "macos")]
 tauri_panel! {
@@ -615,7 +648,9 @@ pub fn run() {
             get_server_info,
             get_debug_logs,
             get_mqtt_status,
-            get_task_queue
+            get_task_queue,
+            get_workspace_status,
+            clone_repo_cmd
         ]);
 
     // Mobile: minimal shell (all communication via WebSocket from the frontend)
