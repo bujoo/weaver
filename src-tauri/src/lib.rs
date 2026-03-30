@@ -571,18 +571,110 @@ pub fn run() {
             // ── Polling loop ────────────────────────────────────
             start_polling(app.handle().clone(), sessions_tx, notifications_tx);
 
-            // ── MQTT client (starts disconnected, connected via settings) ──
+            // ── MQTT client (starts disconnected, connected via settings or env) ──
             let mqtt_state: Arc<Mutex<Option<mqtt::client::MqttClient>>> =
                 Arc::new(Mutex::new(None));
-            app.manage(mqtt_state);
+            app.manage(mqtt_state.clone());
 
             // ── Assignment handler + control handler + spawner ──
             let assignment_handler = Arc::new(mqtt::assignment::AssignmentHandler::new());
-            app.manage(assignment_handler);
+            app.manage(assignment_handler.clone());
             let control_handler = Arc::new(mqtt::control::ControlHandler::new());
-            app.manage(control_handler);
+            app.manage(control_handler.clone());
             let spawner = Arc::new(executor::spawner::ClaudeCodeSpawner::new());
-            app.manage(spawner);
+            app.manage(spawner.clone());
+
+            // ── Auto-connect MQTT from env vars or saved settings ──
+            {
+                let mqtt_s = mqtt_state.clone();
+                let ah = assignment_handler.clone();
+                let ch = control_handler.clone();
+                let sp = spawner.clone();
+                let app_h = app.handle().clone();
+
+                tauri::async_runtime::spawn(async move {
+                    // Try env vars first, then saved settings
+                    let saved = settings::load_settings();
+                    let host = std::env::var("MQTT_HOST").unwrap_or(saved.mqtt_host);
+                    let port = std::env::var("MQTT_PORT")
+                        .ok()
+                        .and_then(|p| p.parse().ok())
+                        .unwrap_or(saved.mqtt_port);
+                    let username = std::env::var("MQTT_USERNAME").unwrap_or(saved.mqtt_username);
+                    let password = std::env::var("MQTT_PASSWORD").unwrap_or(saved.mqtt_password);
+                    let instance_id = std::env::var("INSTANCE_ID").unwrap_or(saved.instance_id);
+                    let workspace = std::env::var("WORKSPACE").unwrap_or(saved.workspace);
+
+                    // Only auto-connect if we have non-default credentials
+                    if username.is_empty() || password.is_empty() {
+                        debug_log::log_info("[MQTT] No credentials found, skipping auto-connect");
+                        return;
+                    }
+
+                    debug_log::log_info(&format!(
+                        "[MQTT] Auto-connecting as {} to {}:{}",
+                        username, host, port
+                    ));
+
+                    let config = mqtt::types::MqttConfig {
+                        host,
+                        port,
+                        username,
+                        password,
+                        instance_id: instance_id.clone(),
+                        workspace: workspace.clone(),
+                    };
+
+                    let client = mqtt::client::MqttClient::new(config).await;
+
+                    let mqtt_arc = Arc::new(Mutex::new(Some(client)));
+
+                    // Start heartbeat
+                    mqtt::heartbeat::start_heartbeat(
+                        mqtt_arc.clone(),
+                        instance_id.clone(),
+                        workspace.clone(),
+                        2,
+                        std::time::Instant::now(),
+                    );
+
+                    // Start handlers
+                    let rx1 = {
+                        let g = mqtt_arc.lock().await;
+                        g.as_ref().unwrap().subscribe_incoming()
+                    };
+                    ah.start(
+                        {
+                            let g = mqtt_arc.lock().await;
+                            g.as_ref().unwrap().subscribe_incoming()
+                        },
+                        app_h.clone(),
+                    );
+                    ch.start(rx1, app_h.clone());
+
+                    ah.start_auto_execute(
+                        {
+                            let g = mqtt_arc.lock().await;
+                            g.as_ref().unwrap().subscribe_incoming()
+                        },
+                        mqtt_arc.clone(),
+                        sp,
+                        ch,
+                        instance_id,
+                        default_workspace_mount(),
+                        app_h,
+                    );
+
+                    // Move to managed state
+                    let inner = Arc::try_unwrap(mqtt_arc)
+                        .ok()
+                        .map(|m| m.into_inner());
+                    if let Some(c) = inner {
+                        *mqtt_s.lock().await = c;
+                        debug_log::log_info("[MQTT] Auto-connect complete, all handlers started");
+                    }
+                });
+            }
 
             // ── Main window: hide on close instead of destroying ──────────────
             // This allows "Open Dashboard" from the popover to re-show it.
