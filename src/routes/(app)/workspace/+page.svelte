@@ -58,11 +58,11 @@
 
   async function setupMission(missionId: string) {
     if (!reg) return;
-    const mission = reg.missions.find((m) => m.missionId === missionId);
+    const mission = reg.missions.find((m) => m.mission_id === missionId);
     if (!mission) return;
     for (const repo of mission.repos) {
-      if (repo.repoUrl) {
-        await cloneRepo(repo.repoId, repo.repoUrl, repo.branch);
+      if (repo.repo_url) {
+        await cloneRepo(repo.repo_id, repo.repo_url, repo.branch);
       }
     }
   }
@@ -81,16 +81,7 @@
   <PageHeader {tabs} {activeTab} onTabChange={(id) => (activeTab = id)} />
 
   <main class="grid-container">
-    {#if ws}
-      <div class="mount-path">
-        <span class="label">MOUNT</span>
-        <span class="mono">{ws.mountPath}</span>
-        <button class="btn-refresh" onclick={refreshWorkspace} disabled={isLoading}>
-          {isLoading ? '...' : '↻'}
-        </button>
-      </div>
-
-      {#if activeTab === 'missions'}
+    {#if activeTab === 'missions'}
         {#if reg && reg.missions.length > 0}
           <div class="mission-list">
             {#each reg.missions as mission}
@@ -100,28 +91,28 @@
                   <span class="mission-status" class:executing={mission.status === 'executing'}>{mission.status}</span>
                 </div>
                 <div class="mission-meta">
-                  <span class="mono">{mission.missionId.slice(0, 8)}</span>
-                  <span>{mission.phaseCount} phases</span>
-                  <span>{mission.todoCount} todos</span>
+                  <span class="mono">{mission.mission_id.slice(0, 8)}</span>
+                  <span>{mission.phase_count} phases</span>
+                  <span>{mission.todo_count} todos</span>
                 </div>
                 {#if mission.repos.length > 0}
                   <div class="mission-repos">
                     {#each mission.repos as repo}
                       <div class="mission-repo-row">
-                        <span class="repo-id">{repo.repoId}</span>
+                        <span class="repo-id">{repo.repo_id}</span>
                         {#if repo.branch}
                           <span class="branch">{repo.branch}</span>
                         {/if}
-                        {#if repo.repoUrl}
-                          <button class="btn-clone" onclick={() => cloneRepo(repo.repoId, repo.repoUrl, repo.branch)} disabled={cloning === repo.repoId}>
-                            {cloning === repo.repoId ? '...' : 'Clone'}
+                        {#if repo.repo_url}
+                          <button class="btn-clone" onclick={() => cloneRepo(repo.repo_id, repo.repo_url, repo.branch)} disabled={cloning === repo.repo_id}>
+                            {cloning === repo.repo_id ? '...' : 'Clone'}
                           </button>
                         {/if}
                       </div>
                     {/each}
                   </div>
                 {/if}
-                <button class="btn-setup" onclick={() => setupMission(mission.missionId)} disabled={!!cloning}>
+                <button class="btn-setup" onclick={() => setupMission(mission.mission_id)} disabled={!!cloning}>
                   Setup All Repos
                 </button>
               </div>
@@ -135,11 +126,14 @@
         {/if}
 
       {:else if activeTab === 'repos'}
-        {#if ws.repos.length === 0}
-          <div class="empty">
-            <p class="empty-title">No repositories found</p>
+        {#if ws && ws.repos.length > 0}
+          <div class="mount-path">
+            <span class="label">MOUNT</span>
+            <span class="mono">{ws.mountPath}</span>
+            <button class="btn-refresh" onclick={refreshWorkspace} disabled={isLoading}>
+              {isLoading ? '...' : '↻'}
+            </button>
           </div>
-        {:else}
           <div class="repo-list">
             {#each ws.repos as repo}
               <button class="repo-card" onclick={() => openInEditor(repo.path)}>
@@ -154,47 +148,31 @@
               </button>
             {/each}
           </div>
+        {:else}
+          <div class="empty">
+            <p class="empty-title">{isLoading ? 'Scanning...' : 'No repositories found'}</p>
+          </div>
         {/if}
 
       {:else if activeTab === 'tools'}
-        <div class="tool-grid">
-          {#each ws.tools as tool}
-            <div class="tool-item">
-              <span class="tool-dot" class:installed={tool.installed}></span>
-              <span class="tool-name">{tool.name}</span>
-              {#if tool.version}
-                <span class="tool-version">{tool.version.split('\n')[0].slice(0, 30)}</span>
-              {/if}
-            </div>
-          {/each}
-        </div>
-
-      {:else if activeTab === 'worktrees'}
-        {#if allWorktrees.length === 0}
-          <div class="empty">
-            <p class="empty-title">No active worktrees</p>
-            <p class="empty-hint">Worktrees are created when weaver executes a phase.</p>
+        {#if ws && ws.tools.length > 0}
+          <div class="tool-grid">
+            {#each ws.tools as tool}
+              <div class="tool-item">
+                <span class="tool-dot" class:installed={tool.installed}></span>
+                <span class="tool-name">{tool.name}</span>
+                {#if tool.version}
+                  <span class="tool-version">{tool.version.split('\n')[0].slice(0, 30)}</span>
+                {/if}
+              </div>
+            {/each}
           </div>
         {:else}
-          <div class="repo-list">
-            {#each allWorktrees as wt}
-              <button class="repo-card" onclick={() => openInEditor(wt.path)}>
-                <div class="repo-header">
-                  <span class="repo-name">{wt.repoName}</span>
-                  <span class="branch">{wt.branch}</span>
-                  <span class="wt-path">{wt.path}</span>
-                </div>
-              </button>
-            {/each}
+          <div class="empty">
+            <p class="empty-title">No tools detected</p>
           </div>
         {/if}
       {/if}
-
-    {:else if isLoading}
-      <div class="empty"><p class="empty-title">Scanning workspace...</p></div>
-    {:else}
-      <div class="empty"><p class="empty-title">Configure workspace mount in Settings.</p></div>
-    {/if}
   </main>
 </div>
 

@@ -31,13 +31,13 @@ export const loading = writable(false);
 
 // MQTT registry: missions and their repos discovered via retained message
 export interface MissionSummary {
-	missionId: string;
+	mission_id: string;
 	title: string;
 	status: string;
-	repoUrl: string | null;
-	repos: { repoId: string; repoUrl: string | null; branch: string | null }[];
-	phaseCount: number;
-	todoCount: number;
+	repo_url: string | null;
+	repos: { repo_id: string; repo_url: string | null; branch: string | null }[];
+	phase_count: number;
+	todo_count: number;
 }
 
 export interface WorkspaceRegistry {
