@@ -1,6 +1,11 @@
+use crate::executor::pipeline::execute_assignment;
+use crate::executor::spawner::ClaudeCodeSpawner;
+use crate::mqtt::client::MqttClient;
+use crate::mqtt::control::ControlHandler;
 use crate::mqtt::types::{MqttIncoming, PhaseAssignment};
 use chrono::Utc;
 use serde::Serialize;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
 
@@ -72,6 +77,92 @@ impl AssignmentHandler {
         {
             entry.status = status.to_string();
         }
+    }
+
+    /// Start auto-execution: when assignments come in, automatically execute them.
+    pub fn start_auto_execute(
+        &self,
+        mut rx: broadcast::Receiver<MqttIncoming>,
+        mqtt: Arc<Mutex<Option<MqttClient>>>,
+        spawner: Arc<ClaudeCodeSpawner>,
+        control: Arc<ControlHandler>,
+        instance_id: String,
+        workspace_mount: PathBuf,
+        app: tauri::AppHandle,
+    ) {
+        let queue = self.queue.clone();
+
+        tokio::spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(MqttIncoming::Assignment(assignment)) => {
+                        // Queue it
+                        handle_assignment(&queue, &app, assignment.clone()).await;
+
+                        // Start execution in background
+                        let mqtt_c = mqtt.clone();
+                        let spawner_c = spawner.clone();
+                        let control_c = control.clone();
+                        let iid = instance_id.clone();
+                        let mount = workspace_mount.clone();
+                        let app_c = app.clone();
+                        let q = queue.clone();
+                        let mid = assignment.mission_id.clone();
+                        let pid = assignment.phase_id.clone();
+
+                        tokio::spawn(async move {
+                            // Update status to executing
+                            update_queue_status(&q, &mid, &pid, "executing").await;
+
+                            // Register abort signal
+                            let abort_rx = control_c.register_abort(&mid, &pid).await;
+
+                            let result = execute_assignment(
+                                assignment,
+                                &mount,
+                                spawner_c,
+                                mqtt_c,
+                                iid,
+                                abort_rx,
+                                app_c,
+                            )
+                            .await;
+
+                            match result {
+                                Ok(()) => {
+                                    update_queue_status(&q, &mid, &pid, "completed").await;
+                                }
+                                Err(e) => {
+                                    crate::debug_log::log_error(&format!(
+                                        "[Pipeline] Phase {} failed: {}",
+                                        pid, e
+                                    ));
+                                    update_queue_status(&q, &mid, &pid, "failed").await;
+                                }
+                            }
+                        });
+                    }
+                    Ok(_) => {}
+                    Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        });
+    }
+}
+
+async fn update_queue_status(
+    queue: &Arc<Mutex<Vec<TaskQueueEntry>>>,
+    mission_id: &str,
+    phase_id: &str,
+    status: &str,
+) {
+    let mut q = queue.lock().await;
+    if let Some(entry) = q
+        .iter_mut()
+        .find(|e| e.mission_id == mission_id && e.phase_id == phase_id)
+    {
+        entry.status = status.to_string();
     }
 }
 

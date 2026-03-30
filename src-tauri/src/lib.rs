@@ -377,6 +377,85 @@ async fn get_task_queue(
     Ok(handler.get_queue().await)
 }
 
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn connect_mqtt(
+    app: AppHandle,
+    mqtt_state: tauri::State<'_, Arc<Mutex<Option<mqtt::client::MqttClient>>>>,
+    assignment_handler: tauri::State<'_, Arc<mqtt::assignment::AssignmentHandler>>,
+    control_handler: tauri::State<'_, Arc<mqtt::control::ControlHandler>>,
+    spawner: tauri::State<'_, Arc<executor::spawner::ClaudeCodeSpawner>>,
+    host: String,
+    port: u16,
+    username: String,
+    password: String,
+    instance_id: String,
+    workspace: String,
+) -> Result<(), String> {
+    let config = mqtt::types::MqttConfig {
+        host,
+        port,
+        username,
+        password,
+        instance_id: instance_id.clone(),
+        workspace: workspace.clone(),
+    };
+
+    let client = mqtt::client::MqttClient::new(config).await;
+
+    // Start heartbeat
+    let mqtt_arc = Arc::new(Mutex::new(Some(client)));
+
+    mqtt::heartbeat::start_heartbeat(
+        mqtt_arc.clone(),
+        instance_id.clone(),
+        workspace,
+        2, // default capacity
+        std::time::Instant::now(),
+    );
+
+    // Start assignment handler with auto-execute
+    let rx = {
+        let guard = mqtt_arc.lock().await;
+        guard.as_ref().unwrap().subscribe_incoming()
+    };
+    assignment_handler.start(
+        {
+            let guard = mqtt_arc.lock().await;
+            guard.as_ref().unwrap().subscribe_incoming()
+        },
+        app.clone(),
+    );
+
+    // Start control handler
+    control_handler.start(rx, app.clone());
+
+    // Start auto-execute pipeline
+    assignment_handler.start_auto_execute(
+        {
+            let guard = mqtt_arc.lock().await;
+            guard.as_ref().unwrap().subscribe_incoming()
+        },
+        mqtt_arc.clone(),
+        spawner.inner().clone(),
+        control_handler.inner().clone(),
+        instance_id,
+        default_workspace_mount(),
+        app,
+    );
+
+    // Store the client in managed state
+    let mut state = mqtt_state.lock().await;
+    // Take ownership from the arc -- we need to move it
+    let client = Arc::try_unwrap(mqtt_arc)
+        .map_err(|_| "Failed to unwrap mqtt arc")?
+        .into_inner();
+    *state = client;
+
+    debug_log::log_info("[MQTT] Connected and all handlers started");
+    Ok(())
+}
+
 // ── Workspace commands ─────────────────────────────────────────────
 
 #[cfg(not(mobile))]
@@ -481,11 +560,13 @@ pub fn run() {
                 Arc::new(Mutex::new(None));
             app.manage(mqtt_state);
 
-            // ── Assignment handler + control handler ──
+            // ── Assignment handler + control handler + spawner ──
             let assignment_handler = Arc::new(mqtt::assignment::AssignmentHandler::new());
             app.manage(assignment_handler);
             let control_handler = Arc::new(mqtt::control::ControlHandler::new());
             app.manage(control_handler);
+            let spawner = Arc::new(executor::spawner::ClaudeCodeSpawner::new());
+            app.manage(spawner);
 
             // ── Main window: hide on close instead of destroying ──────────────
             // This allows "Open Dashboard" from the popover to re-show it.
@@ -652,7 +733,8 @@ pub fn run() {
             get_mqtt_status,
             get_task_queue,
             get_workspace_status,
-            clone_repo_cmd
+            clone_repo_cmd,
+            connect_mqtt
         ]);
 
     // Mobile: minimal shell (all communication via WebSocket from the frontend)
