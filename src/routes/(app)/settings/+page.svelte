@@ -34,12 +34,10 @@
   let connected = $state(false);
   let message = $state('');
   let tauriAvailable = $state(false);
-  let activeTab = $state('mqtt');
+  let activeTab = $state('settings');
 
   const tabs = [
-    { id: 'mqtt', icon: '◈', label: 'MQTT' },
-    { id: 'instance', icon: '■', label: 'INSTANCE' },
-    { id: 'paths', icon: '/', label: 'PATHS' },
+    { id: 'settings', icon: '⚙', label: 'SETTINGS' },
   ];
 
   onMount(async () => {
@@ -112,7 +110,8 @@
     {/if}
 
     <div class="settings">
-      {#if activeTab === 'mqtt'}
+      <section>
+        <h2>MQTT Connection</h2>
         <div class="field-row">
           <div class="field">
             <label for="host">Host</label>
@@ -140,8 +139,10 @@
           <span class="status-dot" class:connected></span>
           <span class="status-text">{connected ? 'Connected' : 'Disconnected'}</span>
         </div>
+      </section>
 
-      {:else if activeTab === 'instance'}
+      <section>
+        <h2>Instance</h2>
         <div class="field-row">
           <div class="field">
             <label for="iid">Instance ID</label>
@@ -156,8 +157,10 @@
           <label for="ws">Workspace</label>
           <input id="ws" bind:value={settings.workspace} />
         </div>
+      </section>
 
-      {:else if activeTab === 'paths'}
+      <section>
+        <h2>Paths</h2>
         <div class="field">
           <label for="mount">Workspace Mount</label>
           <input id="mount" bind:value={settings.workspaceMount} class="mono" />
@@ -166,7 +169,7 @@
           <label for="brain">Brain API URL</label>
           <input id="brain" bind:value={settings.brainApiUrl} class="mono" />
         </div>
-      {/if}
+      </section>
 
       <div class="actions">
         <button class="btn-save" onclick={save} disabled={saving || !tauriAvailable}>
