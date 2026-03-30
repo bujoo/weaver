@@ -630,8 +630,8 @@
 	.dashboard {
 		display: flex;
 		flex-direction: column;
-		height: 100vh;
-		width: 100vw;
+		height: 100%;
+		width: 100%;
 		overflow: hidden;
 		background: var(--bg-base);
 	}
@@ -645,9 +645,9 @@
 		background: transparent;
 		z-index: 1000;
 		position: relative;
-		/* Left padding clears the macOS traffic light buttons (~80px) on
-		   titleBarStyle: Overlay windows. Right padding matches. */
-		padding: 0 var(--space-md) 0 80px;
+		/* Sidebar now occupies the space where traffic lights were.
+		   Use uniform padding. */
+		padding: 0 var(--space-md) 0 var(--space-md);
 		transition: padding-left 0.35s ease;
 		/* Make the whole bar draggable (including the 80px padding over the
 		   traffic lights). Child buttons opt out via -webkit-app-region: no-drag. */
