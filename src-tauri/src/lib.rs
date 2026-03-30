@@ -502,6 +502,35 @@ async fn create_worktree_cmd(
 
 #[cfg(not(mobile))]
 #[tauri::command]
+async fn setup_mission_cmd(
+    mission_id: String,
+    phases: Vec<serde_json::Value>,
+) -> Result<workspace::git::MissionWorkspaceResult, String> {
+    let mount = default_workspace_mount();
+    let phase_specs: Vec<workspace::git::PhaseRepoSpec> = phases
+        .iter()
+        .filter_map(|p| {
+            let phase_id = p.get("phase_id")?.as_str()?.to_string();
+            let repos: Vec<String> = p
+                .get("repos")?
+                .as_array()?
+                .iter()
+                .filter_map(|r| r.as_str().map(String::from))
+                .collect();
+            Some(workspace::git::PhaseRepoSpec { phase_id, repos })
+        })
+        .collect();
+    Ok(workspace::git::setup_mission_worktrees(&mount, &mission_id, &phase_specs))
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn open_workspace_cmd(path: String) -> Result<(), String> {
+    workspace::git::open_vscode_workspace(&std::path::PathBuf::from(&path))
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
 async fn clone_repo_cmd(url: String, branch: Option<String>) -> Result<String, String> {
     let mount = default_workspace_mount();
     let repo_name = url
@@ -864,6 +893,8 @@ pub fn run() {
             get_workspace_status,
             clone_repo_cmd,
             create_worktree_cmd,
+            setup_mission_cmd,
+            open_workspace_cmd,
             connect_mqtt,
             get_settings,
             save_settings_cmd

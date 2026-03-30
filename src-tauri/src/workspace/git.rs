@@ -231,3 +231,111 @@ fn parse_worktree_list(output: &str) -> Vec<WorktreeInfo> {
 
     worktrees
 }
+
+// ── Mission workspace setup ─────────────────────────────────────────
+
+/// Phase + repo info for setting up mission worktrees.
+#[derive(Debug, Clone)]
+pub struct PhaseRepoSpec {
+    pub phase_id: String,
+    pub repos: Vec<String>, // repo_ids (folder names in workspace mount)
+}
+
+/// Result of setting up a mission workspace.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MissionWorkspaceResult {
+    pub mission_id: String,
+    pub workspace_file: String,
+    pub worktrees_created: u32,
+    pub errors: Vec<String>,
+}
+
+/// Set up all worktrees for a mission and generate a VS Code workspace file.
+///
+/// Structure:
+///   {mount}/.worktrees/{mid_short}/
+///     mission.code-workspace
+///     P0/repo-name/  (worktree)
+///     P1/repo-name/  (worktree)
+pub fn setup_mission_worktrees(
+    mount: &Path,
+    mission_id: &str,
+    phases: &[PhaseRepoSpec],
+) -> MissionWorkspaceResult {
+    let short_mid = if mission_id.len() > 8 {
+        &mission_id[..8]
+    } else {
+        mission_id
+    };
+
+    let worktrees_dir = mount.join(".worktrees").join(short_mid);
+    let _ = std::fs::create_dir_all(&worktrees_dir);
+
+    let mut folders: Vec<serde_json::Value> = Vec::new();
+    let mut created = 0u32;
+    let mut errors = Vec::new();
+
+    for phase in phases {
+        for repo_id in &phase.repos {
+            // Find the repo in workspace mount
+            let repo_path = mount.join(repo_id);
+            if !repo_path.join(".git").exists() {
+                errors.push(format!("Repo '{}' not found at {}", repo_id, repo_path.display()));
+                continue;
+            }
+
+            let branch = mission_branch_name(mission_id, &phase.phase_id);
+            let wt_path = worktrees_dir.join(&phase.phase_id).join(repo_id);
+
+            match create_worktree(&repo_path, &wt_path, &branch) {
+                Ok(_) => {
+                    created += 1;
+                    folders.push(serde_json::json!({
+                        "path": format!("{}/{}", phase.phase_id, repo_id),
+                        "name": format!("{}: {}", phase.phase_id, repo_id)
+                    }));
+                }
+                Err(e) => {
+                    errors.push(format!("{}/{}: {}", phase.phase_id, repo_id, e));
+                }
+            }
+        }
+    }
+
+    // Generate VS Code workspace file
+    let workspace_file = worktrees_dir.join("mission.code-workspace");
+    let workspace_json = serde_json::json!({
+        "folders": folders,
+        "settings": {}
+    });
+    if let Err(e) = std::fs::write(
+        &workspace_file,
+        serde_json::to_string_pretty(&workspace_json).unwrap_or_default(),
+    ) {
+        errors.push(format!("Failed to write workspace file: {}", e));
+    }
+
+    crate::debug_log::log_info(&format!(
+        "[Git] Mission workspace setup: {} worktrees, {} errors, workspace: {}",
+        created,
+        errors.len(),
+        workspace_file.display()
+    ));
+
+    MissionWorkspaceResult {
+        mission_id: mission_id.to_string(),
+        workspace_file: workspace_file.to_string_lossy().to_string(),
+        worktrees_created: created,
+        errors,
+    }
+}
+
+/// Open a VS Code workspace file.
+pub fn open_vscode_workspace(workspace_file: &Path) -> Result<(), String> {
+    Command::new("code")
+        .arg(workspace_file)
+        .spawn()
+        .map_err(|e| format!("Failed to open VS Code: {}", e))?;
+    Ok(())
+}

@@ -67,35 +67,54 @@
     cloning = null;
   }
 
-  async function createWorktree(repoPath: string, missionId: string, phaseId: string) {
-    if (!isTauri()) return;
-    cloning = `wt-${phaseId}`;
+  interface SetupResult {
+    missionId: string;
+    workspaceFile: string;
+    worktreesCreated: number;
+    errors: string[];
+  }
+
+  let setupResults = $state<Map<string, SetupResult>>(new Map());
+
+  async function setupMission(missionId: string) {
+    if (!isTauri() || !reg) return;
+    const mission = reg.missions.find((m) => m.mission_id === missionId);
+    if (!mission) return;
+
+    cloning = 'setup';
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const wtPath = await invoke<string>('create_worktree_cmd', {
-        repoPath,
+
+      // Build phase specs: each phase gets all mission repos
+      // For now, assign all repos to a single phase structure
+      // TODO: get actual phase->repo mapping from plan state
+      const phases = [
+        { phase_id: 'P0', repos: mission.repos.map((r) => r.repo_id) },
+        { phase_id: 'P1', repos: mission.repos.map((r) => r.repo_id) },
+        { phase_id: 'P2', repos: mission.repos.map((r) => r.repo_id) },
+      ];
+
+      const result = await invoke<SetupResult>('setup_mission_cmd', {
         missionId,
-        phaseId,
+        phases,
       });
-      console.log('Worktree created at:', wtPath);
+
+      setupResults.set(missionId, result);
+      setupResults = new Map(setupResults);
       await refreshWorkspace();
     } catch (e) {
-      console.error('Worktree creation failed:', e);
+      console.error('Mission setup failed:', e);
     }
     cloning = null;
   }
 
-  async function setupMission(missionId: string) {
-    if (!reg) return;
-    const mission = reg.missions.find((m) => m.mission_id === missionId);
-    if (!mission) return;
-    for (const repo of mission.repos) {
-      const local = findLocalRepo(repo.repo_id);
-      if (local) {
-        await createWorktree(local.path, missionId, 'P0');
-      } else if (repo.repo_url) {
-        await cloneRepo(repo.repo_id, repo.repo_url, repo.branch);
-      }
+  async function openWorkspace(path: string) {
+    if (!isTauri()) return;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('open_workspace_cmd', { path });
+    } catch (e) {
+      console.error('Open workspace failed:', e);
     }
   }
 
@@ -139,23 +158,33 @@
                         {/if}
                         {#if local}
                           <span class="local-path">{local.name}</span>
-                          <button class="btn-clone" onclick={() => createWorktree(local.path, mission.mission_id, 'P0')} disabled={!!cloning}>
-                            {cloning === `wt-P0` ? '...' : 'Worktree'}
-                          </button>
                         {:else if repo.repo_url}
                           <button class="btn-clone" onclick={() => cloneRepo(repo.repo_id, repo.repo_url, repo.branch)} disabled={cloning === repo.repo_id}>
                             {cloning === repo.repo_id ? '...' : 'Clone'}
                           </button>
                         {:else}
-                          <span class="not-found">not found</span>
+                          <span class="not-found">not found locally</span>
                         {/if}
                       </div>
                     {/each}
                   </div>
                 {/if}
-                <button class="btn-setup" onclick={() => setupMission(mission.mission_id)} disabled={!!cloning}>
-                  Setup Worktrees
-                </button>
+                {@const result = setupResults.get(mission.mission_id)}
+                <div class="mission-actions">
+                  {#if result}
+                    <button class="btn-setup btn-vscode" onclick={() => openWorkspace(result.workspaceFile)}>
+                      Open in VS Code
+                    </button>
+                    <span class="setup-info">{result.worktreesCreated} worktrees</span>
+                    {#if result.errors.length > 0}
+                      <span class="setup-errors">{result.errors.length} errors</span>
+                    {/if}
+                  {:else}
+                    <button class="btn-setup" onclick={() => setupMission(mission.mission_id)} disabled={cloning === 'setup'}>
+                      {cloning === 'setup' ? 'Setting up...' : 'Setup Worktrees'}
+                    </button>
+                  {/if}
+                </div>
               </div>
             {/each}
           </div>
@@ -419,6 +448,21 @@
   .repo-id { font-family: var(--font-mono); color: var(--text-secondary); flex: 1; }
   .local-path { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
   .not-found { font-size: 10px; color: var(--text-muted); }
+
+  .mission-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .setup-info { font-size: 10px; color: var(--accent-green); }
+  .setup-errors { font-size: 10px; color: var(--accent-red); }
+
+  .btn-vscode {
+    border-color: var(--accent-blue, #0070f3) !important;
+    color: var(--accent-blue, #0070f3) !important;
+  }
 
   .btn-clone, .btn-setup {
     background: rgba(255, 255, 255, 0.06);
