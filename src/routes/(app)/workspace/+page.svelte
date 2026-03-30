@@ -169,15 +169,15 @@
                     {/each}
                   </div>
                 {/if}
-                {@const result = setupResults.get(mission.mission_id)}
                 <div class="mission-actions">
-                  {#if result}
-                    <button class="btn-setup btn-vscode" onclick={() => openWorkspace(result.workspaceFile)}>
+                  {#if setupResults.get(mission.mission_id)}
+                    {@const result = setupResults.get(mission.mission_id)}
+                    <button class="btn-setup btn-vscode" onclick={() => openWorkspace(result?.workspaceFile ?? '')}>
                       Open in VS Code
                     </button>
-                    <span class="setup-info">{result.worktreesCreated} worktrees</span>
-                    {#if result.errors.length > 0}
-                      <span class="setup-errors">{result.errors.length} errors</span>
+                    <span class="setup-info">{result?.worktreesCreated ?? 0} worktrees</span>
+                    {#if (result?.errors?.length ?? 0) > 0}
+                      <span class="setup-errors">{result?.errors?.length} errors</span>
                     {/if}
                   {:else}
                     <button class="btn-setup" onclick={() => setupMission(mission.mission_id)} disabled={cloning === 'setup'}>
