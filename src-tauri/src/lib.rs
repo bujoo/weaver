@@ -13,6 +13,8 @@ pub mod polling;
 pub mod web_server;
 #[cfg(not(mobile))]
 pub mod debug_log;
+#[cfg(not(mobile))]
+pub mod mqtt;
 
 // Shared modules (types used by both desktop and mobile builds)
 pub mod session;
@@ -27,6 +29,8 @@ use session::{extract_messages, parse_all_entries, ImageBlock, MessageType};
 use std::sync::Arc;
 #[cfg(not(mobile))]
 use std::time::Duration;
+#[cfg(not(mobile))]
+use tokio::sync::Mutex;
 #[cfg(not(mobile))]
 use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -347,6 +351,20 @@ async fn get_debug_logs() -> Result<Vec<debug_log::LogEntry>, String> {
     Ok(debug_log::get_logs())
 }
 
+// ── MQTT commands ──────────────────────────────────────────────────
+
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn get_mqtt_status(
+    mqtt: tauri::State<'_, Arc<Mutex<Option<mqtt::client::MqttClient>>>>,
+) -> Result<bool, String> {
+    let guard = mqtt.lock().await;
+    match guard.as_ref() {
+        Some(client) => Ok(client.is_connected().await),
+        None => Ok(false),
+    }
+}
+
 // ── NSPanel definition for macOS popover ────────────────────────────
 #[cfg(target_os = "macos")]
 tauri_panel! {
@@ -414,6 +432,11 @@ pub fn run() {
 
             // ── Polling loop ────────────────────────────────────
             start_polling(app.handle().clone(), sessions_tx, notifications_tx);
+
+            // ── MQTT client (starts disconnected, connected via settings) ──
+            let mqtt_state: Arc<Mutex<Option<mqtt::client::MqttClient>>> =
+                Arc::new(Mutex::new(None));
+            app.manage(mqtt_state);
 
             // ── Main window: hide on close instead of destroying ──────────────
             // This allows "Open Dashboard" from the popover to re-show it.
@@ -576,7 +599,8 @@ pub fn run() {
             get_terminal_title,
             show_main_window,
             get_server_info,
-            get_debug_logs
+            get_debug_logs,
+            get_mqtt_status
         ]);
 
     // Mobile: minimal shell (all communication via WebSocket from the frontend)
