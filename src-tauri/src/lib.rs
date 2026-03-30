@@ -14,6 +14,8 @@ pub mod web_server;
 #[cfg(not(mobile))]
 pub mod debug_log;
 #[cfg(not(mobile))]
+pub mod executor;
+#[cfg(not(mobile))]
 pub mod mqtt;
 #[cfg(not(mobile))]
 pub mod workspace;
