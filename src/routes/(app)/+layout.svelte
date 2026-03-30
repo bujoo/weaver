@@ -76,7 +76,8 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		padding-top: 12px;
+		/* 40px clears macOS traffic lights (titleBarStyle: overlay) */
+		padding-top: 40px;
 		gap: 4px;
 		border-right: 1px solid rgba(255, 255, 255, 0.06);
 		background: var(--bg-base, #000);
