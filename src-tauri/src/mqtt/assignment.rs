@@ -187,6 +187,15 @@ async fn handle_assignment(
         entry.phase_id,
         entry.todos.len()
     ));
+    eprintln!(
+        "[Assignment] Received: {} ({}) with {} todos",
+        entry.phase_name, entry.phase_id, entry.todos.len()
+    );
+    // Debug: write to file
+    let _ = std::fs::write("/tmp/weaver-assignment.log", format!(
+        "Assignment received: phase={} mission={} todos={:?}\n",
+        entry.phase_name, entry.mission_id, entry.todos
+    ));
 
     queue.lock().await.push(entry);
 
