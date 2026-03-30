@@ -34,6 +34,13 @@
   let connected = $state(false);
   let message = $state('');
   let tauriAvailable = $state(false);
+  let activeTab = $state('mqtt');
+
+  const tabs = [
+    { id: 'mqtt', icon: '◈', label: 'MQTT' },
+    { id: 'instance', icon: '■', label: 'INSTANCE' },
+    { id: 'paths', icon: '/', label: 'PATHS' },
+  ];
 
   onMount(async () => {
     tauriAvailable = isTauri();
@@ -94,90 +101,102 @@
   }
 </script>
 
-<PageHeader title="Settings" />
+<div class="dashboard">
+  <PageHeader {tabs} {activeTab} onTabChange={(id) => (activeTab = id)} />
 
-<div class="settings">
-
-  {#if !tauriAvailable}
-    <div class="browser-warning">
-      Running in browser mode. Open the Tauri desktop app to configure MQTT.
-    </div>
-  {/if}
-
-  <section>
-    <h2>MQTT Connection</h2>
-    <div class="field-row">
-      <div class="field">
-        <label for="host">Host</label>
-        <input id="host" bind:value={settings.mqttHost} />
+  <main class="grid-container">
+    {#if !tauriAvailable}
+      <div class="browser-warning">
+        Running in browser mode. Open the Tauri desktop app to configure MQTT.
       </div>
-      <div class="field field-sm">
-        <label for="port">Port</label>
-        <input id="port" type="number" bind:value={settings.mqttPort} />
-      </div>
-    </div>
-    <div class="field-row">
-      <div class="field">
-        <label for="user">Username</label>
-        <input id="user" bind:value={settings.mqttUsername} />
-      </div>
-      <div class="field">
-        <label for="pass">Password</label>
-        <input id="pass" type="password" bind:value={settings.mqttPassword} />
-      </div>
-    </div>
-    <div class="status-row">
-      <button class="btn-connect" onclick={connect} disabled={connecting || !tauriAvailable}>
-        {connecting ? 'Connecting...' : connected ? 'Reconnect' : 'Connect'}
-      </button>
-      <span class="status-dot" class:connected></span>
-      <span class="status-text">{connected ? 'Connected' : 'Disconnected'}</span>
-    </div>
-  </section>
-
-  <section>
-    <h2>Instance</h2>
-    <div class="field-row">
-      <div class="field">
-        <label for="iid">Instance ID</label>
-        <input id="iid" bind:value={settings.instanceId} class="mono" />
-      </div>
-      <div class="field field-sm">
-        <label for="cap">Capacity</label>
-        <input id="cap" type="number" bind:value={settings.capacity} />
-      </div>
-    </div>
-    <div class="field">
-      <label for="ws">Workspace</label>
-      <input id="ws" bind:value={settings.workspace} />
-    </div>
-  </section>
-
-  <section>
-    <h2>Paths</h2>
-    <div class="field">
-      <label for="mount">Workspace Mount</label>
-      <input id="mount" bind:value={settings.workspaceMount} class="mono" />
-    </div>
-    <div class="field">
-      <label for="brain">Brain API URL</label>
-      <input id="brain" bind:value={settings.brainApiUrl} class="mono" />
-    </div>
-  </section>
-
-  <div class="actions">
-    <button class="btn-save" onclick={save} disabled={saving || !tauriAvailable}>
-      {saving ? 'Saving...' : 'Save Settings'}
-    </button>
-    {#if message}
-      <span class="message" class:error={message.startsWith('Error') || message.startsWith('Connection failed') || message.startsWith('Cannot') || message.startsWith('Running')}>{message}</span>
     {/if}
-  </div>
+
+    <div class="settings">
+      {#if activeTab === 'mqtt'}
+        <div class="field-row">
+          <div class="field">
+            <label for="host">Host</label>
+            <input id="host" bind:value={settings.mqttHost} />
+          </div>
+          <div class="field field-sm">
+            <label for="port">Port</label>
+            <input id="port" type="number" bind:value={settings.mqttPort} />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="user">Username</label>
+            <input id="user" bind:value={settings.mqttUsername} />
+          </div>
+          <div class="field">
+            <label for="pass">Password</label>
+            <input id="pass" type="password" bind:value={settings.mqttPassword} />
+          </div>
+        </div>
+        <div class="status-row">
+          <button class="btn-connect" onclick={connect} disabled={connecting || !tauriAvailable}>
+            {connecting ? 'Connecting...' : connected ? 'Reconnect' : 'Connect'}
+          </button>
+          <span class="status-dot" class:connected></span>
+          <span class="status-text">{connected ? 'Connected' : 'Disconnected'}</span>
+        </div>
+
+      {:else if activeTab === 'instance'}
+        <div class="field-row">
+          <div class="field">
+            <label for="iid">Instance ID</label>
+            <input id="iid" bind:value={settings.instanceId} class="mono" />
+          </div>
+          <div class="field field-sm">
+            <label for="cap">Capacity</label>
+            <input id="cap" type="number" bind:value={settings.capacity} />
+          </div>
+        </div>
+        <div class="field">
+          <label for="ws">Workspace</label>
+          <input id="ws" bind:value={settings.workspace} />
+        </div>
+
+      {:else if activeTab === 'paths'}
+        <div class="field">
+          <label for="mount">Workspace Mount</label>
+          <input id="mount" bind:value={settings.workspaceMount} class="mono" />
+        </div>
+        <div class="field">
+          <label for="brain">Brain API URL</label>
+          <input id="brain" bind:value={settings.brainApiUrl} class="mono" />
+        </div>
+      {/if}
+
+      <div class="actions">
+        <button class="btn-save" onclick={save} disabled={saving || !tauriAvailable}>
+          {saving ? 'Saving...' : 'Save Settings'}
+        </button>
+        {#if message}
+          <span class="message" class:error={message.startsWith('Error') || message.startsWith('Connection failed') || message.startsWith('Cannot') || message.startsWith('Running')}>{message}</span>
+        {/if}
+      </div>
+    </div>
+  </main>
 </div>
 
 <style>
+  .dashboard {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    background: var(--bg-base);
+  }
+
+  .grid-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-xl);
+  }
+
   .settings {
-    padding: 24px;
     max-width: 600px;
   }
 

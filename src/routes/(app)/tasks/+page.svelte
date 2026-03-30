@@ -7,6 +7,21 @@
   let expandedId = $state<string | null>(null);
   let counts = $derived($taskCounts);
   let taskList = $derived($tasks);
+  let activeTab = $state('queue');
+
+  const tabs = [
+    { id: 'queue', icon: '▶', label: 'QUEUE' },
+    { id: 'completed', icon: '✓', label: 'COMPLETED' },
+    { id: 'failed', icon: '✕', label: 'FAILED' },
+  ];
+
+  let filteredTasks = $derived(
+    activeTab === 'queue'
+      ? taskList.filter((t) => t.status === 'queued' || t.status === 'preparing' || t.status === 'executing')
+      : activeTab === 'completed'
+        ? taskList.filter((t) => t.status === 'completed')
+        : taskList.filter((t) => t.status === 'failed')
+  );
 
   onMount(() => {
     initializeTaskListeners();
@@ -17,76 +32,49 @@
   }
 </script>
 
-<PageHeader title="Tasks" />
+<div class="dashboard">
+  <PageHeader {tabs} {activeTab} onTabChange={(id) => (activeTab = id)} />
 
-<div class="page">
-  <div class="header">
-    <div class="counts">
-      {#if counts.executing > 0}
-        <span class="count executing">{counts.executing} executing</span>
-      {/if}
-      {#if counts.queued > 0}
-        <span class="count queued">{counts.queued} queued</span>
-      {/if}
-      {#if counts.completed > 0}
-        <span class="count completed">{counts.completed} done</span>
-      {/if}
-    </div>
-  </div>
-
-  {#if taskList.length === 0}
-    <div class="empty">
-      <p>No tasks assigned yet.</p>
-      <p class="hint">Connect to Brain via MQTT in Settings, then trigger a weaver plan from Obsidian.</p>
-    </div>
-  {:else}
-    <div class="task-list">
-      {#each taskList as task (task.phaseId)}
-        <TaskCard
-          {task}
-          expanded={expandedId === task.phaseId}
-          onexpand={() => toggleExpand(task.phaseId)}
-        />
-      {/each}
-    </div>
-  {/if}
+  <main class="grid-container">
+    {#if filteredTasks.length === 0}
+      <div class="empty">
+        {#if activeTab === 'queue'}
+          <p class="empty-title">No active tasks</p>
+          <p class="empty-hint">Connect to Brain via MQTT in Settings, then trigger a weaver plan from Obsidian.</p>
+        {:else if activeTab === 'completed'}
+          <p class="empty-title">No completed tasks yet</p>
+        {:else}
+          <p class="empty-title">No failed tasks</p>
+        {/if}
+      </div>
+    {:else}
+      <div class="task-list">
+        {#each filteredTasks as task (task.phaseId)}
+          <TaskCard
+            {task}
+            expanded={expandedId === task.phaseId}
+            onexpand={() => toggleExpand(task.phaseId)}
+          />
+        {/each}
+      </div>
+    {/if}
+  </main>
 </div>
 
 <style>
-  .page {
-    padding: 24px;
-  }
-
-  .header {
+  .dashboard {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 16px;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    background: var(--bg-base);
   }
 
-  .counts {
-    display: flex;
-    gap: 8px;
-  }
-
-  .count {
-    font-size: 11px;
-    font-family: var(--font-mono);
-    padding: 2px 6px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-  }
-
-  .count.executing {
-    color: var(--task-executing);
-    border-color: var(--task-executing);
-  }
-
-  .count.queued {
-    color: var(--text-muted);
-  }
-
-  .count.completed {
-    color: var(--task-completed);
+  .grid-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-xl);
   }
 
   .empty {
@@ -94,14 +82,15 @@
     text-align: center;
   }
 
-  .empty p {
-    font-size: 13px;
+  .empty-title {
+    font-family: var(--font-pixel, monospace);
+    font-size: 16px;
     color: var(--text-muted, #666);
+    margin-bottom: 8px;
   }
 
-  .empty .hint {
+  .empty-hint {
     font-size: 12px;
-    margin-top: 8px;
     color: var(--text-muted, #555);
   }
 

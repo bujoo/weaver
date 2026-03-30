@@ -4,18 +4,22 @@
     workspaceStatus,
     loading,
     refreshWorkspace,
-    type RepoStatus,
-    type ToolInfo,
   } from '$lib/stores/workspace';
   import { isTauri } from '$lib/ws';
   import PageHeader from '$lib/components/PageHeader.svelte';
 
   let ws = $derived($workspaceStatus);
   let isLoading = $derived($loading);
+  let activeTab = $state('repos');
+
+  const tabs = [
+    { id: 'repos', icon: '◇', label: 'REPOS' },
+    { id: 'tools', icon: '⚙', label: 'TOOLS' },
+    { id: 'worktrees', icon: '⑂', label: 'WORKTREES' },
+  ];
 
   onMount(() => {
     refreshWorkspace();
-    // Refresh every 30s
     const interval = setInterval(refreshWorkspace, 30000);
     return () => clearInterval(interval);
   });
@@ -25,95 +29,115 @@
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('open_session', { pid: 0, projectPath: path });
-    } catch (e) {
-      // Fallback: try reveal in file manager
+    } catch {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         await invoke('reveal_in_file_manager', { path });
       } catch {}
     }
   }
+
+  let allWorktrees = $derived(
+    ws?.repos.flatMap((r) =>
+      r.worktrees.filter((wt) => wt.branch && wt.path !== r.path).map((wt) => ({
+        ...wt,
+        repoName: r.name,
+      }))
+    ) || []
+  );
 </script>
 
-<PageHeader title="Workspace" />
+<div class="dashboard">
+  <PageHeader {tabs} {activeTab} onTabChange={(id) => (activeTab = id)} />
 
-<div class="page">
-  <div class="header">
-    <button class="btn-refresh" onclick={refreshWorkspace} disabled={isLoading}>
-      {isLoading ? 'Scanning...' : 'Refresh'}
-    </button>
-  </div>
+  <main class="grid-container">
+    {#if ws}
+      <div class="mount-path">
+        <span class="label">MOUNT</span>
+        <span class="mono">{ws.mountPath}</span>
+        <button class="btn-refresh" onclick={refreshWorkspace} disabled={isLoading}>
+          {isLoading ? '...' : '↻'}
+        </button>
+      </div>
 
-  {#if ws}
-    <div class="mount-path">
-      <span class="label">Mount</span>
-      <span class="mono">{ws.mountPath}</span>
-    </div>
+      {#if activeTab === 'repos'}
+        {#if ws.repos.length === 0}
+          <div class="empty">
+            <p class="empty-title">No repositories found</p>
+          </div>
+        {:else}
+          <div class="repo-list">
+            {#each ws.repos as repo}
+              <button class="repo-card" onclick={() => openInEditor(repo.path)}>
+                <div class="repo-header">
+                  <span class="status-dot" class:clean={repo.clean} class:dirty={!repo.clean}></span>
+                  <span class="repo-name">{repo.name}</span>
+                  <span class="branch">{repo.branch}</span>
+                  {#if repo.worktrees.length > 1}
+                    <span class="wt-count">{repo.worktrees.length - 1} wt</span>
+                  {/if}
+                </div>
+              </button>
+            {/each}
+          </div>
+        {/if}
 
-    <section>
-      <h2>Repositories ({ws.repos.length})</h2>
-      {#if ws.repos.length === 0}
-        <p class="empty">No git repositories found in workspace mount.</p>
-      {:else}
-        <div class="repo-list">
-          {#each ws.repos as repo}
-            <button class="repo-card" onclick={() => openInEditor(repo.path)}>
-              <div class="repo-header">
-                <span class="status-dot" class:clean={repo.clean} class:dirty={!repo.clean}></span>
-                <span class="repo-name">{repo.name}</span>
-                <span class="branch">{repo.branch}</span>
-                {#if repo.worktrees.length > 1}
-                  <span class="wt-count">{repo.worktrees.length - 1} wt</span>
-                {/if}
-              </div>
-            </button>
+      {:else if activeTab === 'tools'}
+        <div class="tool-grid">
+          {#each ws.tools as tool}
+            <div class="tool-item">
+              <span class="tool-dot" class:installed={tool.installed}></span>
+              <span class="tool-name">{tool.name}</span>
+              {#if tool.version}
+                <span class="tool-version">{tool.version.split('\n')[0].slice(0, 30)}</span>
+              {/if}
+            </div>
           {/each}
         </div>
-      {/if}
-    </section>
 
-    <section>
-      <h2>Tools</h2>
-      <div class="tool-grid">
-        {#each ws.tools as tool}
-          <div class="tool-item">
-            <span class="tool-dot" class:installed={tool.installed}></span>
-            <span class="tool-name">{tool.name}</span>
-            {#if tool.version}
-              <span class="tool-version">{tool.version.split('\n')[0].slice(0, 30)}</span>
-            {/if}
+      {:else if activeTab === 'worktrees'}
+        {#if allWorktrees.length === 0}
+          <div class="empty">
+            <p class="empty-title">No active worktrees</p>
+            <p class="empty-hint">Worktrees are created when weaver executes a phase.</p>
           </div>
-        {/each}
-      </div>
-    </section>
-  {:else if isLoading}
-    <p class="empty">Scanning workspace...</p>
-  {:else}
-    <p class="empty">Configure workspace mount in Settings.</p>
-  {/if}
+        {:else}
+          <div class="repo-list">
+            {#each allWorktrees as wt}
+              <button class="repo-card" onclick={() => openInEditor(wt.path)}>
+                <div class="repo-header">
+                  <span class="repo-name">{wt.repoName}</span>
+                  <span class="branch">{wt.branch}</span>
+                  <span class="wt-path">{wt.path}</span>
+                </div>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      {/if}
+
+    {:else if isLoading}
+      <div class="empty"><p class="empty-title">Scanning workspace...</p></div>
+    {:else}
+      <div class="empty"><p class="empty-title">Configure workspace mount in Settings.</p></div>
+    {/if}
+  </main>
 </div>
 
 <style>
-  .page { padding: 24px; }
-
-  .header {
+  .dashboard {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 16px;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    background: var(--bg-base);
   }
 
-  h2 {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-muted, #666);
-    margin-bottom: 8px;
-  }
-
-  section {
-    margin-bottom: 24px;
+  .grid-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-xl);
   }
 
   .mount-path {
@@ -121,14 +145,15 @@
     color: var(--text-muted);
     margin-bottom: 20px;
     display: flex;
+    align-items: center;
     gap: 8px;
   }
 
   .label {
-    color: var(--text-muted);
     text-transform: uppercase;
     font-size: 10px;
     letter-spacing: 0.05em;
+    color: var(--text-muted);
   }
 
   .mono {
@@ -140,9 +165,10 @@
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.1);
     color: var(--text-primary);
-    padding: 4px 12px;
-    font-size: 11px;
+    padding: 2px 8px;
+    font-size: 12px;
     cursor: pointer;
+    margin-left: auto;
   }
 
   .btn-refresh:hover { background: rgba(255, 255, 255, 0.1); }
@@ -166,9 +192,7 @@
     font: inherit;
   }
 
-  .repo-card:hover {
-    border-color: rgba(255, 255, 255, 0.12);
-  }
+  .repo-card:hover { border-color: rgba(255, 255, 255, 0.12); }
 
   .repo-header {
     display: flex;
@@ -186,10 +210,7 @@
   .status-dot.clean { background: var(--accent-green); }
   .status-dot.dirty { background: var(--accent-amber); }
 
-  .repo-name {
-    color: var(--text-primary);
-    flex: 1;
-  }
+  .repo-name { color: var(--text-primary); flex: 1; }
 
   .branch {
     font-family: var(--font-mono);
@@ -204,9 +225,17 @@
     padding: 1px 4px;
   }
 
+  .wt-path {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .tool-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 4px;
   }
 
@@ -214,8 +243,10 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 8px;
+    padding: 6px 8px;
     font-size: 12px;
+    background: var(--bg-card, #111);
+    border: 1px solid rgba(255, 255, 255, 0.04);
   }
 
   .tool-dot {
@@ -225,9 +256,7 @@
     background: var(--accent-red);
   }
 
-  .tool-dot.installed {
-    background: var(--accent-green);
-  }
+  .tool-dot.installed { background: var(--accent-green); }
 
   .tool-name {
     color: var(--text-secondary);
@@ -240,11 +269,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    margin-left: auto;
   }
 
-  .empty {
-    font-size: 13px;
-    color: var(--text-muted);
-    padding: 24px 0;
-  }
+  .empty { padding: 48px 0; text-align: center; }
+  .empty-title { font-family: var(--font-pixel, monospace); font-size: 16px; color: var(--text-muted); }
+  .empty-hint { font-size: 12px; color: var(--text-muted); margin-top: 8px; }
 </style>
