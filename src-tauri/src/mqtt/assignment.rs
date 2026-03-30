@@ -1,0 +1,124 @@
+use crate::mqtt::types::{MqttIncoming, PhaseAssignment};
+use chrono::Utc;
+use serde::Serialize;
+use std::sync::Arc;
+use tokio::sync::{broadcast, Mutex};
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskQueueEntry {
+    pub mission_id: String,
+    pub phase_id: String,
+    pub phase_name: String,
+    pub todos: Vec<String>,
+    pub status: String, // queued | preparing | executing | completed | failed
+    pub received_at: String,
+    pub context_bundles: Vec<serde_json::Value>,
+}
+
+pub struct AssignmentHandler {
+    queue: Arc<Mutex<Vec<TaskQueueEntry>>>,
+}
+
+impl AssignmentHandler {
+    pub fn new() -> Self {
+        Self {
+            queue: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    pub fn queue(&self) -> Arc<Mutex<Vec<TaskQueueEntry>>> {
+        self.queue.clone()
+    }
+
+    pub fn start(
+        &self,
+        mut rx: broadcast::Receiver<MqttIncoming>,
+        app: tauri::AppHandle,
+    ) {
+        let queue = self.queue.clone();
+
+        tokio::spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(MqttIncoming::Assignment(assignment)) => {
+                        handle_assignment(&queue, &app, assignment).await;
+                    }
+                    Ok(MqttIncoming::ContextBundle(todo_id, bundle)) => {
+                        handle_context_bundle(&queue, &todo_id, bundle).await;
+                    }
+                    Ok(_) => {} // Other message types handled elsewhere
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        crate::debug_log::log_warn(&format!(
+                            "[Assignment] Skipped {} messages (lagged)",
+                            n
+                        ));
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        });
+    }
+
+    pub async fn get_queue(&self) -> Vec<TaskQueueEntry> {
+        self.queue.lock().await.clone()
+    }
+
+    pub async fn update_status(&self, mission_id: &str, phase_id: &str, status: &str) {
+        let mut queue = self.queue.lock().await;
+        if let Some(entry) = queue
+            .iter_mut()
+            .find(|e| e.mission_id == mission_id && e.phase_id == phase_id)
+        {
+            entry.status = status.to_string();
+        }
+    }
+}
+
+async fn handle_assignment(
+    queue: &Arc<Mutex<Vec<TaskQueueEntry>>>,
+    app: &tauri::AppHandle,
+    assignment: PhaseAssignment,
+) {
+    let entry = TaskQueueEntry {
+        mission_id: assignment.mission_id.clone(),
+        phase_id: assignment.phase_id.clone(),
+        phase_name: assignment.phase_name.clone(),
+        todos: assignment.todos.clone(),
+        status: "queued".into(),
+        received_at: Utc::now().to_rfc3339(),
+        context_bundles: vec![],
+    };
+
+    crate::debug_log::log_info(&format!(
+        "[Assignment] Queued: {} ({}) with {} todos",
+        entry.phase_name,
+        entry.phase_id,
+        entry.todos.len()
+    ));
+
+    queue.lock().await.push(entry);
+
+    // Emit to frontend
+    use tauri::Emitter;
+    let _ = app.emit("assignment-received", &assignment);
+}
+
+async fn handle_context_bundle(
+    queue: &Arc<Mutex<Vec<TaskQueueEntry>>>,
+    todo_id: &str,
+    bundle: serde_json::Value,
+) {
+    let mut queue = queue.lock().await;
+    // Find the task that contains this todo_id
+    if let Some(entry) = queue
+        .iter_mut()
+        .find(|e| e.todos.iter().any(|t| t == todo_id))
+    {
+        entry.context_bundles.push(bundle);
+        crate::debug_log::log_info(&format!(
+            "[Assignment] Context bundle received for todo {}",
+            todo_id
+        ));
+    }
+}

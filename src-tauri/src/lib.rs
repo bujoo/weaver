@@ -365,6 +365,14 @@ async fn get_mqtt_status(
     }
 }
 
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn get_task_queue(
+    handler: tauri::State<'_, Arc<mqtt::assignment::AssignmentHandler>>,
+) -> Result<Vec<mqtt::assignment::TaskQueueEntry>, String> {
+    Ok(handler.get_queue().await)
+}
+
 // ── NSPanel definition for macOS popover ────────────────────────────
 #[cfg(target_os = "macos")]
 tauri_panel! {
@@ -437,6 +445,12 @@ pub fn run() {
             let mqtt_state: Arc<Mutex<Option<mqtt::client::MqttClient>>> =
                 Arc::new(Mutex::new(None));
             app.manage(mqtt_state);
+
+            // ── Assignment handler + control handler ──
+            let assignment_handler = Arc::new(mqtt::assignment::AssignmentHandler::new());
+            app.manage(assignment_handler);
+            let control_handler = Arc::new(mqtt::control::ControlHandler::new());
+            app.manage(control_handler);
 
             // ── Main window: hide on close instead of destroying ──────────────
             // This allows "Open Dashboard" from the popover to re-show it.
@@ -600,7 +614,8 @@ pub fn run() {
             show_main_window,
             get_server_info,
             get_debug_logs,
-            get_mqtt_status
+            get_mqtt_status,
+            get_task_queue
         ]);
 
     // Mobile: minimal shell (all communication via WebSocket from the frontend)
