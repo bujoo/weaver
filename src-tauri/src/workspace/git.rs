@@ -132,14 +132,14 @@ pub fn create_worktree(
 }
 
 /// Create a standardized mission branch name.
-pub fn mission_branch_name(mission_id: &str, phase_id: &str) -> String {
-    // Shorten mission_id to first 8 chars for readability
+/// Uses dash separator to avoid git ref conflicts (slash creates hierarchy).
+pub fn mission_branch_name(mission_id: &str, _phase_id: &str) -> String {
     let short_mid = if mission_id.len() > 8 {
         &mission_id[..8]
     } else {
         mission_id
     };
-    format!("weaver/{}/{}", short_mid, phase_id)
+    format!("weaver-{}", short_mid)
 }
 
 /// Remove a git worktree.
@@ -269,7 +269,7 @@ pub fn setup_mission_worktrees(
     let mut created = 0u32;
     let mut errors = Vec::new();
 
-    let branch = format!("weaver/{}", short_mid);
+    let branch = format!("weaver-{}", short_mid);
 
     for repo_id in repo_ids {
         let repo_path = mount.join(repo_id);
