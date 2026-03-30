@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { initializeSessionListeners, sessions } from '$lib/stores/sessions';
 	import { getSessions } from '$lib/api';
 	import { loadDemoDataIfActive } from '$lib/demo';
 	import { checkForUpdates } from '$lib/updater';
 	import { isTauri } from '$lib/ws';
 	import { page } from '$app/stores';
+	import { mqttConnected, startMqttPolling, stopMqttPolling } from '$lib/stores/mqtt';
 
 	onMount(async () => {
 		const demoActive = loadDemoDataIfActive();
@@ -19,10 +20,16 @@
 			}
 
 			checkForUpdates();
+			startMqttPolling();
 		}
 	});
 
+	onDestroy(() => {
+		stopMqttPolling();
+	});
+
 	let currentPath = $derived($page.url.pathname);
+	let connected = $derived($mqttConnected);
 
 	const navItems = [
 		{ path: '/', icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', label: 'Sessions' },
@@ -46,6 +53,10 @@
 				</svg>
 			</a>
 		{/each}
+		<div class="sidebar-spacer"></div>
+		<div class="mqtt-indicator" title={connected ? 'MQTT connected' : 'MQTT disconnected'}>
+			<span class="mqtt-dot" class:connected></span>
+		</div>
 	</nav>
 	<main class="content">
 		<slot />
@@ -88,6 +99,30 @@
 
 	.nav-item.active {
 		color: var(--text-primary, #fff);
+	}
+
+	.sidebar-spacer {
+		flex: 1;
+	}
+
+	.mqtt-indicator {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 8px 0;
+		margin-bottom: 8px;
+	}
+
+	.mqtt-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--accent-red, #ff4444);
+		transition: background 200ms;
+	}
+
+	.mqtt-dot.connected {
+		background: var(--accent-green, #00ff88);
 	}
 
 	.content {
