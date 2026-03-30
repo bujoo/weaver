@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
+  import { isTauri } from '$lib/ws';
 
   interface WeaverSettings {
     mqttHost: string;
@@ -32,20 +32,31 @@
   let connecting = $state(false);
   let connected = $state(false);
   let message = $state('');
+  let tauriAvailable = $state(false);
 
   onMount(async () => {
+    tauriAvailable = isTauri();
+    if (!tauriAvailable) {
+      message = 'Running in browser mode. Tauri commands unavailable.';
+      return;
+    }
+
     try {
-      settings = await invoke('get_settings');
-      connected = await invoke('get_mqtt_status');
+      const { invoke } = await import('@tauri-apps/api/core');
+      const loaded = await invoke<WeaverSettings>('get_settings');
+      if (loaded) settings = loaded;
+      connected = await invoke<boolean>('get_mqtt_status');
     } catch (e) {
       console.error('Failed to load settings:', e);
     }
   });
 
   async function save() {
+    if (!tauriAvailable) return;
     saving = true;
     message = '';
     try {
+      const { invoke } = await import('@tauri-apps/api/core');
       await invoke('save_settings_cmd', { s: settings });
       message = 'Settings saved';
       setTimeout(() => (message = ''), 2000);
@@ -56,9 +67,14 @@
   }
 
   async function connect() {
+    if (!tauriAvailable) {
+      message = 'Cannot connect in browser mode. Use the Tauri app.';
+      return;
+    }
     connecting = true;
     message = '';
     try {
+      const { invoke } = await import('@tauri-apps/api/core');
       await invoke('connect_mqtt', {
         host: settings.mqttHost,
         port: settings.mqttPort,
@@ -79,6 +95,12 @@
 
 <div class="settings">
   <h1>Settings</h1>
+
+  {#if !tauriAvailable}
+    <div class="browser-warning">
+      Running in browser mode. Open the Tauri desktop app to configure MQTT.
+    </div>
+  {/if}
 
   <section>
     <h2>MQTT Connection</h2>
@@ -103,7 +125,7 @@
       </div>
     </div>
     <div class="status-row">
-      <button class="btn-connect" onclick={connect} disabled={connecting}>
+      <button class="btn-connect" onclick={connect} disabled={connecting || !tauriAvailable}>
         {connecting ? 'Connecting...' : connected ? 'Reconnect' : 'Connect'}
       </button>
       <span class="status-dot" class:connected></span>
@@ -142,11 +164,11 @@
   </section>
 
   <div class="actions">
-    <button class="btn-save" onclick={save} disabled={saving}>
+    <button class="btn-save" onclick={save} disabled={saving || !tauriAvailable}>
       {saving ? 'Saving...' : 'Save Settings'}
     </button>
     {#if message}
-      <span class="message">{message}</span>
+      <span class="message" class:error={message.startsWith('Error') || message.startsWith('Connection failed') || message.startsWith('Cannot') || message.startsWith('Running')}>{message}</span>
     {/if}
   </div>
 </div>
@@ -210,6 +232,7 @@
     padding: 6px 8px;
     font-size: 13px;
     font-family: inherit;
+    box-sizing: border-box;
   }
 
   input:focus {
@@ -275,5 +298,18 @@
   .message {
     font-size: 12px;
     color: var(--accent-green, #00ff88);
+  }
+
+  .message.error {
+    color: var(--accent-amber, #ff6600);
+  }
+
+  .browser-warning {
+    background: rgba(255, 102, 0, 0.1);
+    border: 1px solid rgba(255, 102, 0, 0.2);
+    color: var(--accent-amber, #ff6600);
+    padding: 8px 12px;
+    font-size: 12px;
+    margin-bottom: 20px;
   }
 </style>
