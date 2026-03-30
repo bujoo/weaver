@@ -405,54 +405,40 @@ async fn connect_mqtt(
 
     let client = mqtt::client::MqttClient::new(config).await;
 
-    // Start heartbeat
-    let mqtt_arc = Arc::new(Mutex::new(Some(client)));
+    // Store client in managed state first
+    {
+        let mut state = mqtt_state.lock().await;
+        *state = Some(client);
+    }
 
+    // Start heartbeat using managed state
     mqtt::heartbeat::start_heartbeat(
-        mqtt_arc.clone(),
+        mqtt_state.inner().clone(),
         instance_id.clone(),
         workspace,
-        2, // default capacity
+        2,
         std::time::Instant::now(),
     );
 
-    // Start assignment handler with auto-execute
-    let rx = {
-        let guard = mqtt_arc.lock().await;
-        guard.as_ref().unwrap().subscribe_incoming()
+    // Get broadcast receivers
+    let (rx1, rx2, rx3) = {
+        let g = mqtt_state.lock().await;
+        let c = g.as_ref().unwrap();
+        (c.subscribe_incoming(), c.subscribe_incoming(), c.subscribe_incoming())
     };
-    assignment_handler.start(
-        {
-            let guard = mqtt_arc.lock().await;
-            guard.as_ref().unwrap().subscribe_incoming()
-        },
-        app.clone(),
-    );
 
-    // Start control handler
-    control_handler.start(rx, app.clone());
-
-    // Start auto-execute pipeline
+    // Start handlers
+    assignment_handler.start(rx1, app.clone());
+    control_handler.start(rx2, app.clone());
     assignment_handler.start_auto_execute(
-        {
-            let guard = mqtt_arc.lock().await;
-            guard.as_ref().unwrap().subscribe_incoming()
-        },
-        mqtt_arc.clone(),
+        rx3,
+        mqtt_state.inner().clone(),
         spawner.inner().clone(),
         control_handler.inner().clone(),
         instance_id,
         default_workspace_mount(),
         app,
     );
-
-    // Store the client in managed state
-    let mut state = mqtt_state.lock().await;
-    // Take ownership from the arc -- we need to move it
-    let client = Arc::try_unwrap(mqtt_arc)
-        .map_err(|_| "Failed to unwrap mqtt arc")?
-        .into_inner();
-    *state = client;
 
     debug_log::log_info("[MQTT] Connected and all handlers started");
     Ok(())
