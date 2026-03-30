@@ -27,8 +27,8 @@
     initializeTaskListeners();
   });
 
-  function toggleExpand(phaseId: string) {
-    expandedId = expandedId === phaseId ? null : phaseId;
+  function toggleExpand(key: string) {
+    expandedId = expandedId === key ? null : key;
   }
 </script>
 
@@ -49,11 +49,12 @@
       </div>
     {:else}
       <div class="task-list">
-        {#each filteredTasks as task (task.phaseId)}
+        {#each filteredTasks as task (task.missionId + ':' + task.phaseId + ':' + task.receivedAt)}
+          {@const key = task.missionId + ':' + task.phaseId + ':' + task.receivedAt}
           <TaskCard
             {task}
-            expanded={expandedId === task.phaseId}
-            onexpand={() => toggleExpand(task.phaseId)}
+            expanded={expandedId === key}
+            onexpand={() => toggleExpand(key)}
           />
         {/each}
       </div>
