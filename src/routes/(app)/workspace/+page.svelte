@@ -169,7 +169,13 @@
                     </button>
                     <span class="setup-info">{result?.worktreesCreated ?? 0} worktrees</span>
                     {#if (result?.errors?.length ?? 0) > 0}
-                      <span class="setup-errors">{result?.errors?.length} errors</span>
+                      <span class="setup-errors" title={result?.errors?.join('\n')}>{result?.errors?.length} errors</span>
+                      <details class="error-details">
+                        <summary>show errors</summary>
+                        {#each result?.errors ?? [] as err}
+                          <div class="error-line">{err}</div>
+                        {/each}
+                      </details>
                     {/if}
                   {:else}
                     <button class="btn-setup" onclick={() => setupMission(mission.mission_id)} disabled={cloning === 'setup'}>
@@ -449,7 +455,10 @@
   }
 
   .setup-info { font-size: 10px; color: var(--accent-green); }
-  .setup-errors { font-size: 10px; color: var(--accent-red); }
+  .setup-errors { font-size: 10px; color: var(--accent-red); cursor: help; }
+  .error-details { font-size: 10px; color: var(--accent-red); margin-top: 4px; }
+  .error-details summary { cursor: pointer; }
+  .error-line { font-family: var(--font-mono); font-size: 10px; padding: 1px 0; word-break: break-all; }
 
   .btn-vscode {
     border-color: var(--accent-blue, #0070f3) !important;
