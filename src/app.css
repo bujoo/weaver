@@ -93,6 +93,13 @@
 	--accent-purple: #7928ca;
 	--accent-pink: #ff69b4;
 
+	/* Task Status Colors */
+	--task-queued: #444444;
+	--task-preparing: #0070f3;
+	--task-executing: #7928ca;
+	--task-completed: #00ff88;
+	--task-failed: #ff4444;
+
 	/* Borders - Sharp & Thin */
 	--border-default: #333333;
 	--border-muted: #222222;
