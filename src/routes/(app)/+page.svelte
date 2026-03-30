@@ -645,9 +645,9 @@
 		background: transparent;
 		z-index: 1000;
 		position: relative;
-		/* Sidebar now occupies the space where traffic lights were.
-		   Use uniform padding. */
-		padding: 0 var(--space-md) 0 var(--space-md);
+		/* 36px left padding clears the macOS traffic lights that extend
+		   ~80px from window edge, minus the 44px sidebar = ~36px overlap. */
+		padding: 0 var(--space-md) 0 36px;
 		transition: padding-left 0.35s ease;
 		/* Make the whole bar draggable (including the 80px padding over the
 		   traffic lights). Child buttons opt out via -webkit-app-region: no-drag. */
