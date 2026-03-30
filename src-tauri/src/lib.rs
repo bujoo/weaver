@@ -385,6 +385,34 @@ async fn get_registry(
 
 #[cfg(not(mobile))]
 #[tauri::command]
+async fn accept_phase_cmd(
+    mqtt_state: tauri::State<'_, Arc<Mutex<Option<mqtt::client::MqttClient>>>>,
+    mission_id: String,
+    phase_id: String,
+) -> Result<(), String> {
+    let guard = mqtt_state.lock().await;
+    let client = guard.as_ref().ok_or("MQTT not connected")?;
+    let config = client.config();
+    let topic = format!(
+        "brain/{}/accept/{}/{}",
+        config.workspace, mission_id, phase_id
+    );
+    let payload = serde_json::json!({
+        "instance_id": config.instance_id,
+        "mission_id": mission_id,
+        "phase_id": phase_id,
+        "published_at": chrono::Utc::now().to_rfc3339(),
+    });
+    client.publish_json(&topic, &payload).await?;
+    debug_log::log_info(&format!(
+        "[MQTT] Accepted phase {}/{} -> {}",
+        mission_id, phase_id, topic
+    ));
+    Ok(())
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
 async fn get_task_queue(
     handler: tauri::State<'_, Arc<mqtt::assignment::AssignmentHandler>>,
 ) -> Result<Vec<mqtt::assignment::TaskQueueEntry>, String> {
@@ -878,6 +906,7 @@ pub fn run() {
             get_debug_logs,
             get_mqtt_status,
             get_registry,
+            accept_phase_cmd,
             get_task_queue,
             get_workspace_status,
             clone_repo_cmd,

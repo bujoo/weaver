@@ -6,9 +6,18 @@ export interface TaskQueueEntry {
 	phaseId: string;
 	phaseName: string;
 	todos: string[];
-	status: string; // queued | preparing | executing | completed | failed
+	status: string;
 	receivedAt: string;
 	contextBundles: unknown[];
+}
+
+export interface AvailablePhase {
+	missionId: string;
+	missionTitle: string;
+	phaseId: string;
+	phaseName: string;
+	todoCount: number;
+	status: string;
 }
 
 export interface TodoCompletion {
@@ -16,7 +25,11 @@ export interface TodoCompletion {
 	status: string;
 }
 
+// My tasks: assigned to this device
 export const tasks = writable<TaskQueueEntry[]>([]);
+
+// Available phases: waiting for someone to accept
+export const availablePhases = writable<AvailablePhase[]>([]);
 
 export const activeTask = derived(tasks, ($tasks) =>
 	$tasks.find((t) => t.status === 'executing' || t.status === 'preparing')
@@ -30,7 +43,6 @@ export const taskCounts = derived(tasks, ($tasks) => ({
 	total: $tasks.length
 }));
 
-// Track per-todo completion status
 export const todoStatuses = writable<Map<string, string>>(new Map());
 
 export async function initializeTaskListeners() {
@@ -47,9 +59,29 @@ export async function initializeTaskListeners() {
 		console.error('Failed to load task queue:', e);
 	}
 
+	// Load available phases from registry
+	try {
+		const reg = await invoke<{ missions?: Array<{ mission_id: string; title: string; available_phases?: Array<{ phase_id: string; phase_name: string; todo_count: number; status: string }> }> } | null>('get_registry');
+		if (reg?.missions) {
+			const phases: AvailablePhase[] = [];
+			for (const m of reg.missions) {
+				for (const p of m.available_phases ?? []) {
+					phases.push({
+						missionId: m.mission_id,
+						missionTitle: m.title,
+						phaseId: p.phase_id,
+						phaseName: p.phase_name,
+						todoCount: p.todo_count,
+						status: p.status,
+					});
+				}
+			}
+			availablePhases.set(phases);
+		}
+	} catch {}
+
 	// Listen for new assignments
 	listen<unknown>('assignment-received', () => {
-		// Refresh queue from Rust
 		invoke<TaskQueueEntry[]>('get_task_queue').then((queue) => tasks.set(queue));
 	});
 
@@ -59,7 +91,37 @@ export async function initializeTaskListeners() {
 			map.set(event.payload.todoId, event.payload.status);
 			return new Map(map);
 		});
-		// Refresh queue
 		invoke<TaskQueueEntry[]>('get_task_queue').then((queue) => tasks.set(queue));
 	});
+
+	// Listen for registry updates (new available phases)
+	listen<unknown>('mqtt-registry', (event) => {
+		const reg = event.payload as { missions?: Array<{ mission_id: string; title: string; available_phases?: Array<{ phase_id: string; phase_name: string; todo_count: number; status: string }> }> };
+		if (reg?.missions) {
+			const phases: AvailablePhase[] = [];
+			for (const m of reg.missions) {
+				for (const p of m.available_phases ?? []) {
+					phases.push({
+						missionId: m.mission_id,
+						missionTitle: m.title,
+						phaseId: p.phase_id,
+						phaseName: p.phase_name,
+						todoCount: p.todo_count,
+						status: p.status,
+					});
+				}
+			}
+			availablePhases.set(phases);
+		}
+	});
+}
+
+export async function acceptPhase(missionId: string, phaseId: string) {
+	if (!isTauri()) return;
+	try {
+		const { invoke } = await import('@tauri-apps/api/core');
+		await invoke('accept_phase_cmd', { missionId, phaseId });
+	} catch (e) {
+		console.error('Failed to accept phase:', e);
+	}
 }
