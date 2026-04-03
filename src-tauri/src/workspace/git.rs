@@ -289,17 +289,6 @@ pub fn setup_mission_worktrees(
                     "path": repo_id,
                     "name": repo_id
                 }));
-                // Write CLAUDE.md + .weaver/ specs if cache available
-                if let Some(cache) = state_cache {
-                    if let Err(e) = crate::workspace::claude_md::write_mission_context(
-                        cache,
-                        mission_id,
-                        &wt_path,
-                        None,
-                    ) {
-                        errors.push(format!("CLAUDE.md for {}: {}", repo_id, e));
-                    }
-                }
             }
             Err(e) => {
                 errors.push(format!("{}: {}", repo_id, e));
@@ -307,11 +296,56 @@ pub fn setup_mission_worktrees(
         }
     }
 
-    // Generate VS Code workspace file
+    // Create weaver/ directory and write context files
+    let weaver_dir = worktrees_dir.join("weaver");
+    let _ = std::fs::create_dir_all(&weaver_dir);
+
+    let repo_id_list: Vec<String> = folders
+        .iter()
+        .filter_map(|f| f.get("name").and_then(|n| n.as_str()).map(String::from))
+        .collect();
+
+    if let Some(cache) = state_cache {
+        if let Err(e) = crate::workspace::claude_md::write_workspace_context(
+            cache,
+            mission_id,
+            &weaver_dir,
+            &repo_id_list,
+            None,
+        ) {
+            errors.push(format!("weaver/ context: {}", e));
+        }
+    }
+
+    // Build enhanced VS Code workspace file
+    let mut ws_folders = vec![serde_json::json!({
+        "path": "weaver",
+        "name": "weaver"
+    })];
+    ws_folders.extend(folders);
+
+    let ws_extensions = build_extension_recommendations(state_cache, mission_id);
+    let ws_tasks = build_workspace_tasks(state_cache, mission_id);
+
     let workspace_file = worktrees_dir.join("mission.code-workspace");
     let workspace_json = serde_json::json!({
-        "folders": folders,
-        "settings": {}
+        "folders": ws_folders,
+        "settings": {
+            "files.autoSave": "onFocusChange",
+            "editor.formatOnSave": true,
+            "search.exclude": {
+                "**/.weaver": true,
+                "**/node_modules": true,
+                "**/__pycache__": true
+            }
+        },
+        "extensions": {
+            "recommendations": ws_extensions
+        },
+        "tasks": {
+            "version": "2.0.0",
+            "tasks": ws_tasks
+        }
     });
     if let Err(e) = std::fs::write(
         &workspace_file,
@@ -331,6 +365,65 @@ pub fn setup_mission_worktrees(
         worktrees_created: created,
         errors,
     }
+}
+
+// ── Workspace file helpers ──────────────────────────────────────────
+
+fn build_extension_recommendations(
+    cache: Option<&crate::mqtt::state_cache::MissionStateCache>,
+    mission_id: &str,
+) -> Vec<String> {
+    let mut exts = Vec::new();
+    if let Some(cache) = cache {
+        if let Some(active) = cache.get_active_phase(mission_id) {
+            if let Some(tools) = active.config.get("required_tools").and_then(|v| v.as_array()) {
+                for tool in tools {
+                    if let Some(t) = tool.as_str() {
+                        match t {
+                            "pytest" | "mypy" | "ruff" | "python3" => {
+                                exts.push("ms-python.python".to_string());
+                            }
+                            "cargo" | "rustfmt" | "clippy" => {
+                                exts.push("rust-lang.rust-analyzer".to_string());
+                            }
+                            "eslint" | "prettier" => {
+                                exts.push("dbaeumer.vscode-eslint".to_string());
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+    exts.sort();
+    exts.dedup();
+    exts
+}
+
+fn build_workspace_tasks(
+    cache: Option<&crate::mqtt::state_cache::MissionStateCache>,
+    mission_id: &str,
+) -> Vec<serde_json::Value> {
+    let mut tasks = Vec::new();
+    if let Some(cache) = cache {
+        if let Some(active) = cache.get_active_phase(mission_id) {
+            if let Some(tools) = active.config.get("required_tools").and_then(|v| v.as_array()) {
+                for tool in tools {
+                    if let Some(t) = tool.as_str() {
+                        tasks.push(serde_json::json!({
+                            "label": format!("Run {}", t),
+                            "type": "shell",
+                            "command": t,
+                            "problemMatcher": [],
+                            "group": "test"
+                        }));
+                    }
+                }
+            }
+        }
+    }
+    tasks
 }
 
 /// Open a VS Code workspace file.

@@ -428,14 +428,14 @@ async fn get_mission_state(
     Ok(guard.snapshot())
 }
 
-/// Regenerate CLAUDE.md + .weaver/ specs for a mission across all its worktrees.
+/// Regenerate weaver/ context (CLAUDE.md + .claude/ + .weaver/) for a mission.
 /// Called when a phase transitions or when the developer wants to refresh context.
 #[cfg(not(mobile))]
 #[tauri::command]
-async fn regenerate_claude_md(
+async fn regenerate_workspace_context(
     mission_id: String,
     cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
-) -> Result<u32, String> {
+) -> Result<bool, String> {
     let mount = default_workspace_mount();
     let guard = cache.lock().await;
 
@@ -445,33 +445,47 @@ async fn regenerate_claude_md(
         &mission_id
     };
     let worktrees_dir = mount.join(".worktrees").join(short_mid);
+    let weaver_dir = worktrees_dir.join("weaver");
 
-    if !worktrees_dir.exists() {
-        return Err(format!("No worktrees found for mission {}", mission_id));
+    if !weaver_dir.exists() {
+        return Err(format!("No weaver/ directory for mission {}", mission_id));
     }
 
-    let mut count = 0u32;
-    if let Ok(entries) = std::fs::read_dir(&worktrees_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() && (path.join(".git").exists() || path.join("CLAUDE.md").exists()) {
-                match workspace::claude_md::write_mission_context(&guard, &mission_id, &path, None)
-                {
-                    Ok(true) => count += 1,
-                    Ok(false) => {}
-                    Err(e) => {
-                        debug_log::log_error(&format!("[ClaudeMD] Regen error: {}", e));
-                    }
-                }
+    // Collect sibling repo worktree names
+    let repo_ids: Vec<String> = std::fs::read_dir(&worktrees_dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            let p = e.path();
+            let name = e.file_name();
+            p.is_dir()
+                && name != "weaver"
+                && (p.join(".git").exists() || p.join(".git").is_file())
+        })
+        .filter_map(|e| e.file_name().to_str().map(String::from))
+        .collect();
+
+    match workspace::claude_md::write_workspace_context(
+        &guard,
+        &mission_id,
+        &weaver_dir,
+        &repo_ids,
+        None,
+    ) {
+        Ok(written) => {
+            if written {
+                debug_log::log_info(&format!(
+                    "[Context] Regenerated weaver/ for mission {}",
+                    mission_id
+                ));
             }
+            Ok(written)
+        }
+        Err(e) => {
+            debug_log::log_error(&format!("[Context] Regen error: {}", e));
+            Err(e)
         }
     }
-
-    debug_log::log_info(&format!(
-        "[ClaudeMD] Regenerated CLAUDE.md for {} in {} worktrees",
-        mission_id, count
-    ));
-    Ok(count)
 }
 
 /// Load a WeaverPlan from a fixture file or raw JSON into the MissionStateCache.
@@ -1019,7 +1033,7 @@ pub fn run() {
             get_task_queue,
             get_mission_state,
             load_fixture,
-            regenerate_claude_md,
+            regenerate_workspace_context,
             get_workspace_status,
             clone_repo_cmd,
             create_worktree_cmd,

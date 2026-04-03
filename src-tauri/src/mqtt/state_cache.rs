@@ -122,6 +122,11 @@ impl MissionStateCache {
                 .get("mission_context")
                 .and_then(|v| v.as_str())
                 .map(String::from),
+            roles: plan_json
+                .get("roles")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default(),
         };
         self.store_plan(plan_msg);
 

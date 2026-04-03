@@ -85,6 +85,8 @@ pub struct PlanStateMessage {
     pub published_at: String,
     #[serde(default)]
     pub mission_context: Option<String>,
+    #[serde(default)]
+    pub roles: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
