@@ -427,9 +427,14 @@ fn build_workspace_tasks(
 }
 
 /// Open a VS Code workspace file.
+/// Unsets CLAUDECODE env var to prevent nested session detection.
 pub fn open_vscode_workspace(workspace_file: &Path) -> Result<(), String> {
     // Try `code` in PATH first, then macOS app bundle path
-    let result = Command::new("code").arg(workspace_file).spawn();
+    // Unset CLAUDECODE to prevent "cannot launch inside another session" error
+    let result = Command::new("code")
+        .arg(workspace_file)
+        .env_remove("CLAUDECODE")
+        .spawn();
     if result.is_ok() {
         return Ok(());
     }
@@ -438,6 +443,7 @@ pub fn open_vscode_workspace(workspace_file: &Path) -> Result<(), String> {
     let macos_code = "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code";
     Command::new(macos_code)
         .arg(workspace_file)
+        .env_remove("CLAUDECODE")
         .spawn()
         .map_err(|e| format!("Failed to open VS Code: {}", e))?;
     Ok(())
