@@ -19,31 +19,35 @@ pub async fn execute_assignment(
     abort_rx: watch::Receiver<bool>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    let repo_path = find_repo_for_assignment(&assignment, workspace_mount)?;
-    let branch_name = git::mission_branch_name(&assignment.mission_id, &assignment.phase_id);
-
-    // Create worktree for phase isolation
-    let worktree_path = workspace_mount
-        .join(".worktrees")
-        .join(&assignment.mission_id)
-        .join(&assignment.phase_id);
-
-    let _cwd = git::create_worktree(&repo_path, &worktree_path, &branch_name)?;
-
-    // Use weaver/ as Claude Code CWD (picks up CLAUDE.md + .claude/ config)
     let mission_short = if assignment.mission_id.len() > 8 {
         &assignment.mission_id[..8]
     } else {
         &assignment.mission_id
     };
+
+    // Check if autopilot already set up the workspace (worktrees at .worktrees/{mid_short}/)
     let weaver_cwd = workspace_mount
         .join(".worktrees")
         .join(mission_short)
         .join("weaver");
+
     let effective_cwd = if weaver_cwd.exists() {
+        // Autopilot already created worktrees + weaver/ folder -- use it
+        crate::debug_log::log_info(&format!(
+            "[Pipeline] Using existing weaver/ workspace at {}",
+            weaver_cwd.display()
+        ));
         weaver_cwd
     } else {
-        worktree_path.clone()
+        // Fallback: create worktree on the fly (no autopilot ran)
+        let repo_path = find_repo_for_assignment(&assignment, workspace_mount)?;
+        let branch_name = git::mission_branch_name(&assignment.mission_id, &assignment.phase_id);
+        let worktree_path = workspace_mount
+            .join(".worktrees")
+            .join(mission_short)
+            .join(&assignment.phase_id);
+        let cwd = git::create_worktree(&repo_path, &worktree_path, &branch_name)?;
+        cwd
     };
 
     crate::debug_log::log_info(&format!(
