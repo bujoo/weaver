@@ -488,6 +488,64 @@ async fn regenerate_workspace_context(
     }
 }
 
+/// List active weaver tmux sessions.
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn list_weaver_sessions() -> Result<Vec<serde_json::Value>, String> {
+    let output = tokio::process::Command::new("tmux")
+        .args(["list-sessions", "-F", "#{session_name}\t#{session_created}\t#{session_activity}"])
+        .output()
+        .await
+        .map_err(|e| format!("tmux: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let sessions: Vec<serde_json::Value> = stdout
+        .lines()
+        .filter(|l| l.starts_with("weaver-"))
+        .map(|l| {
+            let parts: Vec<&str> = l.split('\t').collect();
+            serde_json::json!({
+                "name": parts.first().unwrap_or(&""),
+                "created": parts.get(1).unwrap_or(&""),
+                "activity": parts.get(2).unwrap_or(&""),
+            })
+        })
+        .collect();
+
+    Ok(sessions)
+}
+
+/// Open a terminal attached to a weaver tmux session.
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn attach_weaver_session(session_name: String) -> Result<(), String> {
+    // Open iTerm or Terminal.app with tmux attach
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!(
+            r#"tell application "Terminal"
+                activate
+                do script "tmux attach -t {}"
+            end tell"#,
+            session_name
+        );
+        tokio::process::Command::new("osascript")
+            .args(["-e", &script])
+            .spawn()
+            .map_err(|e| format!("Failed to open terminal: {}", e))?;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        tokio::process::Command::new("tmux")
+            .args(["attach", "-t", &session_name])
+            .spawn()
+            .map_err(|e| format!("Failed to attach: {}", e))?;
+    }
+
+    Ok(())
+}
+
 /// Load a WeaverPlan from a fixture file or raw JSON into the MissionStateCache.
 /// Used for dev/testing without MQTT. Also works as a general "import plan" command.
 #[cfg(not(mobile))]
@@ -1034,6 +1092,8 @@ pub fn run() {
             get_mission_state,
             load_fixture,
             regenerate_workspace_context,
+            list_weaver_sessions,
+            attach_weaver_session,
             get_workspace_status,
             clone_repo_cmd,
             create_worktree_cmd,

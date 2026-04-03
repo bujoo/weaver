@@ -1,4 +1,4 @@
-use crate::executor::monitor::monitor_process;
+use crate::executor::monitor::monitor_tmux_session;
 use crate::executor::spawner::{build_system_prompt, ClaudeCodeSpawner};
 use crate::mqtt::client::MqttClient;
 use crate::mqtt::state_cache::MissionStateCache;
@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{watch, Mutex};
 
-/// Execute a full phase assignment: create worktree, run todos sequentially.
+/// Execute a full phase assignment: create worktree, run todos sequentially in tmux sessions.
 pub async fn execute_assignment(
     assignment: PhaseAssignment,
     workspace_mount: &Path,
@@ -28,12 +28,28 @@ pub async fn execute_assignment(
         .join(&assignment.mission_id)
         .join(&assignment.phase_id);
 
-    let cwd = git::create_worktree(&repo_path, &worktree_path, &branch_name)?;
+    let _cwd = git::create_worktree(&repo_path, &worktree_path, &branch_name)?;
+
+    // Use weaver/ as Claude Code CWD (picks up CLAUDE.md + .claude/ config)
+    let mission_short = if assignment.mission_id.len() > 8 {
+        &assignment.mission_id[..8]
+    } else {
+        &assignment.mission_id
+    };
+    let weaver_cwd = workspace_mount
+        .join(".worktrees")
+        .join(mission_short)
+        .join("weaver");
+    let effective_cwd = if weaver_cwd.exists() {
+        weaver_cwd
+    } else {
+        worktree_path.clone()
+    };
 
     crate::debug_log::log_info(&format!(
-        "[Pipeline] Worktree created at {} for phase {}",
-        cwd.display(),
-        assignment.phase_name
+        "[Pipeline] Executing phase {} in CWD {}",
+        assignment.phase_name,
+        effective_cwd.display()
     ));
 
     // Extract phase config
@@ -106,12 +122,12 @@ pub async fn execute_assignment(
             phase_system_prompt.as_deref(),
         );
 
-        // Spawn Claude Code
-        let child = spawner
+        // Spawn Claude Code in tmux session
+        let session = spawner
             .spawn(
                 todo_id,
                 &prompt,
-                &cwd,
+                &effective_cwd,
                 model.as_deref(),
                 &allowed_tools,
                 &[], // MCP servers TODO
@@ -119,9 +135,9 @@ pub async fn execute_assignment(
             )
             .await?;
 
-        // Monitor until completion
-        let result = monitor_process(
-            child,
+        // Monitor tmux session until completion
+        let result = monitor_tmux_session(
+            session,
             todo_id.clone(),
             assignment.mission_id.clone(),
             assignment.phase_id.clone(),
@@ -142,7 +158,6 @@ pub async fn execute_assignment(
                     todo_id, e
                 ));
                 spawner.mark_failed(todo_id).await;
-                // Continue to next todo or break depending on strategy
                 break;
             }
         }
@@ -157,12 +172,10 @@ pub async fn execute_assignment(
 }
 
 /// Find the repo path for an assignment.
-/// Uses workspace_mount to locate repos by name from the assignment config.
 fn find_repo_for_assignment(
     assignment: &PhaseAssignment,
     workspace_mount: &Path,
 ) -> Result<PathBuf, String> {
-    // Try to get repo from config
     if let Some(repo_id) = assignment.config.get("repo_id").and_then(|v| v.as_str()) {
         let repo_path = workspace_mount.join(repo_id);
         if repo_path.join(".git").exists() {
@@ -170,7 +183,6 @@ fn find_repo_for_assignment(
         }
     }
 
-    // Fallback: find first repo in workspace_mount
     if let Ok(entries) = std::fs::read_dir(workspace_mount) {
         for entry in entries.flatten() {
             let path = entry.path();

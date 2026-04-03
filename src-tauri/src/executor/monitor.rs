@@ -1,14 +1,17 @@
+use crate::executor::spawner::TmuxSession;
 use crate::mqtt::client::MqttClient;
 use crate::mqtt::types::TodoStatusEvent;
 use chrono::Utc;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Child;
+use tokio::process::Command;
 use tokio::sync::Mutex;
 
-/// Monitor a spawned Claude Code process, capture output, detect completion.
-pub async fn monitor_process(
-    mut child: Child,
+/// Monitor a tmux session running Claude Code.
+/// Streams output to frontend, detects completion, publishes status to Brain.
+pub async fn monitor_tmux_session(
+    session: TmuxSession,
     todo_id: String,
     mission_id: String,
     phase_id: String,
@@ -17,46 +20,74 @@ pub async fn monitor_process(
     workspace: String,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    // Read stdout
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or("Failed to capture stdout")?;
-    let mut reader = BufReader::new(stdout).lines();
+    // Stream log output to frontend in background
+    let log_path = session.log_path.clone();
+    let app_stream = app.clone();
+    let tid_stream = todo_id.clone();
+    let stream_handle = tokio::spawn(async move {
+        // Wait for log file to appear
+        for _ in 0..60 {
+            if log_path.exists() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
 
-    let mut output_lines = Vec::new();
+        if let Ok(file) = tokio::fs::File::open(&log_path).await {
+            let mut reader = BufReader::new(file).lines();
+            loop {
+                match reader.next_line().await {
+                    Ok(Some(line)) => {
+                        use tauri::Emitter;
+                        let _ = app_stream.emit(
+                            "executor-output",
+                            serde_json::json!({
+                                "todoId": &tid_stream,
+                                "line": &line,
+                            }),
+                        );
+                    }
+                    Ok(None) => {
+                        // No more lines yet -- wait and retry
+                        tokio::time::sleep(Duration::from_millis(300)).await;
+                    }
+                    Err(_) => break,
+                }
+            }
+        }
+    });
 
-    // Stream output
-    while let Ok(Some(line)) = reader.next_line().await {
-        output_lines.push(line.clone());
+    // Poll tmux session existence until it exits
+    loop {
+        let has_session = Command::new("tmux")
+            .args(["has-session", "-t", &session.session_name])
+            .output()
+            .await;
 
-        // Emit to frontend for live monitoring
-        use tauri::Emitter;
-        let _ = app.emit(
-            "executor-output",
-            serde_json::json!({
-                "todoId": &todo_id,
-                "line": &line,
-            }),
-        );
+        match has_session {
+            Ok(output) if !output.status.success() => break, // Session exited
+            Err(_) => break,                                  // tmux not available
+            _ => {}
+        }
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
-    // Wait for process to complete
-    let exit_status = child
-        .wait()
-        .await
-        .map_err(|e| format!("Failed to wait for process: {}", e))?;
+    // Give log streaming a moment to catch up
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    stream_handle.abort();
 
-    let (todo_status, todo_error): (String, Option<String>) = if exit_status.success() {
-        ("completed".to_string(), None)
+    // Determine success/failure from log content
+    let todo_status = determine_exit_status(&session.log_path).await;
+    let todo_error = if todo_status == "failed" {
+        Some("Claude Code session exited with errors".to_string())
     } else {
-        let code = exit_status.code().unwrap_or(-1);
-        ("failed".to_string(), Some(format!("Exit code: {}", code)))
+        None
     };
 
     crate::debug_log::log_info(&format!(
-        "[Executor] Todo {} finished with status: {}",
-        todo_id, todo_status
+        "[Executor] tmux session '{}' ended: {}",
+        session.session_name, todo_status
     ));
 
     // Publish status to Brain via MQTT
@@ -73,10 +104,7 @@ pub async fn monitor_process(
         published_at: Utc::now().to_rfc3339(),
     };
 
-    let topic = format!(
-        "brain/{}/status/{}/{}",
-        workspace, mission_id, todo_id
-    );
+    let topic = format!("brain/{}/status/{}/{}", workspace, mission_id, todo_id);
 
     let guard = mqtt.lock().await;
     if let Some(client) = guard.as_ref() {
@@ -95,8 +123,21 @@ pub async fn monitor_process(
         serde_json::json!({
             "todoId": &todo_id,
             "status": &todo_status,
+            "sessionName": &session.session_name,
         }),
     );
 
     Ok(())
+}
+
+/// Check log output for error indicators to determine status.
+async fn determine_exit_status(log_path: &std::path::Path) -> String {
+    if let Ok(content) = tokio::fs::read_to_string(log_path).await {
+        // Check for common error patterns in Claude Code output
+        let lower = content.to_lowercase();
+        if lower.contains("error:") || lower.contains("fatal:") || lower.contains("panic") {
+            return "failed".to_string();
+        }
+    }
+    "completed".to_string()
 }

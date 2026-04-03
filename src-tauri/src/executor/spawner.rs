@@ -1,17 +1,23 @@
 use serde::Serialize;
 use std::collections::HashMap;
-use std::path::Path;
-use std::process::Stdio;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::process::{Child, Command};
+use tokio::process::Command;
 use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpawnedProcess {
     pub todo_id: String,
-    pub pid: u32,
+    pub session_name: String,
     pub status: String, // running | completed | failed | killed
+}
+
+/// Returned by spawn() -- represents a running tmux session.
+pub struct TmuxSession {
+    pub session_name: String,
+    pub log_path: PathBuf,
+    pub todo_id: String,
 }
 
 pub struct ClaudeCodeSpawner {
@@ -25,6 +31,8 @@ impl ClaudeCodeSpawner {
         }
     }
 
+    /// Spawn Claude Code inside a named tmux session.
+    /// The developer can `tmux attach -t {session_name}` to watch.
     pub async fn spawn(
         &self,
         todo_id: &str,
@@ -34,59 +42,108 @@ impl ClaudeCodeSpawner {
         allowed_tools: &[String],
         mcp_servers: &[String],
         system_prompt: Option<&str>,
-    ) -> Result<Child, String> {
-        let mut cmd = Command::new("claude");
-        cmd.current_dir(cwd);
-        cmd.arg("--print"); // Non-interactive mode
+    ) -> Result<TmuxSession, String> {
+        let session_name = format!("weaver-{}", todo_id.replace('.', "-"));
+        let log_path = std::env::temp_dir().join(format!("weaver-{}.log", todo_id));
 
-        // Model
+        // Clean up stale log file
+        let _ = std::fs::remove_file(&log_path);
+
+        // Build the claude command string
+        let mut claude_args: Vec<String> = vec!["--print".to_string()];
+
+        // Permission mode: autonomous execution
+        claude_args.push("--permission-mode".to_string());
+        claude_args.push("bypassPermissions".to_string());
+
         if let Some(m) = model {
-            cmd.arg("--model").arg(m);
+            claude_args.push("--model".to_string());
+            claude_args.push(m.to_string());
         }
 
-        // Allowed tools
         for tool in allowed_tools {
-            cmd.arg("--allowedTools").arg(tool);
+            claude_args.push("--allowedTools".to_string());
+            claude_args.push(tool.clone());
         }
 
-        // MCP servers (passed as --mcp-server flags)
         for mcp in mcp_servers {
-            cmd.arg("--mcp-server").arg(mcp);
+            claude_args.push("--mcp-server".to_string());
+            claude_args.push(mcp.clone());
         }
 
-        // System prompt
         if let Some(sp) = system_prompt {
-            cmd.arg("--system-prompt").arg(sp);
+            claude_args.push("--system-prompt".to_string());
+            claude_args.push(sp.to_string());
         }
 
-        // The prompt/task description
-        cmd.arg("--").arg(prompt);
+        claude_args.push("--".to_string());
+        claude_args.push(prompt.to_string());
 
-        // Capture stdout/stderr
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::piped());
+        // Build shell command: set env vars + run claude with args
+        // Using shell form so env vars work in tmux
+        let escaped_args: Vec<String> = claude_args
+            .iter()
+            .map(|a| shell_escape(a))
+            .collect();
+        let shell_cmd = format!(
+            "export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1; claude {}",
+            escaped_args.join(" ")
+        );
 
-        // Don't inherit stdin (non-interactive)
-        cmd.stdin(Stdio::null());
+        // Kill existing session with same name (idempotent)
+        let _ = Command::new("tmux")
+            .args(["kill-session", "-t", &session_name])
+            .output()
+            .await;
 
-        let child = cmd.spawn().map_err(|e| format!("Failed to spawn claude: {}", e))?;
+        // Create tmux session
+        let output = Command::new("tmux")
+            .args([
+                "new-session",
+                "-d",
+                "-s",
+                &session_name,
+                "-c",
+            ])
+            .arg(cwd)
+            .arg(&shell_cmd)
+            .output()
+            .await
+            .map_err(|e| format!("Failed to create tmux session: {}", e))?;
 
-        let pid = child.id().unwrap_or(0);
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("tmux new-session failed: {}", stderr));
+        }
+
+        // Set up output capture via pipe-pane
+        let _ = Command::new("tmux")
+            .args(["pipe-pane", "-t", &session_name])
+            .arg(format!("cat >> {}", log_path.display()))
+            .output()
+            .await;
+
         crate::debug_log::log_info(&format!(
-            "[Executor] Spawned Claude Code for todo {} (pid {})",
-            todo_id, pid
+            "[Executor] Spawned tmux session '{}' for todo {} in {}",
+            session_name,
+            todo_id,
+            cwd.display()
         ));
 
         self.processes.lock().await.insert(
             todo_id.to_string(),
             SpawnedProcess {
                 todo_id: todo_id.to_string(),
-                pid,
+                session_name: session_name.clone(),
                 status: "running".into(),
             },
         );
 
-        Ok(child)
+        Ok(TmuxSession {
+            session_name,
+            log_path,
+            todo_id: todo_id.to_string(),
+        })
     }
 
     pub async fn mark_completed(&self, todo_id: &str) {
@@ -113,6 +170,19 @@ impl ClaudeCodeSpawner {
             .filter(|p| p.status == "running")
             .count()
     }
+}
+
+/// Escape a string for safe use in a shell command.
+fn shell_escape(s: &str) -> String {
+    if s.is_empty() {
+        return "''".to_string();
+    }
+    // If it contains no special chars, return as-is
+    if s.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/' || c == ':') {
+        return s.to_string();
+    }
+    // Wrap in single quotes, escaping existing single quotes
+    format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 /// Build the system prompt from a TodoSpec JSON value.
@@ -148,36 +218,13 @@ pub fn build_system_prompt(
             prompt.push_str(&format!("\nComponent: {} @ {}\n", n, l));
         }
 
-        // Summary
         if let Some(summary) = spec.get("summary").and_then(|v| v.as_str()) {
             prompt.push_str(&format!("\nSummary: {}\n", summary));
         }
 
-        // Inputs
-        if let Some(inputs) = spec.get("inputs").and_then(|v| v.as_array()) {
-            if !inputs.is_empty() {
-                prompt.push_str("\nInputs:\n");
-                for inp in inputs {
-                    if let Some(s) = inp.as_str() {
-                        prompt.push_str(&format!("- {}\n", s));
-                    }
-                }
-            }
-        }
+        render_prompt_array(&mut prompt, "Inputs", spec.get("inputs"));
+        render_prompt_array(&mut prompt, "Outputs", spec.get("outputs"));
 
-        // Outputs
-        if let Some(outputs) = spec.get("outputs").and_then(|v| v.as_array()) {
-            if !outputs.is_empty() {
-                prompt.push_str("\nOutputs:\n");
-                for out in outputs {
-                    if let Some(s) = out.as_str() {
-                        prompt.push_str(&format!("- {}\n", s));
-                    }
-                }
-            }
-        }
-
-        // Behavior steps
         if let Some(behavior) = spec.get("behavior").and_then(|b| b.as_array()) {
             prompt.push_str("\nBehavior steps:\n");
             for (i, step) in behavior.iter().enumerate() {
@@ -187,27 +234,9 @@ pub fn build_system_prompt(
             }
         }
 
-        // Constraints
-        if let Some(constraints) = spec.get("constraints").and_then(|c| c.as_array()) {
-            prompt.push_str("\nConstraints:\n");
-            for c in constraints {
-                if let Some(s) = c.as_str() {
-                    prompt.push_str(&format!("- {}\n", s));
-                }
-            }
-        }
+        render_prompt_array(&mut prompt, "Constraints", spec.get("constraints"));
+        render_prompt_array(&mut prompt, "Edge cases to handle", spec.get("edge_cases"));
 
-        // Edge cases
-        if let Some(edge_cases) = spec.get("edge_cases").and_then(|e| e.as_array()) {
-            prompt.push_str("\nEdge cases to handle:\n");
-            for e in edge_cases {
-                if let Some(s) = e.as_str() {
-                    prompt.push_str(&format!("- {}\n", s));
-                }
-            }
-        }
-
-        // References
         if let Some(refs) = spec.get("references").and_then(|r| r.as_array()) {
             if !refs.is_empty() {
                 prompt.push_str("\nReference materials:\n");
@@ -225,7 +254,6 @@ pub fn build_system_prompt(
         }
     }
 
-    // File paths
     if !file_paths.is_empty() {
         prompt.push_str("\nFiles to modify:\n");
         for fp in file_paths {
@@ -235,4 +263,17 @@ pub fn build_system_prompt(
 
     prompt.push_str("\nComplete this task. Report progress as you go. When done, the todo will be marked complete automatically.\n");
     prompt
+}
+
+fn render_prompt_array(prompt: &mut String, heading: &str, value: Option<&serde_json::Value>) {
+    if let Some(arr) = value.and_then(|v| v.as_array()) {
+        if !arr.is_empty() {
+            prompt.push_str(&format!("\n{}:\n", heading));
+            for item in arr {
+                if let Some(s) = item.as_str() {
+                    prompt.push_str(&format!("- {}\n", s));
+                }
+            }
+        }
+    }
 }
