@@ -41,7 +41,7 @@ impl ClaudeCodeSpawner {
         model: Option<&str>,
         allowed_tools: &[String],
         mcp_servers: &[String],
-        system_prompt: Option<&str>,
+        _system_prompt: Option<&str>,
     ) -> Result<TmuxSession, String> {
         let session_name = format!("weaver-{}", todo_id.replace('.', "-"));
         let log_path = std::path::PathBuf::from("/tmp").join(format!("weaver-{}.log", todo_id));
@@ -49,13 +49,9 @@ impl ClaudeCodeSpawner {
         // Clean up stale log file
         let _ = std::fs::remove_file(&log_path);
 
-        // Write prompt to a file to avoid shell escaping issues with large prompts
-        let prompt_path = std::path::PathBuf::from("/tmp")
-            .join(format!("weaver-{}.prompt", todo_id));
-        std::fs::write(&prompt_path, prompt)
-            .map_err(|e| format!("Failed to write prompt file: {}", e))?;
-
-        // Build claude flags (prompt comes via stdin from file)
+        // Build claude flags
+        // The weaver/ folder has CLAUDE.md + .claude/ + .weaver/specs/ so
+        // Claude Code already has full mission context. We just send a short prompt.
         let mut flags = vec![
             "--print".to_string(),
             "--permission-mode".to_string(),
@@ -74,19 +70,18 @@ impl ClaudeCodeSpawner {
             flags.push("--mcp-server".to_string());
             flags.push(shell_escape(mcp));
         }
-        if let Some(sp) = system_prompt {
-            flags.push("--system-prompt".to_string());
-            flags.push(shell_escape(sp));
-        }
 
-        // Shell: pipe prompt from file -> claude -> tee to log -> exit marker
+        // Short prompt -- Claude reads .weaver/specs/{todo_id}.md for the full spec
+        let short_prompt = shell_escape(prompt);
+
+        // Shell: claude with short prompt -> tee to log -> exit marker
         let shell_cmd = format!(
             "export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1; \
-             cat {} | claude {} 2>&1 | tee {}; \
-             _EC=${{pipestatus[2]:-${{PIPESTATUS[1]:-$?}}}}; \
+             claude {} -- {} 2>&1 | tee {}; \
+             _EC=${{pipestatus[1]:-${{PIPESTATUS[0]:-$?}}}}; \
              echo __WEAVER_EXIT_${{_EC}}__ >> {}",
-            prompt_path.display(),
             flags.join(" "),
+            short_prompt,
             log_path.display(),
             log_path.display()
         );

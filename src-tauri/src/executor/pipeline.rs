@@ -1,5 +1,5 @@
 use crate::executor::monitor::monitor_tmux_session;
-use crate::executor::spawner::{build_system_prompt, ClaudeCodeSpawner};
+use crate::executor::spawner::ClaudeCodeSpawner;
 use crate::mqtt::client::MqttClient;
 use crate::mqtt::state_cache::MissionStateCache;
 use crate::mqtt::types::PhaseAssignment;
@@ -14,7 +14,7 @@ pub async fn execute_assignment(
     workspace_mount: &Path,
     spawner: Arc<ClaudeCodeSpawner>,
     mqtt: Arc<Mutex<Option<MqttClient>>>,
-    state_cache: Arc<Mutex<MissionStateCache>>,
+    _state_cache: Arc<Mutex<MissionStateCache>>,
     instance_id: String,
     abort_rx: watch::Receiver<bool>,
     app: tauri::AppHandle,
@@ -89,46 +89,15 @@ pub async fn execute_assignment(
             todo_id, assignment.phase_name
         ));
 
-        // Look up todo spec + phase config from retained MQTT state cache
-        let (description, spec, file_paths, phase_system_prompt) = {
-            let cache = state_cache.lock().await;
-            let (desc, sp, fps) = match cache.get_todo(todo_id) {
-                Some(todo_state) => {
-                    let desc = if todo_state.description.is_empty() {
-                        format!("Execute todo {}", todo_id)
-                    } else {
-                        todo_state.description.clone()
-                    };
-                    (desc, todo_state.spec.clone(), todo_state.file_paths.clone())
-                }
-                None => {
-                    crate::debug_log::log_warn(&format!(
-                        "[Pipeline] No cached state for todo {}, using fallback prompt",
-                        todo_id
-                    ));
-                    (format!("Execute todo {}", todo_id), None, vec![])
-                }
-            };
-            let psp = cache
-                .get_phase(&assignment.mission_id, &assignment.phase_id)
-                .and_then(|p| p.config.get("system_prompt"))
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            (desc, sp, fps, psp)
-        };
-
-        let prompt = build_system_prompt(
-            &assignment.phase_name,
-            todo_id,
-            &description,
-            spec.as_ref(),
-            &file_paths,
-            phase_system_prompt.as_deref(),
+        // Short prompt -- Claude Code reads CLAUDE.md + .weaver/specs/{todo_id}.md
+        // No need for a massive system prompt; the weaver/ folder has everything
+        let prompt = format!(
+            "Execute todo {}. Read .weaver/specs/{}.md for the full spec. \
+             Follow the behavior steps, constraints, and edge cases defined there.",
+            todo_id, todo_id
         );
 
         // Spawn Claude Code in tmux session
-        // Don't pass phase_system_prompt as --system-prompt since
-        // build_system_prompt already embeds it in the prompt text
         let session = spawner
             .spawn(
                 todo_id,
