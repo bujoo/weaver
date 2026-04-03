@@ -5,7 +5,7 @@ use axum::{
     },
     http::{header, StatusCode},
     response::IntoResponse,
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use rust_embed::Embed;
@@ -30,7 +30,7 @@ pub struct WsState {
 
 // ── Protocol types ──────────────────────────────────────────────────
 
-/// Client → Server messages
+/// Client -> Server messages
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 enum ClientMsg {
@@ -65,7 +65,7 @@ enum ClientMsg {
     GetMemoryFiles,
 }
 
-/// Server → Client messages
+/// Server -> Client messages
 #[derive(Debug, Serialize)]
 #[serde(tag = "type")]
 enum ServerMsg {
@@ -96,13 +96,26 @@ enum ServerMsg {
 /// Start the axum WebSocket server (call from tauri::async_runtime::spawn)
 pub async fn start_server(state: Arc<WsState>) {
     let app = Router::new()
+        // Existing routes
         .route("/ws", get(ws_handler))
         .route("/health", get(health))
         .route("/info", get(info))
+        // Claude Code HTTP hook endpoints
+        .route("/hooks/session-start", post(hook_session_start))
+        .route("/hooks/tool-use", post(hook_tool_use))
+        .route("/hooks/stop", post(hook_stop))
+        .route("/hooks/task-completed", post(hook_task_completed))
+        .route("/hooks/teammate-idle", post(hook_teammate_idle))
+        .route("/hooks/session-end", post(hook_session_end))
+        // Weaver channel reply endpoints
+        .route("/channel/reply", post(channel_reply))
+        .route("/channel/todo-complete", post(channel_todo_complete))
+        .route("/channel/phase-complete", post(channel_phase_complete))
+        .route("/channel/permission-request", post(channel_permission_request))
+        // Static fallback
         .fallback(get(serve_static_fallback))
         .with_state(state);
 
-    // [::] accepts both IPv4 and IPv6 (localhost can resolve to ::1)
     let addr = format!("[::]:{}", WS_PORT);
     crate::debug_log::log_info(&format!("[ws-server] Listening on {}", addr));
 
@@ -129,6 +142,138 @@ async fn info() -> Json<serde_json::Value> {
         "name": "c9watch",
         "version": env!("CARGO_PKG_VERSION"),
     }))
+}
+
+// ── Claude Code Hook Endpoints ──────────────────────────────────────
+// These receive HTTP POSTs from the weaver plugin's hooks/hooks.json.
+// Each hook fires automatically when Claude Code performs an action.
+
+async fn hook_session_start(Json(payload): Json<serde_json::Value>) -> StatusCode {
+    crate::debug_log::log_info(&format!(
+        "[Hook] SessionStart: session={} cwd={}",
+        payload.get("session_id").and_then(|v| v.as_str()).unwrap_or("?"),
+        payload.get("cwd").and_then(|v| v.as_str()).unwrap_or("?"),
+    ));
+    StatusCode::OK
+}
+
+async fn hook_tool_use(Json(payload): Json<serde_json::Value>) -> StatusCode {
+    let tool = payload.get("tool_name").and_then(|v| v.as_str()).unwrap_or("?");
+    // Only log non-trivial tools to avoid noise
+    match tool {
+        "Read" | "Glob" | "Grep" | "LS" => {} // skip noisy read-only tools
+        _ => {
+            crate::debug_log::log_info(&format!("[Hook] ToolUse: {}", tool));
+        }
+    }
+    StatusCode::OK
+}
+
+async fn hook_stop(Json(payload): Json<serde_json::Value>) -> StatusCode {
+    crate::debug_log::log_info(&format!(
+        "[Hook] Stop: session={} stop_hook_active={}",
+        payload.get("session_id").and_then(|v| v.as_str()).unwrap_or("?"),
+        payload.get("stop_hook_active").and_then(|v| v.as_bool()).unwrap_or(false),
+    ));
+    StatusCode::OK
+}
+
+async fn hook_task_completed(Json(payload): Json<serde_json::Value>) -> StatusCode {
+    crate::debug_log::log_info(&format!(
+        "[Hook] TaskCompleted: {}",
+        serde_json::to_string(&payload).unwrap_or_default()
+    ));
+    StatusCode::OK
+}
+
+async fn hook_teammate_idle(Json(payload): Json<serde_json::Value>) -> StatusCode {
+    crate::debug_log::log_info(&format!(
+        "[Hook] TeammateIdle: {}",
+        payload.get("agent_name").and_then(|v| v.as_str()).unwrap_or("?"),
+    ));
+    StatusCode::OK
+}
+
+async fn hook_session_end(Json(payload): Json<serde_json::Value>) -> StatusCode {
+    crate::debug_log::log_info(&format!(
+        "[Hook] SessionEnd: session={} reason={}",
+        payload.get("session_id").and_then(|v| v.as_str()).unwrap_or("?"),
+        payload.get("reason").and_then(|v| v.as_str()).unwrap_or("?"),
+    ));
+    StatusCode::OK
+}
+
+// ── Weaver Channel Reply Endpoints ──────────────────────────────────
+// These receive POSTs from Claude Code via the weaver channel's reply tools.
+
+async fn channel_reply(Json(payload): Json<serde_json::Value>) -> StatusCode {
+    let reply_type = payload.get("type").and_then(|v| v.as_str()).unwrap_or("?");
+    let mission_id = payload.get("mission_id").and_then(|v| v.as_str()).unwrap_or("?");
+    let message = payload.get("message").and_then(|v| v.as_str()).unwrap_or("");
+
+    crate::debug_log::log_info(&format!(
+        "[Channel] Reply: type={} mission={} msg={}",
+        reply_type,
+        &mission_id[..8.min(mission_id.len())],
+        &message[..100.min(message.len())],
+    ));
+    StatusCode::OK
+}
+
+async fn channel_todo_complete(Json(payload): Json<serde_json::Value>) -> StatusCode {
+    let todo_id = payload.get("todo_id").and_then(|v| v.as_str()).unwrap_or("?");
+    let mission_id = payload.get("mission_id").and_then(|v| v.as_str()).unwrap_or("?");
+    let summary = payload.get("summary").and_then(|v| v.as_str()).unwrap_or("");
+
+    crate::debug_log::log_info(&format!(
+        "[Channel] TodoComplete: {} (mission {}) -- {}",
+        todo_id,
+        &mission_id[..8.min(mission_id.len())],
+        &summary[..120.min(summary.len())],
+    ));
+
+    // TODO: publish to MQTT brain/{ws}/status/{mid}/{tid}
+    // TODO: emit Tauri event to dashboard
+    // TODO: update PhaseMonitor
+
+    StatusCode::OK
+}
+
+async fn channel_phase_complete(Json(payload): Json<serde_json::Value>) -> StatusCode {
+    let phase_id = payload.get("phase_id").and_then(|v| v.as_str()).unwrap_or("?");
+    let mission_id = payload.get("mission_id").and_then(|v| v.as_str()).unwrap_or("?");
+    let summary = payload.get("summary").and_then(|v| v.as_str()).unwrap_or("");
+
+    crate::debug_log::log_info(&format!(
+        "[Channel] PhaseComplete: {} (mission {}) -- {}",
+        phase_id,
+        &mission_id[..8.min(mission_id.len())],
+        &summary[..200.min(summary.len())],
+    ));
+
+    // TODO: publish to MQTT brain/{ws}/phase-complete/{mid}/{pid}
+    // TODO: push next phase via channel
+    // TODO: emit Tauri event to dashboard
+
+    StatusCode::OK
+}
+
+async fn channel_permission_request(Json(payload): Json<serde_json::Value>) -> StatusCode {
+    let tool_name = payload.get("tool_name").and_then(|v| v.as_str()).unwrap_or("?");
+    let request_id = payload.get("request_id").and_then(|v| v.as_str()).unwrap_or("?");
+    let description = payload.get("description").and_then(|v| v.as_str()).unwrap_or("");
+
+    crate::debug_log::log_info(&format!(
+        "[Channel] PermissionRequest: {} ({}) -- {}",
+        tool_name,
+        request_id,
+        &description[..100.min(description.len())],
+    ));
+
+    // TODO: emit to Tauri frontend for remote approval UI
+    // TODO: auto-approve if in bypass mode
+
+    StatusCode::OK
 }
 
 // ── Static file serving (mobile client) ─────────────────────────────
@@ -196,7 +341,6 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<WsState>) {
 
     loop {
         tokio::select! {
-            // Incoming client message
             msg = socket.recv() => {
                 match msg {
                     Some(Ok(Message::Text(text))) => {
@@ -221,7 +365,6 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<WsState>) {
                     _ => {}
                 }
             }
-            // Push session updates from polling loop
             Ok(sessions_json) = sessions_rx.recv() => {
                 let msg = ServerMsg::SessionsUpdated {
                     data: serde_json::from_str(&sessions_json).unwrap_or_default(),
@@ -231,7 +374,6 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<WsState>) {
                     break;
                 }
             }
-            // Push notifications to WS clients
             Ok(notif_json) = notifications_rx.recv() => {
                 let msg = ServerMsg::Notification {
                     data: serde_json::from_str(&notif_json).unwrap_or_default(),
@@ -283,9 +425,7 @@ async fn handle_message(msg: ClientMsg) -> ServerMsg {
             session_id,
             new_name,
         } => {
-            // Write to Claude Code's native JSONL format
             crate::write_native_custom_title(&session_id, &new_name);
-            // Also write to c9watch's own custom titles (fallback)
             let mut custom_titles = crate::session::CustomTitles::load();
             custom_titles.set(session_id, new_name);
             match custom_titles.save() {
