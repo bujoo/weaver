@@ -4,8 +4,10 @@ use crate::mqtt::client::MqttClient;
 use crate::mqtt::control::ControlHandler;
 use crate::mqtt::state_cache::MissionStateCache;
 use crate::mqtt::types::{MqttIncoming, PhaseAssignment};
+use crate::workspace::autopilot;
 use chrono::Utc;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
@@ -119,6 +121,9 @@ impl AssignmentHandler {
         let queue = self.queue.clone();
 
         tokio::spawn(async move {
+            // Track which human phases we've already notified about
+            let mut notified_phases: HashSet<String> = HashSet::new();
+
             loop {
                 match rx.recv().await {
                     Ok(MqttIncoming::Assignment(assignment)) => {
@@ -169,6 +174,25 @@ impl AssignmentHandler {
                                 }
                             }
                         });
+                    }
+                    Ok(MqttIncoming::Registry(reg)) => {
+                        // Auto-setup workspaces for discovered missions
+                        let mount = workspace_mount.clone();
+                        let app_c = app.clone();
+                        tokio::spawn(async move {
+                            autopilot::setup_mission_workspaces(&reg, &mount, &app_c).await;
+                        });
+                    }
+                    Ok(MqttIncoming::PhaseState(phase)) => {
+                        // Cache the phase state and check for human phases
+                        state_cache.lock().await.store_phase(phase);
+                        let cache = state_cache.lock().await;
+                        autopilot::check_human_phases(
+                            &cache,
+                            &app,
+                            &mut notified_phases,
+                        )
+                        .await;
                     }
                     Ok(_) => {}
                     Err(broadcast::error::RecvError::Lagged(_)) => {}
