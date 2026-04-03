@@ -337,6 +337,13 @@ pub fn setup_mission_worktrees(
                 "**/.weaver": true,
                 "**/node_modules": true,
                 "**/__pycache__": true
+            },
+            "terminal.integrated.defaultProfile.osx": "Weaver Session",
+            "terminal.integrated.profiles.osx": {
+                "Weaver Session": {
+                    "path": "/bin/zsh",
+                    "args": ["-c", "SESSION=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep weaver | head -1); if [ -n \"$SESSION\" ]; then tmux attach -t $SESSION; else echo 'No active weaver session. Start one with: claude --dangerously-skip-permissions'; exec zsh; fi"]
+                }
             }
         },
         "extensions": {
