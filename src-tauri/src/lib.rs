@@ -428,6 +428,46 @@ async fn get_mission_state(
     Ok(guard.snapshot())
 }
 
+/// Load a WeaverPlan from a fixture file or raw JSON into the MissionStateCache.
+/// Used for dev/testing without MQTT. Also works as a general "import plan" command.
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn load_fixture(
+    cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
+    path: Option<String>,
+) -> Result<mqtt::state_cache::LoadResult, String> {
+    let file_path = path.unwrap_or_else(|| {
+        // Default to the bundled test fixture
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+        if let Some(dir) = exe_dir {
+            let fixture = dir.join("tests/fixtures/test-weaver-plan.json");
+            if fixture.exists() {
+                return fixture.to_string_lossy().to_string();
+            }
+        }
+        // Fallback to source tree path (dev mode)
+        "tests/fixtures/test-weaver-plan.json".to_string()
+    });
+
+    let content = std::fs::read_to_string(&file_path)
+        .map_err(|e| format!("Failed to read fixture file {}: {}", file_path, e))?;
+
+    let plan_json: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse fixture JSON: {}", e))?;
+
+    let mut guard = cache.lock().await;
+    let result = guard.load_weaver_plan(&plan_json)?;
+
+    debug_log::log_info(&format!(
+        "[Fixture] Loaded plan '{}': {} phases, {} todos",
+        result.title, result.phases, result.todos
+    ));
+
+    Ok(result)
+}
+
 #[cfg(not(mobile))]
 #[tauri::command]
 async fn connect_mqtt(
@@ -925,6 +965,7 @@ pub fn run() {
             accept_phase_cmd,
             get_task_queue,
             get_mission_state,
+            load_fixture,
             get_workspace_status,
             clone_repo_cmd,
             create_worktree_cmd,

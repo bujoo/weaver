@@ -101,6 +101,8 @@ pub struct PhaseStateMessage {
     #[serde(default)]
     pub completed_count: u32,
     pub published_at: String,
+    #[serde(default)]
+    pub execution_target: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
