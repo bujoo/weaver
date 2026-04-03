@@ -121,16 +121,63 @@ pub fn build_system_prompt(
     todo_id: &str,
     description: &str,
     spec: Option<&serde_json::Value>,
+    file_paths: &[String],
+    phase_system_prompt: Option<&str>,
 ) -> String {
-    let mut prompt = format!(
+    let mut prompt = String::new();
+
+    // Phase-level system prompt override (prepended if present)
+    if let Some(psp) = phase_system_prompt {
+        prompt.push_str(psp);
+        prompt.push_str("\n\n---\n\n");
+    }
+
+    prompt.push_str(&format!(
         "You are executing a weaver plan task.\n\n\
          Phase: {}\n\
          Todo: {}\n\
          Description: {}\n",
         phase_name, todo_id, description
-    );
+    ));
 
     if let Some(spec) = spec {
+        // Component identity
+        let name = spec.get("name").and_then(|v| v.as_str());
+        let location = spec.get("location").and_then(|v| v.as_str());
+        if let (Some(n), Some(l)) = (name, location) {
+            prompt.push_str(&format!("\nComponent: {} @ {}\n", n, l));
+        }
+
+        // Summary
+        if let Some(summary) = spec.get("summary").and_then(|v| v.as_str()) {
+            prompt.push_str(&format!("\nSummary: {}\n", summary));
+        }
+
+        // Inputs
+        if let Some(inputs) = spec.get("inputs").and_then(|v| v.as_array()) {
+            if !inputs.is_empty() {
+                prompt.push_str("\nInputs:\n");
+                for inp in inputs {
+                    if let Some(s) = inp.as_str() {
+                        prompt.push_str(&format!("- {}\n", s));
+                    }
+                }
+            }
+        }
+
+        // Outputs
+        if let Some(outputs) = spec.get("outputs").and_then(|v| v.as_array()) {
+            if !outputs.is_empty() {
+                prompt.push_str("\nOutputs:\n");
+                for out in outputs {
+                    if let Some(s) = out.as_str() {
+                        prompt.push_str(&format!("- {}\n", s));
+                    }
+                }
+            }
+        }
+
+        // Behavior steps
         if let Some(behavior) = spec.get("behavior").and_then(|b| b.as_array()) {
             prompt.push_str("\nBehavior steps:\n");
             for (i, step) in behavior.iter().enumerate() {
@@ -139,6 +186,8 @@ pub fn build_system_prompt(
                 }
             }
         }
+
+        // Constraints
         if let Some(constraints) = spec.get("constraints").and_then(|c| c.as_array()) {
             prompt.push_str("\nConstraints:\n");
             for c in constraints {
@@ -147,6 +196,8 @@ pub fn build_system_prompt(
                 }
             }
         }
+
+        // Edge cases
         if let Some(edge_cases) = spec.get("edge_cases").and_then(|e| e.as_array()) {
             prompt.push_str("\nEdge cases to handle:\n");
             for e in edge_cases {
@@ -154,6 +205,31 @@ pub fn build_system_prompt(
                     prompt.push_str(&format!("- {}\n", s));
                 }
             }
+        }
+
+        // References
+        if let Some(refs) = spec.get("references").and_then(|r| r.as_array()) {
+            if !refs.is_empty() {
+                prompt.push_str("\nReference materials:\n");
+                for r in refs {
+                    let label = r.get("label").and_then(|v| v.as_str()).unwrap_or("ref");
+                    let target = r.get("target").and_then(|v| v.as_str()).unwrap_or("");
+                    let desc = r.get("description").and_then(|v| v.as_str());
+                    if let Some(d) = desc {
+                        prompt.push_str(&format!("- {} ({}): {}\n", label, target, d));
+                    } else {
+                        prompt.push_str(&format!("- {} ({})\n", label, target));
+                    }
+                }
+            }
+        }
+    }
+
+    // File paths
+    if !file_paths.is_empty() {
+        prompt.push_str("\nFiles to modify:\n");
+        for fp in file_paths {
+            prompt.push_str(&format!("- {}\n", fp));
         }
     }
 

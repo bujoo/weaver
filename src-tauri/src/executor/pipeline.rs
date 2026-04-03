@@ -69,26 +69,32 @@ pub async fn execute_assignment(
             todo_id, assignment.phase_name
         ));
 
-        // Look up todo spec from retained MQTT state cache
-        let (description, spec) = {
+        // Look up todo spec + phase config from retained MQTT state cache
+        let (description, spec, file_paths, phase_system_prompt) = {
             let cache = state_cache.lock().await;
-            match cache.get_todo(todo_id) {
+            let (desc, sp, fps) = match cache.get_todo(todo_id) {
                 Some(todo_state) => {
                     let desc = if todo_state.description.is_empty() {
                         format!("Execute todo {}", todo_id)
                     } else {
                         todo_state.description.clone()
                     };
-                    (desc, todo_state.spec.clone())
+                    (desc, todo_state.spec.clone(), todo_state.file_paths.clone())
                 }
                 None => {
                     crate::debug_log::log_warn(&format!(
                         "[Pipeline] No cached state for todo {}, using fallback prompt",
                         todo_id
                     ));
-                    (format!("Execute todo {}", todo_id), None)
+                    (format!("Execute todo {}", todo_id), None, vec![])
                 }
-            }
+            };
+            let psp = cache
+                .get_phase(&assignment.mission_id, &assignment.phase_id)
+                .and_then(|p| p.config.get("system_prompt"))
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            (desc, sp, fps, psp)
         };
 
         let prompt = build_system_prompt(
@@ -96,6 +102,8 @@ pub async fn execute_assignment(
             todo_id,
             &description,
             spec.as_ref(),
+            &file_paths,
+            phase_system_prompt.as_deref(),
         );
 
         // Spawn Claude Code
@@ -107,7 +115,7 @@ pub async fn execute_assignment(
                 model.as_deref(),
                 &allowed_tools,
                 &[], // MCP servers TODO
-                None,
+                phase_system_prompt.as_deref(),
             )
             .await?;
 
