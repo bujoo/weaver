@@ -27,6 +27,26 @@
     refreshWorkspace();
     initRegistryListener();
     const interval = setInterval(refreshWorkspace, 30000);
+
+    // Listen for autopilot workspace setup results
+    if (isTauri()) {
+      import('@tauri-apps/api/event').then(({ listen }) => {
+        listen<{ missionId: string; title: string; reposCloned: string[]; workspaceFile: string | null; worktreesCreated: number; errors: string[] }>('autopilot-workspace-ready', (event) => {
+          const p = event.payload;
+          if (p.workspaceFile || p.worktreesCreated > 0) {
+            setupResults.set(p.missionId, {
+              missionId: p.missionId,
+              workspaceFile: p.workspaceFile ?? '',
+              worktreesCreated: p.worktreesCreated,
+              errors: p.errors,
+            });
+            setupResults = new Map(setupResults);
+          }
+          refreshWorkspace();
+        });
+      });
+    }
+
     return () => clearInterval(interval);
   });
 
@@ -118,6 +138,12 @@
       }))
     ) || []
   );
+
+  // Check if a mission already has worktrees set up (for cold-start detection)
+  function missionHasWorktree(missionId: string): boolean {
+    const shortMid = missionId.slice(0, 8);
+    return allWorktrees.some((wt) => wt.branch === `weaver-${shortMid}` || wt.path.includes(shortMid));
+  }
 </script>
 
 <div class="dashboard">
@@ -177,6 +203,12 @@
                         {/each}
                       </details>
                     {/if}
+                  {:else if missionHasWorktree(mission.mission_id)}
+                    {@const shortMid = mission.mission_id.slice(0, 8)}
+                    <button class="btn-setup btn-vscode" onclick={() => openWorkspace(ws?.mountPath + '/.worktrees/' + shortMid + '/mission.code-workspace')}>
+                      Open in VS Code
+                    </button>
+                    <span class="setup-info">ready</span>
                   {:else}
                     <button class="btn-setup" onclick={() => setupMission(mission.mission_id)} disabled={cloning === 'setup'}>
                       {cloning === 'setup' ? 'Setting up...' : 'Setup Worktrees'}
