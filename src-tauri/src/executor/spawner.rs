@@ -49,48 +49,44 @@ impl ClaudeCodeSpawner {
         // Clean up stale log file
         let _ = std::fs::remove_file(&log_path);
 
-        // Build the claude command string
-        let mut claude_args: Vec<String> = vec!["--print".to_string()];
+        // Write prompt to a file to avoid shell escaping issues with large prompts
+        let prompt_path = std::path::PathBuf::from("/tmp")
+            .join(format!("weaver-{}.prompt", todo_id));
+        std::fs::write(&prompt_path, prompt)
+            .map_err(|e| format!("Failed to write prompt file: {}", e))?;
 
-        // Permission mode: autonomous execution
-        claude_args.push("--permission-mode".to_string());
-        claude_args.push("bypassPermissions".to_string());
+        // Build claude flags (prompt comes via stdin from file)
+        let mut flags = vec![
+            "--print".to_string(),
+            "--permission-mode".to_string(),
+            "bypassPermissions".to_string(),
+        ];
 
         if let Some(m) = model {
-            claude_args.push("--model".to_string());
-            claude_args.push(m.to_string());
+            flags.push("--model".to_string());
+            flags.push(m.to_string());
         }
-
         for tool in allowed_tools {
-            claude_args.push("--allowedTools".to_string());
-            claude_args.push(tool.clone());
+            flags.push("--allowedTools".to_string());
+            flags.push(shell_escape(tool));
         }
-
         for mcp in mcp_servers {
-            claude_args.push("--mcp-server".to_string());
-            claude_args.push(mcp.clone());
+            flags.push("--mcp-server".to_string());
+            flags.push(shell_escape(mcp));
         }
-
         if let Some(sp) = system_prompt {
-            claude_args.push("--system-prompt".to_string());
-            claude_args.push(sp.to_string());
+            flags.push("--system-prompt".to_string());
+            flags.push(shell_escape(sp));
         }
 
-        claude_args.push("--".to_string());
-        claude_args.push(prompt.to_string());
-
-        // Build shell command: set env vars + run claude + tee output + exit marker
-        let escaped_args: Vec<String> = claude_args
-            .iter()
-            .map(|a| shell_escape(a))
-            .collect();
-        // Use pipestatus for zsh (macOS default), PIPESTATUS for bash
+        // Shell: pipe prompt from file -> claude -> tee to log -> exit marker
         let shell_cmd = format!(
             "export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1; \
-             claude {} 2>&1 | tee {}; \
-             _EC=${{pipestatus[1]:-${{PIPESTATUS[0]:-$?}}}}; \
+             cat {} | claude {} 2>&1 | tee {}; \
+             _EC=${{pipestatus[2]:-${{PIPESTATUS[1]:-$?}}}}; \
              echo __WEAVER_EXIT_${{_EC}}__ >> {}",
-            escaped_args.join(" "),
+            prompt_path.display(),
+            flags.join(" "),
             log_path.display(),
             log_path.display()
         );
