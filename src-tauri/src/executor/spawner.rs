@@ -74,15 +74,16 @@ impl ClaudeCodeSpawner {
         // Short prompt -- Claude reads .weaver/specs/{todo_id}.md for the full spec
         let short_prompt = shell_escape(prompt);
 
-        // Shell: claude with short prompt -> tee to log -> exit marker
+        // Run claude interactively (needs TTY -- no pipe/tee).
+        // Use `script` to capture output while preserving the TTY.
+        // On macOS: script -q log_file command
         let shell_cmd = format!(
             "export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1; \
-             claude {} -- {} 2>&1 | tee {}; \
-             _EC=${{pipestatus[1]:-${{PIPESTATUS[0]:-$?}}}}; \
-             echo __WEAVER_EXIT_${{_EC}}__ >> {}",
+             script -q {} claude {} -- {}; \
+             echo __WEAVER_EXIT_$?__ >> {}",
+            log_path.display(),
             flags.join(" "),
             short_prompt,
-            log_path.display(),
             log_path.display()
         );
 
@@ -111,6 +112,16 @@ impl ClaudeCodeSpawner {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(format!("tmux new-session failed: {}", stderr));
         }
+
+        // Auto-accept the workspace trust dialog (sends Enter after a delay)
+        let sn = session_name.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            let _ = tokio::process::Command::new("tmux")
+                .args(["send-keys", "-t", &sn, "Enter"])
+                .output()
+                .await;
+        });
 
         crate::debug_log::log_info(&format!(
             "[Executor] Spawned tmux session '{}' for todo {} in {}",
