@@ -1,15 +1,27 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { tasks, taskCounts, availablePhases, initializeTaskListeners, acceptPhase } from '$lib/stores/tasks';
+  import { tasks, taskCounts, availablePhases, humanNeededPhases, initializeTaskListeners, acceptPhase } from '$lib/stores/tasks';
   import TaskCard from '$lib/components/TaskCard.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import { isTauri } from '$lib/ws';
 
   let expandedId = $state<string | null>(null);
   let counts = $derived($taskCounts);
   let taskList = $derived($tasks);
   let available = $derived($availablePhases);
+  let humanPhases = $derived($humanNeededPhases);
   let activeTab = $state('my-tasks');
   let accepting = $state<string | null>(null);
+
+  async function openWorkspace(workspaceDir: string) {
+    if (!isTauri()) return;
+    const { invoke } = await import('@tauri-apps/api/core');
+    try {
+      await invoke('open_workspace_cmd', { path: workspaceDir });
+    } catch (e) {
+      console.error('Failed to open workspace:', e);
+    }
+  }
 
   const tabs = [
     { id: 'my-tasks', icon: '▶', label: 'MY TASKS' },
@@ -36,6 +48,23 @@
   <PageHeader {tabs} {activeTab} onTabChange={(id) => (activeTab = id)} />
 
   <main class="grid-container">
+    {#if humanPhases.length > 0}
+      <div class="step-in-banner">
+        <div class="step-in-header">STEP IN NEEDED</div>
+        {#each humanPhases as hp (hp.missionId + ':' + hp.phaseId)}
+          <div class="step-in-card">
+            <div class="step-in-info">
+              <span class="step-in-phase">{hp.phaseName}</span>
+              <span class="step-in-mission">{hp.missionTitle}</span>
+            </div>
+            <button class="btn-step-in" onclick={() => openWorkspace(hp.workspaceDir)}>
+              Open in VS Code
+            </button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+
     {#if activeTab === 'my-tasks'}
       {#if taskList.length === 0}
         <div class="empty">
@@ -201,5 +230,65 @@
   .btn-accept:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+
+  /* Step-In Banner */
+  .step-in-banner {
+    background: rgba(255, 170, 0, 0.06);
+    border: 1px solid rgba(255, 170, 0, 0.3);
+    padding: 12px;
+    margin-bottom: 16px;
+  }
+
+  .step-in-header {
+    font-family: var(--font-pixel, monospace);
+    font-size: 11px;
+    color: #ffaa00;
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
+  }
+
+  .step-in-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+  }
+
+  .step-in-card:first-of-type {
+    border-top: none;
+  }
+
+  .step-in-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .step-in-phase {
+    color: var(--text-primary);
+    font-size: 13px;
+  }
+
+  .step-in-mission {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .btn-step-in {
+    background: rgba(255, 170, 0, 0.1);
+    border: 1px solid #ffaa00;
+    color: #ffaa00;
+    padding: 4px 12px;
+    font-size: 11px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+
+  .btn-step-in:hover {
+    background: rgba(255, 170, 0, 0.2);
   }
 </style>

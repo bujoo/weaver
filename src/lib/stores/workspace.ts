@@ -62,6 +62,11 @@ export async function initRegistryListener() {
 	listen<WorkspaceRegistry>('mqtt-registry', (event) => {
 		registry.set(event.payload);
 	});
+
+	// Auto-refresh workspace when autopilot finishes setup
+	listen('autopilot-workspace-ready', () => {
+		refreshWorkspace();
+	});
 }
 
 export async function refreshWorkspace() {

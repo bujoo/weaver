@@ -25,6 +25,14 @@ export interface TodoCompletion {
 	status: string;
 }
 
+export interface HumanPhaseAlert {
+	missionId: string;
+	missionTitle: string;
+	phaseId: string;
+	phaseName: string;
+	workspaceDir: string;
+}
+
 // My tasks: assigned to this device
 export const tasks = writable<TaskQueueEntry[]>([]);
 
@@ -44,6 +52,9 @@ export const taskCounts = derived(tasks, ($tasks) => ({
 }));
 
 export const todoStatuses = writable<Map<string, string>>(new Map());
+
+// Human phases that need developer attention (Step-In)
+export const humanNeededPhases = writable<HumanPhaseAlert[]>([]);
 
 export async function initializeTaskListeners() {
 	if (!isTauri()) return;
@@ -92,6 +103,16 @@ export async function initializeTaskListeners() {
 			return new Map(map);
 		});
 		invoke<TaskQueueEntry[]>('get_task_queue').then((queue) => tasks.set(queue));
+	});
+
+	// Listen for human phase notifications (Step-In)
+	listen<HumanPhaseAlert>('autopilot-human-needed', (event) => {
+		humanNeededPhases.update((list) => {
+			// Deduplicate by missionId:phaseId
+			const key = `${event.payload.missionId}:${event.payload.phaseId}`;
+			if (list.some((p) => `${p.missionId}:${p.phaseId}` === key)) return list;
+			return [...list, event.payload];
+		});
 	});
 
 	// Listen for registry updates (new available phases)
