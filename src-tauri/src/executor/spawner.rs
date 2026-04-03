@@ -79,15 +79,18 @@ impl ClaudeCodeSpawner {
         claude_args.push("--".to_string());
         claude_args.push(prompt.to_string());
 
-        // Build shell command: set env vars + run claude with args
-        // Using shell form so env vars work in tmux
+        // Build shell command: set env vars + run claude + tee output + exit marker
         let escaped_args: Vec<String> = claude_args
             .iter()
             .map(|a| shell_escape(a))
             .collect();
         let shell_cmd = format!(
-            "export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1; claude {}",
-            escaped_args.join(" ")
+            "export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1; \
+             claude {} 2>&1 | tee {}; \
+             echo __WEAVER_EXIT_${{PIPESTATUS[0]}}__ >> {}",
+            escaped_args.join(" "),
+            log_path.display(),
+            log_path.display()
         );
 
         // Kill existing session with same name (idempotent)
@@ -96,7 +99,7 @@ impl ClaudeCodeSpawner {
             .output()
             .await;
 
-        // Create tmux session
+        // Create tmux session with tee-based log capture
         let output = Command::new("tmux")
             .args([
                 "new-session",
@@ -115,13 +118,6 @@ impl ClaudeCodeSpawner {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(format!("tmux new-session failed: {}", stderr));
         }
-
-        // Set up output capture via pipe-pane
-        let _ = Command::new("tmux")
-            .args(["pipe-pane", "-t", &session_name])
-            .arg(format!("cat >> {}", log_path.display()))
-            .output()
-            .await;
 
         crate::debug_log::log_info(&format!(
             "[Executor] Spawned tmux session '{}' for todo {} in {}",

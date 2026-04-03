@@ -127,6 +127,8 @@ pub async fn execute_assignment(
         );
 
         // Spawn Claude Code in tmux session
+        // Don't pass phase_system_prompt as --system-prompt since
+        // build_system_prompt already embeds it in the prompt text
         let session = spawner
             .spawn(
                 todo_id,
@@ -135,7 +137,7 @@ pub async fn execute_assignment(
                 model.as_deref(),
                 &allowed_tools,
                 &[], // MCP servers TODO
-                phase_system_prompt.as_deref(),
+                None,
             )
             .await?;
 
