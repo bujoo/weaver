@@ -44,7 +44,7 @@ impl ClaudeCodeSpawner {
         system_prompt: Option<&str>,
     ) -> Result<TmuxSession, String> {
         let session_name = format!("weaver-{}", todo_id.replace('.', "-"));
-        let log_path = std::env::temp_dir().join(format!("weaver-{}.log", todo_id));
+        let log_path = std::path::PathBuf::from("/tmp").join(format!("weaver-{}.log", todo_id));
 
         // Clean up stale log file
         let _ = std::fs::remove_file(&log_path);
@@ -84,10 +84,12 @@ impl ClaudeCodeSpawner {
             .iter()
             .map(|a| shell_escape(a))
             .collect();
+        // Use pipestatus for zsh (macOS default), PIPESTATUS for bash
         let shell_cmd = format!(
             "export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1; \
              claude {} 2>&1 | tee {}; \
-             echo __WEAVER_EXIT_${{PIPESTATUS[0]}}__ >> {}",
+             _EC=${{pipestatus[1]:-${{PIPESTATUS[0]:-$?}}}}; \
+             echo __WEAVER_EXIT_${{_EC}}__ >> {}",
             escaped_args.join(" "),
             log_path.display(),
             log_path.display()
