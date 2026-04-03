@@ -118,6 +118,10 @@ impl MissionStateCache {
                 .cloned()
                 .unwrap_or_default(),
             published_at: now.clone(),
+            mission_context: plan_json
+                .get("mission_context")
+                .and_then(|v| v.as_str())
+                .map(String::from),
         };
         self.store_plan(plan_msg);
 
@@ -243,6 +247,24 @@ impl MissionStateCache {
     /// Get all cached phases (for iteration in autopilot).
     pub fn all_phases(&self) -> impl Iterator<Item = &PhaseStateMessage> {
         self.phases.values()
+    }
+
+    /// Get all phases for a mission, sorted by order.
+    pub fn get_phases_for_mission(&self, mission_id: &str) -> Vec<&PhaseStateMessage> {
+        let mut phases: Vec<&PhaseStateMessage> = self
+            .phases
+            .values()
+            .filter(|p| p.mission_id == mission_id)
+            .collect();
+        phases.sort_by_key(|p| p.order);
+        phases
+    }
+
+    /// Get the currently active phase (first non-completed by order).
+    pub fn get_active_phase(&self, mission_id: &str) -> Option<&PhaseStateMessage> {
+        self.get_phases_for_mission(mission_id)
+            .into_iter()
+            .find(|p| p.status != "completed" && p.status != "skipped")
     }
 }
 

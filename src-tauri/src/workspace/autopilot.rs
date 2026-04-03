@@ -17,11 +17,12 @@ pub struct MissionSetupResult {
 }
 
 /// React to a WorkspaceRegistryMessage: for each mission, clone missing repos
-/// and create worktrees + VS Code workspace file.
+/// and create worktrees + VS Code workspace file + CLAUDE.md.
 pub async fn setup_mission_workspaces(
     registry: &WorkspaceRegistryMessage,
     workspace_mount: &Path,
     app: &tauri::AppHandle,
+    state_cache: Option<&crate::mqtt::state_cache::MissionStateCache>,
 ) -> Vec<MissionSetupResult> {
     let mut results = Vec::new();
 
@@ -83,6 +84,7 @@ pub async fn setup_mission_workspaces(
                 workspace_mount,
                 &mission.mission_id,
                 &available_repo_ids,
+                state_cache,
             );
             worktrees_created = result.worktrees_created;
             if !result.workspace_file.is_empty() {

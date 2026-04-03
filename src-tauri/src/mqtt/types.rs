@@ -83,6 +83,8 @@ pub struct PlanStateMessage {
     #[serde(default)]
     pub phases: Vec<serde_json::Value>,
     pub published_at: String,
+    #[serde(default)]
+    pub mission_context: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

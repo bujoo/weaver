@@ -179,8 +179,13 @@ impl AssignmentHandler {
                         // Auto-setup workspaces for discovered missions
                         let mount = workspace_mount.clone();
                         let app_c = app.clone();
+                        let sc = state_cache.clone();
                         tokio::spawn(async move {
-                            autopilot::setup_mission_workspaces(&reg, &mount, &app_c).await;
+                            let cache = sc.lock().await;
+                            autopilot::setup_mission_workspaces(
+                                &reg, &mount, &app_c, Some(&cache),
+                            )
+                            .await;
                         });
                     }
                     Ok(MqttIncoming::PhaseState(phase)) => {

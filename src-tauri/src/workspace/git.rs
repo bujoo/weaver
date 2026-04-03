@@ -245,6 +245,7 @@ pub struct MissionWorkspaceResult {
 }
 
 /// Set up worktrees for a mission: one worktree per repo, shared across all phases.
+/// If state_cache is provided, writes CLAUDE.md + .weaver/ specs into each worktree.
 ///
 /// Structure:
 ///   {mount}/.worktrees/{mid_short}/
@@ -255,6 +256,7 @@ pub fn setup_mission_worktrees(
     mount: &Path,
     mission_id: &str,
     repo_ids: &[String],
+    state_cache: Option<&crate::mqtt::state_cache::MissionStateCache>,
 ) -> MissionWorkspaceResult {
     let short_mid = if mission_id.len() > 8 {
         &mission_id[..8]
@@ -287,6 +289,17 @@ pub fn setup_mission_worktrees(
                     "path": repo_id,
                     "name": repo_id
                 }));
+                // Write CLAUDE.md + .weaver/ specs if cache available
+                if let Some(cache) = state_cache {
+                    if let Err(e) = crate::workspace::claude_md::write_mission_context(
+                        cache,
+                        mission_id,
+                        &wt_path,
+                        None,
+                    ) {
+                        errors.push(format!("CLAUDE.md for {}: {}", repo_id, e));
+                    }
+                }
             }
             Err(e) => {
                 errors.push(format!("{}: {}", repo_id, e));

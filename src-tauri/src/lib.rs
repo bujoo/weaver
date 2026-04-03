@@ -428,6 +428,52 @@ async fn get_mission_state(
     Ok(guard.snapshot())
 }
 
+/// Regenerate CLAUDE.md + .weaver/ specs for a mission across all its worktrees.
+/// Called when a phase transitions or when the developer wants to refresh context.
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn regenerate_claude_md(
+    mission_id: String,
+    cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
+) -> Result<u32, String> {
+    let mount = default_workspace_mount();
+    let guard = cache.lock().await;
+
+    let short_mid = if mission_id.len() > 8 {
+        &mission_id[..8]
+    } else {
+        &mission_id
+    };
+    let worktrees_dir = mount.join(".worktrees").join(short_mid);
+
+    if !worktrees_dir.exists() {
+        return Err(format!("No worktrees found for mission {}", mission_id));
+    }
+
+    let mut count = 0u32;
+    if let Ok(entries) = std::fs::read_dir(&worktrees_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() && (path.join(".git").exists() || path.join("CLAUDE.md").exists()) {
+                match workspace::claude_md::write_mission_context(&guard, &mission_id, &path, None)
+                {
+                    Ok(true) => count += 1,
+                    Ok(false) => {}
+                    Err(e) => {
+                        debug_log::log_error(&format!("[ClaudeMD] Regen error: {}", e));
+                    }
+                }
+            }
+        }
+    }
+
+    debug_log::log_info(&format!(
+        "[ClaudeMD] Regenerated CLAUDE.md for {} in {} worktrees",
+        mission_id, count
+    ));
+    Ok(count)
+}
+
 /// Load a WeaverPlan from a fixture file or raw JSON into the MissionStateCache.
 /// Used for dev/testing without MQTT. Also works as a general "import plan" command.
 #[cfg(not(mobile))]
@@ -582,9 +628,16 @@ async fn create_worktree_cmd(
 async fn setup_mission_cmd(
     mission_id: String,
     repos: Vec<String>,
+    cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
 ) -> Result<workspace::git::MissionWorkspaceResult, String> {
     let mount = default_workspace_mount();
-    Ok(workspace::git::setup_mission_worktrees(&mount, &mission_id, &repos))
+    let guard = cache.lock().await;
+    Ok(workspace::git::setup_mission_worktrees(
+        &mount,
+        &mission_id,
+        &repos,
+        Some(&guard),
+    ))
 }
 
 #[cfg(not(mobile))]
@@ -966,6 +1019,7 @@ pub fn run() {
             get_task_queue,
             get_mission_state,
             load_fixture,
+            regenerate_claude_md,
             get_workspace_status,
             clone_repo_cmd,
             create_worktree_cmd,
