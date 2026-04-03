@@ -327,6 +327,21 @@ pub fn setup_mission_worktrees(
     let ws_extensions = build_extension_recommendations(state_cache, mission_id);
     let ws_tasks = build_workspace_tasks(state_cache, mission_id);
 
+    // Build the auto-attach task that runs on workspace open
+    let mut all_tasks = vec![serde_json::json!({
+        "label": "Weaver: Attach to Session",
+        "type": "shell",
+        "command": "SESSION=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep weaver | head -1); if [ -n \"$SESSION\" ]; then tmux attach -t $SESSION; else echo 'No active weaver session. Waiting for assignment...'; while true; do S=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep weaver | head -1); [ -n \"$S\" ] && tmux attach -t $S && break; sleep 2; done; fi",
+        "isBackground": true,
+        "runOptions": { "runOn": "folderOpen" },
+        "presentation": {
+            "reveal": "always",
+            "focus": true,
+            "panel": "dedicated"
+        }
+    })];
+    all_tasks.extend(ws_tasks);
+
     let workspace_file = worktrees_dir.join("mission.code-workspace");
     let workspace_json = serde_json::json!({
         "folders": ws_folders,
@@ -337,13 +352,6 @@ pub fn setup_mission_worktrees(
                 "**/.weaver": true,
                 "**/node_modules": true,
                 "**/__pycache__": true
-            },
-            "terminal.integrated.defaultProfile.osx": "Weaver Session",
-            "terminal.integrated.profiles.osx": {
-                "Weaver Session": {
-                    "path": "/bin/zsh",
-                    "args": ["-c", "SESSION=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep weaver | head -1); if [ -n \"$SESSION\" ]; then tmux attach -t $SESSION; else echo 'No active weaver session. Start one with: claude --dangerously-skip-permissions'; exec zsh; fi"]
-                }
             }
         },
         "extensions": {
@@ -351,7 +359,7 @@ pub fn setup_mission_worktrees(
         },
         "tasks": {
             "version": "2.0.0",
-            "tasks": ws_tasks
+            "tasks": all_tasks
         }
     });
     if let Err(e) = std::fs::write(
