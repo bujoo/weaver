@@ -50,10 +50,10 @@ impl ClaudeCodeSpawner {
         let _ = std::fs::remove_file(&log_path);
 
         // Build claude flags
-        // The weaver/ folder has CLAUDE.md + .claude/ + .weaver/specs/ so
-        // Claude Code already has full mission context. We just send a short prompt.
+        // Run interactively in tmux (NOT --print) so Claude can use tools
+        // (Read, Edit, Bash). bypassPermissions auto-accepts everything.
+        // Developer can tmux attach to watch Claude work in real-time.
         let mut flags = vec![
-            "--print".to_string(),
             "--permission-mode".to_string(),
             "bypassPermissions".to_string(),
         ];
