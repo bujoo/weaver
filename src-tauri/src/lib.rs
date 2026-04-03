@@ -421,12 +421,22 @@ async fn get_task_queue(
 
 #[cfg(not(mobile))]
 #[tauri::command]
+async fn get_mission_state(
+    cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
+) -> Result<serde_json::Value, String> {
+    let guard = cache.lock().await;
+    Ok(guard.snapshot())
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
 async fn connect_mqtt(
     app: AppHandle,
     mqtt_state: tauri::State<'_, Arc<Mutex<Option<mqtt::client::MqttClient>>>>,
     assignment_handler: tauri::State<'_, Arc<mqtt::assignment::AssignmentHandler>>,
     control_handler: tauri::State<'_, Arc<mqtt::control::ControlHandler>>,
     spawner: tauri::State<'_, Arc<executor::spawner::ClaudeCodeSpawner>>,
+    state_cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
     host: String,
     port: u16,
     username: String,
@@ -475,6 +485,7 @@ async fn connect_mqtt(
         mqtt_state.inner().clone(),
         spawner.inner().clone(),
         control_handler.inner().clone(),
+        state_cache.inner().clone(),
         instance_id,
         default_workspace_mount(),
         app,
@@ -641,7 +652,7 @@ pub fn run() {
                 Arc::new(Mutex::new(None));
             app.manage(mqtt_state.clone());
 
-            // ── Assignment handler + control handler + spawner ──
+            // ── Assignment handler + control handler + spawner + state cache ──
             let assignment_handler = Arc::new(mqtt::assignment::AssignmentHandler::new());
             app.manage(assignment_handler.clone());
             let control_handler = Arc::new(mqtt::control::ControlHandler::new());
@@ -651,6 +662,9 @@ pub fn run() {
             let registry_state: Arc<Mutex<Option<mqtt::types::WorkspaceRegistryMessage>>> =
                 Arc::new(Mutex::new(None));
             app.manage(registry_state);
+            let state_cache: Arc<Mutex<mqtt::state_cache::MissionStateCache>> =
+                Arc::new(Mutex::new(mqtt::state_cache::MissionStateCache::new()));
+            app.manage(state_cache.clone());
 
             // ── Auto-connect MQTT from env vars or saved settings ──
             {
@@ -658,6 +672,7 @@ pub fn run() {
                 let ah = assignment_handler.clone();
                 let ch = control_handler.clone();
                 let sp = spawner.clone();
+                let sc = state_cache.clone();
                 let app_h = app.handle().clone();
 
                 tauri::async_runtime::spawn(async move {
@@ -732,6 +747,7 @@ pub fn run() {
                         mqtt_s.clone(),
                         sp,
                         ch,
+                        sc,
                         instance_id,
                         default_workspace_mount(),
                         app_h,
@@ -908,6 +924,7 @@ pub fn run() {
             get_registry,
             accept_phase_cmd,
             get_task_queue,
+            get_mission_state,
             get_workspace_status,
             clone_repo_cmd,
             create_worktree_cmd,

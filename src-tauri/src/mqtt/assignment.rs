@@ -2,6 +2,7 @@ use crate::executor::pipeline::execute_assignment;
 use crate::executor::spawner::ClaudeCodeSpawner;
 use crate::mqtt::client::MqttClient;
 use crate::mqtt::control::ControlHandler;
+use crate::mqtt::state_cache::MissionStateCache;
 use crate::mqtt::types::{MqttIncoming, PhaseAssignment};
 use chrono::Utc;
 use serde::Serialize;
@@ -61,6 +62,21 @@ impl AssignmentHandler {
                         drop(guard);
                         let _ = app.emit("mqtt-registry", &serde_json::to_value(&reg).unwrap_or_default());
                     }
+                    Ok(MqttIncoming::PlanState(plan)) => {
+                        use tauri::Manager;
+                        let cache: tauri::State<'_, Arc<Mutex<MissionStateCache>>> = app.state();
+                        cache.lock().await.store_plan(plan);
+                    }
+                    Ok(MqttIncoming::PhaseState(phase)) => {
+                        use tauri::Manager;
+                        let cache: tauri::State<'_, Arc<Mutex<MissionStateCache>>> = app.state();
+                        cache.lock().await.store_phase(phase);
+                    }
+                    Ok(MqttIncoming::TodoState(todo)) => {
+                        use tauri::Manager;
+                        let cache: tauri::State<'_, Arc<Mutex<MissionStateCache>>> = app.state();
+                        cache.lock().await.store_todo(todo);
+                    }
                     Ok(_) => {}
                     Err(broadcast::error::RecvError::Lagged(n)) => {
                         crate::debug_log::log_warn(&format!(
@@ -95,6 +111,7 @@ impl AssignmentHandler {
         mqtt: Arc<Mutex<Option<MqttClient>>>,
         spawner: Arc<ClaudeCodeSpawner>,
         control: Arc<ControlHandler>,
+        state_cache: Arc<Mutex<MissionStateCache>>,
         instance_id: String,
         workspace_mount: PathBuf,
         app: tauri::AppHandle,
@@ -112,6 +129,7 @@ impl AssignmentHandler {
                         let mqtt_c = mqtt.clone();
                         let spawner_c = spawner.clone();
                         let control_c = control.clone();
+                        let cache_c = state_cache.clone();
                         let iid = instance_id.clone();
                         let mount = workspace_mount.clone();
                         let app_c = app.clone();
@@ -131,6 +149,7 @@ impl AssignmentHandler {
                                 &mount,
                                 spawner_c,
                                 mqtt_c,
+                                cache_c,
                                 iid,
                                 abort_rx,
                                 app_c,

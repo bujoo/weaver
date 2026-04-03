@@ -144,6 +144,18 @@ pub struct MissionSummary {
     pub phase_count: u32,
     #[serde(default)]
     pub todo_count: u32,
+    #[serde(default)]
+    pub available_phases: Vec<AvailablePhaseInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailablePhaseInfo {
+    pub phase_id: String,
+    pub name: String,
+    pub order: u32,
+    pub status: String,
+    #[serde(default)]
+    pub todo_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

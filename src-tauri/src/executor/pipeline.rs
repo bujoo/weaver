@@ -1,6 +1,7 @@
 use crate::executor::monitor::monitor_process;
 use crate::executor::spawner::{build_system_prompt, ClaudeCodeSpawner};
 use crate::mqtt::client::MqttClient;
+use crate::mqtt::state_cache::MissionStateCache;
 use crate::mqtt::types::PhaseAssignment;
 use crate::workspace::git;
 use std::path::{Path, PathBuf};
@@ -13,6 +14,7 @@ pub async fn execute_assignment(
     workspace_mount: &Path,
     spawner: Arc<ClaudeCodeSpawner>,
     mqtt: Arc<Mutex<Option<MqttClient>>>,
+    state_cache: Arc<Mutex<MissionStateCache>>,
     instance_id: String,
     abort_rx: watch::Receiver<bool>,
     app: tauri::AppHandle,
@@ -67,12 +69,33 @@ pub async fn execute_assignment(
             todo_id, assignment.phase_name
         ));
 
-        // Build prompt from todo description
+        // Look up todo spec from retained MQTT state cache
+        let (description, spec) = {
+            let cache = state_cache.lock().await;
+            match cache.get_todo(todo_id) {
+                Some(todo_state) => {
+                    let desc = if todo_state.description.is_empty() {
+                        format!("Execute todo {}", todo_id)
+                    } else {
+                        todo_state.description.clone()
+                    };
+                    (desc, todo_state.spec.clone())
+                }
+                None => {
+                    crate::debug_log::log_warn(&format!(
+                        "[Pipeline] No cached state for todo {}, using fallback prompt",
+                        todo_id
+                    ));
+                    (format!("Execute todo {}", todo_id), None)
+                }
+            }
+        };
+
         let prompt = build_system_prompt(
             &assignment.phase_name,
             todo_id,
-            &format!("Execute todo {}", todo_id),
-            None, // TODO: get spec from retained MQTT state
+            &description,
+            spec.as_ref(),
         );
 
         // Spawn Claude Code
