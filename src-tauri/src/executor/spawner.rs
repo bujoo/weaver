@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use tokio::process::Command;
 use tokio::sync::Mutex;
@@ -13,11 +13,9 @@ pub struct SpawnedProcess {
     pub status: String, // running | completed | failed | killed
 }
 
-/// Returned by spawn() -- represents a running tmux session.
 pub struct TmuxSession {
     pub session_name: String,
-    pub log_path: PathBuf,
-    pub todo_id: String,
+    pub mission_id: String,
 }
 
 pub struct ClaudeCodeSpawner {
@@ -31,77 +29,43 @@ impl ClaudeCodeSpawner {
         }
     }
 
-    /// Spawn Claude Code inside a named tmux session.
-    /// The developer can `tmux attach -t {session_name}` to watch.
-    pub async fn spawn(
+    /// Spawn Claude Code in a tmux session with the Weaver channel plugin.
+    /// The channel handles all communication -- no prompts, no monitoring.
+    pub async fn spawn_session(
         &self,
-        todo_id: &str,
-        prompt: &str,
+        mission_id: &str,
         cwd: &Path,
-        model: Option<&str>,
-        allowed_tools: &[String],
-        mcp_servers: &[String],
-        _system_prompt: Option<&str>,
+        plugin_dir: &Path,
     ) -> Result<TmuxSession, String> {
-        let session_name = format!("weaver-{}", todo_id.replace('.', "-"));
-        let log_path = std::path::PathBuf::from("/tmp").join(format!("weaver-{}.log", todo_id));
+        let short_mid = if mission_id.len() > 8 {
+            &mission_id[..8]
+        } else {
+            mission_id
+        };
+        let session_name = format!("weaver-{}", short_mid);
 
-        // Clean up stale log file
-        let _ = std::fs::remove_file(&log_path);
+        // Clean up stale channel-port file
+        let port_file = cwd.join(".weaver").join("channel-port");
+        let _ = std::fs::remove_file(&port_file);
 
-        // Build claude flags
-        // Run interactively in tmux (NOT --print) so Claude can use tools
-        // (Read, Edit, Bash). bypassPermissions auto-accepts everything.
-        // Developer can tmux attach to watch Claude work in real-time.
-        let mut flags = vec![
-            "--permission-mode".to_string(),
-            "bypassPermissions".to_string(),
-        ];
-
-        if let Some(m) = model {
-            flags.push("--model".to_string());
-            flags.push(m.to_string());
-        }
-        for tool in allowed_tools {
-            flags.push("--allowedTools".to_string());
-            flags.push(shell_escape(tool));
-        }
-        for mcp in mcp_servers {
-            flags.push("--mcp-server".to_string());
-            flags.push(shell_escape(mcp));
-        }
-
-        // Short prompt -- Claude reads .weaver/specs/{todo_id}.md for the full spec
-        let short_prompt = shell_escape(prompt);
-
-        // Run claude interactively (needs TTY -- no pipe/tee).
-        // Use `script` to capture output while preserving the TTY.
-        // On macOS: script -q log_file command
+        // Build the claude command with channel plugin
         let shell_cmd = format!(
             "export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1; \
-             script -q {} claude {} -- {}; \
-             echo __WEAVER_EXIT_$?__ >> {}",
-            log_path.display(),
-            flags.join(" "),
-            short_prompt,
-            log_path.display()
+             claude --dangerously-load-development-channels server:weaver \
+             --dangerously-skip-permissions \
+             --plugin-dir {}",
+            plugin_dir.display()
         );
 
-        // Kill existing session with same name (idempotent)
+        // Kill existing session with same name
         let _ = Command::new("tmux")
             .args(["kill-session", "-t", &session_name])
             .output()
             .await;
 
-        // Create tmux session with tee-based log capture
+        // Create tmux session
         let output = Command::new("tmux")
-            .args([
-                "new-session",
-                "-d",
-                "-s",
-                &session_name,
-                "-c",
-            ])
+            .args(["new-session", "-d", "-s", &session_name, "-c"])
             .arg(cwd)
             .arg(&shell_cmd)
             .output()
@@ -113,27 +77,16 @@ impl ClaudeCodeSpawner {
             return Err(format!("tmux new-session failed: {}", stderr));
         }
 
-        // Auto-accept the workspace trust dialog (sends Enter after a delay)
-        let sn = session_name.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-            let _ = tokio::process::Command::new("tmux")
-                .args(["send-keys", "-t", &sn, "Enter"])
-                .output()
-                .await;
-        });
-
         crate::debug_log::log_info(&format!(
-            "[Executor] Spawned tmux session '{}' for todo {} in {}",
+            "[Executor] Spawned Claude Code session '{}' in {}",
             session_name,
-            todo_id,
             cwd.display()
         ));
 
         self.processes.lock().await.insert(
-            todo_id.to_string(),
+            mission_id.to_string(),
             SpawnedProcess {
-                todo_id: todo_id.to_string(),
+                todo_id: mission_id.to_string(),
                 session_name: session_name.clone(),
                 status: "running".into(),
             },
@@ -141,19 +94,42 @@ impl ClaudeCodeSpawner {
 
         Ok(TmuxSession {
             session_name,
-            log_path,
-            todo_id: todo_id.to_string(),
+            mission_id: mission_id.to_string(),
         })
     }
 
-    pub async fn mark_completed(&self, todo_id: &str) {
-        if let Some(proc) = self.processes.lock().await.get_mut(todo_id) {
+    /// Read the channel port from .weaver/channel-port (written by the channel server).
+    /// Polls until the file appears or timeout.
+    pub async fn wait_for_channel_port(cwd: &Path) -> Result<u16, String> {
+        let port_file = cwd.join(".weaver").join("channel-port");
+        for _ in 0..30 {
+            // 30 * 1s = 30s timeout
+            if port_file.exists() {
+                let content = std::fs::read_to_string(&port_file)
+                    .map_err(|e| format!("Failed to read channel-port: {}", e))?;
+                let port = content
+                    .trim()
+                    .parse::<u16>()
+                    .map_err(|e| format!("Invalid port in channel-port: {}", e))?;
+                crate::debug_log::log_info(&format!(
+                    "[Executor] Channel server ready on port {}",
+                    port
+                ));
+                return Ok(port);
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+        Err("Channel server did not start within 30s".to_string())
+    }
+
+    pub async fn mark_completed(&self, id: &str) {
+        if let Some(proc) = self.processes.lock().await.get_mut(id) {
             proc.status = "completed".into();
         }
     }
 
-    pub async fn mark_failed(&self, todo_id: &str) {
-        if let Some(proc) = self.processes.lock().await.get_mut(todo_id) {
+    pub async fn mark_failed(&self, id: &str) {
+        if let Some(proc) = self.processes.lock().await.get_mut(id) {
             proc.status = "failed".into();
         }
     }
@@ -169,111 +145,5 @@ impl ClaudeCodeSpawner {
             .values()
             .filter(|p| p.status == "running")
             .count()
-    }
-}
-
-/// Escape a string for safe use in a shell command.
-fn shell_escape(s: &str) -> String {
-    if s.is_empty() {
-        return "''".to_string();
-    }
-    // If it contains no special chars, return as-is
-    if s.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/' || c == ':') {
-        return s.to_string();
-    }
-    // Wrap in single quotes, escaping existing single quotes
-    format!("'{}'", s.replace('\'', "'\\''"))
-}
-
-/// Build the system prompt from a TodoSpec JSON value.
-pub fn build_system_prompt(
-    phase_name: &str,
-    todo_id: &str,
-    description: &str,
-    spec: Option<&serde_json::Value>,
-    file_paths: &[String],
-    phase_system_prompt: Option<&str>,
-) -> String {
-    let mut prompt = String::new();
-
-    // Phase-level system prompt override (prepended if present)
-    if let Some(psp) = phase_system_prompt {
-        prompt.push_str(psp);
-        prompt.push_str("\n\n---\n\n");
-    }
-
-    prompt.push_str(&format!(
-        "You are executing a weaver plan task.\n\n\
-         Phase: {}\n\
-         Todo: {}\n\
-         Description: {}\n",
-        phase_name, todo_id, description
-    ));
-
-    if let Some(spec) = spec {
-        // Component identity
-        let name = spec.get("name").and_then(|v| v.as_str());
-        let location = spec.get("location").and_then(|v| v.as_str());
-        if let (Some(n), Some(l)) = (name, location) {
-            prompt.push_str(&format!("\nComponent: {} @ {}\n", n, l));
-        }
-
-        if let Some(summary) = spec.get("summary").and_then(|v| v.as_str()) {
-            prompt.push_str(&format!("\nSummary: {}\n", summary));
-        }
-
-        render_prompt_array(&mut prompt, "Inputs", spec.get("inputs"));
-        render_prompt_array(&mut prompt, "Outputs", spec.get("outputs"));
-
-        if let Some(behavior) = spec.get("behavior").and_then(|b| b.as_array()) {
-            prompt.push_str("\nBehavior steps:\n");
-            for (i, step) in behavior.iter().enumerate() {
-                if let Some(s) = step.as_str() {
-                    prompt.push_str(&format!("{}. {}\n", i + 1, s));
-                }
-            }
-        }
-
-        render_prompt_array(&mut prompt, "Constraints", spec.get("constraints"));
-        render_prompt_array(&mut prompt, "Edge cases to handle", spec.get("edge_cases"));
-
-        if let Some(refs) = spec.get("references").and_then(|r| r.as_array()) {
-            if !refs.is_empty() {
-                prompt.push_str("\nReference materials:\n");
-                for r in refs {
-                    let label = r.get("label").and_then(|v| v.as_str()).unwrap_or("ref");
-                    let target = r.get("target").and_then(|v| v.as_str()).unwrap_or("");
-                    let desc = r.get("description").and_then(|v| v.as_str());
-                    if let Some(d) = desc {
-                        prompt.push_str(&format!("- {} ({}): {}\n", label, target, d));
-                    } else {
-                        prompt.push_str(&format!("- {} ({})\n", label, target));
-                    }
-                }
-            }
-        }
-    }
-
-    if !file_paths.is_empty() {
-        prompt.push_str("\nFiles to modify:\n");
-        for fp in file_paths {
-            prompt.push_str(&format!("- {}\n", fp));
-        }
-    }
-
-    prompt.push_str("\nComplete this task. Report progress as you go. When done, the todo will be marked complete automatically.\n");
-    prompt
-}
-
-fn render_prompt_array(prompt: &mut String, heading: &str, value: Option<&serde_json::Value>) {
-    if let Some(arr) = value.and_then(|v| v.as_array()) {
-        if !arr.is_empty() {
-            prompt.push_str(&format!("\n{}:\n", heading));
-            for item in arr {
-                if let Some(s) = item.as_str() {
-                    prompt.push_str(&format!("- {}\n", s));
-                }
-            }
-        }
     }
 }

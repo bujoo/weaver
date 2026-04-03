@@ -17,9 +17,6 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
-const WEAVER_CHANNEL_PORT = parseInt(
-  process.env.WEAVER_CHANNEL_PORT || "8789"
-);
 const WEAVER_API_URL =
   process.env.WEAVER_API_URL || "http://localhost:9210";
 
@@ -226,8 +223,8 @@ await mcp.connect(new StdioServerTransport());
 // --- HTTP server: Weaver POSTs here to push events into Claude Code ---
 const PERMISSION_REPLY_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i;
 
-Bun.serve({
-  port: WEAVER_CHANNEL_PORT,
+const httpServer = Bun.serve({
+  port: 0, // OS assigns a free port
   hostname: "127.0.0.1",
   idleTimeout: 0,
   async fetch(req) {
@@ -254,7 +251,7 @@ Bun.serve({
     // GET /health
     if (req.method === "GET" && url.pathname === "/health") {
       return new Response(
-        JSON.stringify({ status: "ok", port: WEAVER_CHANNEL_PORT }),
+        JSON.stringify({ status: "ok", port: httpServer.port }),
         { headers: { "Content-Type": "application/json" } }
       );
     }
@@ -301,6 +298,14 @@ Bun.serve({
   },
 });
 
+// Write port to .weaver/channel-port so Weaver knows where to POST
+const portFile = ".weaver/channel-port";
+try {
+  await Bun.write(portFile, String(httpServer.port));
+} catch {
+  // .weaver/ might not exist if not in a weaver workspace
+}
+
 console.error(
-  `[weaver-channel] Listening on http://127.0.0.1:${WEAVER_CHANNEL_PORT}`
+  `[weaver-channel] Listening on http://127.0.0.1:${httpServer.port}`
 );
