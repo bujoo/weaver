@@ -1,0 +1,15 @@
+{
+  "name": "weaver",
+  "version": "1.0.0",
+  "description": "ContextHub Weaver orchestration plugin. Pushes mission assignments into Claude Code sessions via channels, monitors progress via HTTP hooks, and provides agent team roles for parallel execution.",
+  "author": {
+    "name": "ContextHub Team"
+  },
+  "repository": "https://github.com/nickvd-sonic/contexthub-weaver",
+  "keywords": ["orchestration", "missions", "contexthub", "weaver"],
+  "channels": [
+    {
+      "server": "weaver"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "weaver": {
+      "command": "bun",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/channels/weaver-channel/index.ts"]
+    }
+  }
+}
