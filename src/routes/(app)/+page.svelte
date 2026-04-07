@@ -10,6 +10,15 @@
 		currentConversation,
 		statusSummary
 	} from '$lib/stores/sessions';
+	import {
+		missions,
+		activeMissions,
+		completedMissions,
+		selectedMissionId,
+		hasExecutingMissions,
+		attentionCount,
+		autoSelectMission,
+	} from '$lib/stores/missions';
 	import { getConversation, stopSession, openSession } from '$lib/api';
 	import { isDemoMode, toggleDemoMode } from '$lib/demo';
 	import { isTauri } from '$lib/ws';
@@ -19,6 +28,9 @@
 	import ToastNotifications from '$lib/components/ToastNotifications.svelte';
 	import QRCodeModal from '$lib/components/QRCodeModal.svelte';
 	import ConnectionScreen from '$lib/components/ConnectionScreen.svelte';
+	import MissionPipeline from '$lib/components/MissionPipeline.svelte';
+	import CompletedMissionRow from '$lib/components/CompletedMissionRow.svelte';
+	import DeviceStatus from '$lib/components/DeviceStatus.svelte';
 	import type { Session } from '$lib/types';
 	import { SessionStatus } from '$lib/types';
 	import SessionHistory from '$lib/components/SessionHistory.svelte';
@@ -39,6 +51,13 @@
 	let expandedId = $derived($expandedSessionId);
 	let conversation = $derived($currentConversation);
 
+	// Mission stores
+	let allMissions = $derived($missions);
+	let active = $derived($activeMissions);
+	let completed = $derived($completedMissions);
+	let isExecuting = $derived($hasExecutingMissions);
+	let attention = $derived($attentionCount);
+
 	let viewMode = $state<'project' | 'all'>('project');
 
 	let isCompact = $state(false);
@@ -48,11 +67,12 @@
 	let showDebugConsole = $state(false);
 	let showRenameHint = $state(false);
 
-	// Detect macOS native fullscreen to switch tab-bar padding.
-	// CSS `display-mode: fullscreen` does NOT fire for native macOS fullscreen.
-	// We use Tauri's window resize event + a short delay so isFullscreen()
-	// is queried after the transition has settled (avoids stale values).
 	let isFullscreen = $state(false);
+
+	// Auto-select highest priority mission
+	$effect(() => {
+		autoSelectMission(allMissions, $selectedMissionId);
+	});
 
 	onMount(() => {
 		if (browser) {
@@ -75,10 +95,8 @@
 			const { getCurrentWindow } = await import('@tauri-apps/api/window');
 			const win = getCurrentWindow();
 
-			// Check once on mount
 			isFullscreen = await win.isFullscreen();
 
-			// Re-check after every resize with a delay so the transition settles
 			unlisten = await win.onResized(async () => {
 				if (timer) clearTimeout(timer);
 				timer = setTimeout(async () => {
@@ -87,7 +105,6 @@
 			});
 		})();
 
-		// Listen for detection diagnostics (FDA banner)
 		if (isTauri()) {
 			import('@tauri-apps/api/event').then(({ listen }) => {
 				listen<DetectionDiagnostics>('diagnostic-update', (event) => {
@@ -108,7 +125,7 @@
 		}
 	});
 
-	// Helper function to group sessions by project path, then by status
+	// Session grouping helpers (kept for active mission view)
 	function groupByProjectAndStatus(sessions: Session[]) {
 		const groups: Array<{
 			path: string;
@@ -183,7 +200,6 @@
 	}
 
 	function sortGroups(groups: any[]) {
-		// Sort groups: priority to those needing attention, then by modification time
 		return groups.sort((a, b) => {
 			const aNeedsAttention = a.attention.length > 0;
 			const bNeedsAttention = b.attention.length > 0;
@@ -245,8 +261,6 @@
 		const tag = (e.target as HTMLElement)?.tagName;
 		if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
-		// Cmd+Shift+D → debug console (check shift first to avoid triggering demo toggle)
-		// On macOS, e.key is lowercase 'd' even with Shift held when Cmd is pressed
 		if ((e.key === 'd' || e.key === 'D') && e.shiftKey && (e.metaKey || e.ctrlKey)) {
 			e.preventDefault();
 			showDebugConsole = !showDebugConsole;
@@ -265,7 +279,6 @@
 			}
 		}
 		if (e.key === 'Tab' && !expandedId) {
-			// Find first session needing attention across all projects
 			const needsAction = sessions.filter(s =>
 				s.status === SessionStatus.NeedsAttention ||
 				s.status === SessionStatus.WaitingForInput
@@ -276,8 +289,6 @@
 			}
 		}
 	}
-
-
 </script>
 
 <svelte:window on:keydown={handleKeydown} />
@@ -293,7 +304,7 @@
 			class:active={activeTab === 'monitor'}
 			onclick={() => (activeTab = 'monitor')}
 		>
-			<span class="tab-icon">■</span>
+			<span class="tab-icon">&#9632;</span>
 			<span class="tab-label">MONITOR</span>
 		</button>
 		<button
@@ -301,7 +312,7 @@
 			class:active={activeTab === 'history'}
 			onclick={() => (activeTab = 'history')}
 		>
-			<span class="tab-icon">⌕</span>
+			<span class="tab-icon">&#9109;</span>
 			<span class="tab-label">HISTORY</span>
 		</button>
 		<button
@@ -317,15 +328,12 @@
 			class:active={activeTab === 'memory'}
 			onclick={() => (activeTab = 'memory')}
 		>
-			<span class="tab-icon">◆</span>
+			<span class="tab-icon">&#9670;</span>
 			<span class="tab-label">MEMORY</span>
 		</button>
-		<!-- Drag handle: fills remaining space. The grip dots are absolutely
-		     centered in the whole tab bar so they appear at the window midpoint.
-		     Hidden in fullscreen where window dragging is unavailable. -->
 		<div class="tab-drag-region" data-tauri-drag-region>
 			{#if !isFullscreen}
-				<span class="drag-dots" transition:fade={{ duration: 250 }}>⠿ ⠿ ⠿</span>
+				<span class="drag-dots" transition:fade={{ duration: 250 }}>&#10239; &#10239; &#10239;</span>
 			{/if}
 		</div>
 	</div>
@@ -343,12 +351,18 @@
 		<MemoryViewer />
 	</main>
 	{:else}
-	<main class="grid-container">
-		<div class="sections-container">
-			<section class="system-section">
-				<div class="project-header">
-					<span class="project-name">System status</span>
-					<span class="project-count">{sessions.length}</span>
+
+	<!-- ── Monitor tab: Mission Control (idle) vs Active Mission Focus ── -->
+	{#if !isExecuting}
+		<!-- MISSION CONTROL - idle dashboard -->
+		<main class="grid-container">
+			<div class="mission-control">
+				<header class="mc-header">
+					<span class="mc-title">MISSION CONTROL</span>
+					<span class="mc-subtitle">
+						{allMissions.length} mission{allMissions.length !== 1 ? 's' : ''}
+					</span>
+					<div class="mc-spacer"></div>
 					<button
 						class="toggle-btn demo-toggle"
 						class:active={demoActive}
@@ -376,107 +390,245 @@
 							<span class="mobile-label">MOBILE</span>
 						</button>
 					{/if}
-					<div class="header-spacer"></div>
-					<div class="view-toggle">
-						<button
-							class="toggle-btn"
-							class:active={isCompact}
-							onclick={() => isCompact = !isCompact}
-							title="Compact View"
-						>
-							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<polyline points="4 14 10 14 10 20" />
-								<polyline points="20 10 14 10 14 4" />
-								<line x1="14" y1="10" x2="21" y2="3" />
-								<line x1="3" y1="21" x2="10" y2="14" />
-							</svg>
-						</button>
-					</div>
-					<div class="view-toggle">
-						<button 
-							class="toggle-btn" 
-							class:active={viewMode === 'project'} 
-							onclick={() => viewMode = 'project'}
-							title="Group by Project"
-						>
-							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-								<line x1="8" y1="6" x2="21" y2="6"></line>
-								<line x1="8" y1="12" x2="21" y2="12"></line>
-								<line x1="8" y1="18" x2="21" y2="18"></line>
-								<line x1="3" y1="6" x2="3.01" y2="6"></line>
-								<line x1="3" y1="12" x2="3.01" y2="12"></line>
-								<line x1="3" y1="18" x2="3.01" y2="18"></line>
-							</svg>
-						</button>
-						<button 
-							class="toggle-btn" 
-							class:active={viewMode === 'all'} 
-							onclick={() => viewMode = 'all'}
-							title="Show All"
-						>
-							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<rect x="3" y="3" width="7" height="7" rx="1" />
-								<rect x="14" y="3" width="7" height="7" rx="1" />
-								<rect x="14" y="14" width="7" height="7" rx="1" />
-								<rect x="3" y="14" width="7" height="7" rx="1" />
-							</svg>
-						</button>
-					</div>
-				</div>
-				
+				</header>
+
+				<!-- Pipeline funnel -->
+				<section class="mc-pipeline">
+					<MissionPipeline />
+				</section>
+
+				<!-- Completed missions -->
+				{#if completed.length > 0}
+					<section class="mc-completed">
+						<div class="mc-section-header">
+							<span class="mc-section-title">COMPLETED (last 24h)</span>
+							<span class="mc-section-count">{completed.length}</span>
+						</div>
+						{#each completed as m (m.missionId)}
+							<CompletedMissionRow mission={m} />
+						{/each}
+					</section>
+				{/if}
+
+				<!-- Sessions overview (if any sessions exist) -->
 				{#if sessions.length > 0}
-					<div class="system-status-container">
-						<StatusBar total={sessions.length} {summary} />
-					</div>
+					<section class="mc-sessions">
+						<div class="mc-section-header">
+							<span class="mc-section-title">CLAUDE CODE SESSIONS</span>
+							<span class="mc-section-count">{sessions.length}</span>
+						</div>
+						<div class="system-status-container">
+							<StatusBar total={sessions.length} {summary} />
+						</div>
+					</section>
 				{/if}
-			</section>
 
-			{#if sessions.length === 0}
-				<div class="empty-state">
-					<div class="empty-visual">
-						<div class="empty-orb">
-							<div class="orb-core"></div>
-							<div class="orb-ring ring-1"></div>
-							<div class="orb-ring ring-2"></div>
-							<div class="orb-ring ring-3"></div>
-						</div>
-					</div>
-					<div class="empty-content">
-						<h2>No Active Sessions</h2>
-						<p>Start a Claude Code session in your terminal or IDE</p>
-						<div class="empty-hint">
-							<span class="hint-icon">
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-									<circle cx="12" cy="12" r="10" />
-									<path d="M12 16v-4" />
-									<path d="M12 8h.01" />
-								</svg>
-							</span>
-							Sessions are detected automatically
-						</div>
-					</div>
+				<!-- Device status bar -->
+				<DeviceStatus />
+			</div>
+		</main>
+	{:else}
+		<!-- ACTIVE MISSION FOCUS - Phase 3 -->
+		<main class="grid-container">
+			<div class="active-focus-placeholder">
+				<div class="placeholder-border"></div>
+				<div class="placeholder-content">
+					<span class="placeholder-label">ACTIVE MISSION FOCUS</span>
+					<span class="placeholder-sub">Coming in Phase 3</span>
+					<span class="placeholder-count">{active.length} executing</span>
 				</div>
-			{:else}
 
-				{#if viewMode === 'project'}
-					{#each projectGroups as group (group.path)}
-						<section class="project-section" animate:flip={{ duration: 400 }}>
-							<div class="project-header">
-								<span class="project-name">{group.displayName}</span>
-								<span class="project-count">
-									{group.attention.length + group.idle.length + group.working.length}
-								</span>
+				<!-- Keep sessions visible in active mode -->
+				{#if sessions.length > 0}
+					<section class="system-section">
+						<div class="project-header">
+							<span class="project-name">System status</span>
+							<span class="project-count">{sessions.length}</span>
+							<button
+								class="toggle-btn demo-toggle"
+								class:active={demoActive}
+								onclick={() => toggleDemoMode()}
+								title="Try with Sample Data (Cmd+D)"
+							>
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+									<path d="M10 2v7.31" />
+									<path d="M14 2v7.31" />
+									<path d="M8.5 2h7" />
+									<path d="M14 9.3c.7.4 1.3.9 1.8 1.5l3.8 4.4a3 3 0 0 1-2.3 4.8H6.7a3 3 0 0 1-2.3-4.8l3.8-4.4c.5-.6 1.1-1.1 1.8-1.5" />
+								</svg>
+								<span class="demo-label">DEMO</span>
+							</button>
+							{#if isTauri()}
+								<button
+									class="toggle-btn mobile-connect-btn"
+									onclick={() => (showQRModal = true)}
+									title="Connect Mobile Device"
+								>
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+										<rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+										<line x1="12" y1="18" x2="12.01" y2="18" />
+									</svg>
+									<span class="mobile-label">MOBILE</span>
+								</button>
+							{/if}
+							<div class="header-spacer"></div>
+							<div class="view-toggle">
+								<button
+									class="toggle-btn"
+									class:active={isCompact}
+									onclick={() => isCompact = !isCompact}
+									title="Compact View"
+								>
+									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+										<polyline points="4 14 10 14 10 20" />
+										<polyline points="20 10 14 10 14 4" />
+										<line x1="14" y1="10" x2="21" y2="3" />
+										<line x1="3" y1="21" x2="10" y2="14" />
+									</svg>
+								</button>
 							</div>
+							<div class="view-toggle">
+								<button
+									class="toggle-btn"
+									class:active={viewMode === 'project'}
+									onclick={() => viewMode = 'project'}
+									title="Group by Project"
+								>
+									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+										<line x1="8" y1="6" x2="21" y2="6"></line>
+										<line x1="8" y1="12" x2="21" y2="12"></line>
+										<line x1="8" y1="18" x2="21" y2="18"></line>
+										<line x1="3" y1="6" x2="3.01" y2="6"></line>
+										<line x1="3" y1="12" x2="3.01" y2="12"></line>
+										<line x1="3" y1="18" x2="3.01" y2="18"></line>
+									</svg>
+								</button>
+								<button
+									class="toggle-btn"
+									class:active={viewMode === 'all'}
+									onclick={() => viewMode = 'all'}
+									title="Show All"
+								>
+									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+										<rect x="3" y="3" width="7" height="7" rx="1" />
+										<rect x="14" y="3" width="7" height="7" rx="1" />
+										<rect x="14" y="14" width="7" height="7" rx="1" />
+										<rect x="3" y="14" width="7" height="7" rx="1" />
+									</svg>
+								</button>
+							</div>
+						</div>
 
-							<div class="status-groups">
-								<div class="status-group" class:empty={group.attention.length === 0} class:compact={isCompact}>
-									<div class="status-header attention">
-										<span class="status-indicator attention"></span>
-										<span class="status-title">Needs Attention</span>
-										<span class="status-count">{group.attention.length}</span>
+						{#if sessions.length > 0}
+							<div class="system-status-container">
+								<StatusBar total={sessions.length} {summary} />
+							</div>
+						{/if}
+					</section>
+
+					<div class="sections-container">
+						{#if viewMode === 'project'}
+							{#each projectGroups as group (group.path)}
+								<section class="project-section" animate:flip={{ duration: 400 }}>
+									<div class="project-header">
+										<span class="project-name">{group.displayName}</span>
+										<span class="project-count">
+											{group.attention.length + group.idle.length + group.working.length}
+										</span>
 									</div>
-									<div class="session-grid">
-										{#each group.attention as session (session.id)}
+
+									<div class="status-groups">
+										<div class="status-group" class:empty={group.attention.length === 0} class:compact={isCompact}>
+											<div class="status-header attention">
+												<span class="status-indicator attention"></span>
+												<span class="status-title">Needs Attention</span>
+												<span class="status-count">{group.attention.length}</span>
+											</div>
+											<div class="session-grid">
+												{#each group.attention as session (session.id)}
+													<div
+														class="card-wrapper"
+														transition:slide={{ duration: 400, easing: quintOut }}
+														animate:flip={{ duration: 400 }}
+													>
+														<SessionCard
+															{session}
+															compact={isCompact}
+															onexpand={() => handleExpand(session)}
+															onstop={() => handleStop(session.pid)}
+															onopen={() => handleOpen(session.pid, session.projectPath)}
+															onrename={() => showRenameHint = true}
+														/>
+													</div>
+												{/each}
+											</div>
+										</div>
+
+										<div class="status-group" class:empty={group.idle.length === 0} class:compact={isCompact}>
+											<div class="status-header idle">
+												<span class="status-indicator idle"></span>
+												<span class="status-title">Idle</span>
+												<span class="status-count">{group.idle.length}</span>
+											</div>
+											<div class="session-grid">
+												{#each group.idle as session (session.id)}
+													<div
+														class="card-wrapper"
+														transition:slide={{ duration: 400, easing: quintOut }}
+														animate:flip={{ duration: 400 }}
+													>
+														<SessionCard
+															{session}
+															compact={isCompact}
+															onexpand={() => handleExpand(session)}
+															onstop={() => handleStop(session.pid)}
+															onopen={() => handleOpen(session.pid, session.projectPath)}
+															onrename={() => showRenameHint = true}
+														/>
+													</div>
+												{/each}
+											</div>
+										</div>
+
+										<div class="status-group" class:empty={group.working.length === 0} class:compact={isCompact}>
+											<div class="status-header working">
+												<span class="status-indicator working"></span>
+												<span class="status-title">Working</span>
+												<span class="status-count">{group.working.length}</span>
+											</div>
+											<div class="session-grid">
+												{#each group.working as session (session.id)}
+													<div
+														class="card-wrapper"
+														transition:slide={{ duration: 400, easing: quintOut }}
+														animate:flip={{ duration: 400 }}
+													>
+														<SessionCard
+															{session}
+															compact={isCompact}
+															onexpand={() => handleExpand(session)}
+															onstop={() => handleStop(session.pid)}
+															onopen={() => handleOpen(session.pid, session.projectPath)}
+															onrename={() => showRenameHint = true}
+														/>
+													</div>
+												{/each}
+											</div>
+										</div>
+									</div>
+								</section>
+							{/each}
+						{:else}
+							{#each allStatusGroups as group (group.id)}
+								<section class="project-section" animate:flip={{ duration: 400 }}>
+									<div class="status-header all-view {group.type}">
+										<span class="status-indicator {group.type}" style="width: 8px; height: 8px;"></span>
+										<span class="project-name" style="font-size: 16px;">{group.label}</span>
+										<span class="project-count">{group.sessions.length}</span>
+									</div>
+
+									<div class="all-sessions-grid" class:compact={isCompact}>
+										{#each group.sessions as session (session.id)}
 											<div
 												class="card-wrapper"
 												transition:slide={{ duration: 400, easing: quintOut }}
@@ -493,96 +645,15 @@
 											</div>
 										{/each}
 									</div>
-								</div>
-
-								<div class="status-group" class:empty={group.idle.length === 0} class:compact={isCompact}>
-									<div class="status-header idle">
-										<span class="status-indicator idle"></span>
-										<span class="status-title">Idle</span>
-										<span class="status-count">{group.idle.length}</span>
-									</div>
-									<div class="session-grid">
-										{#each group.idle as session (session.id)}
-											<div
-												class="card-wrapper"
-												transition:slide={{ duration: 400, easing: quintOut }}
-												animate:flip={{ duration: 400 }}
-											>
-												<SessionCard
-													{session}
-													compact={isCompact}
-													onexpand={() => handleExpand(session)}
-													onstop={() => handleStop(session.pid)}
-													onopen={() => handleOpen(session.pid, session.projectPath)}
-													onrename={() => showRenameHint = true}
-												/>
-											</div>
-										{/each}
-									</div>
-								</div>
-
-								<div class="status-group" class:empty={group.working.length === 0} class:compact={isCompact}>
-									<div class="status-header working">
-										<span class="status-indicator working"></span>
-										<span class="status-title">Working</span>
-										<span class="status-count">{group.working.length}</span>
-									</div>
-									<div class="session-grid">
-										{#each group.working as session (session.id)}
-											<div
-												class="card-wrapper"
-												transition:slide={{ duration: 400, easing: quintOut }}
-												animate:flip={{ duration: 400 }}
-											>
-												<SessionCard
-													{session}
-													compact={isCompact}
-													onexpand={() => handleExpand(session)}
-													onstop={() => handleStop(session.pid)}
-													onopen={() => handleOpen(session.pid, session.projectPath)}
-													onrename={() => showRenameHint = true}
-												/>
-											</div>
-										{/each}
-									</div>
-								</div>
-
-							</div>
-						</section>
-					{/each}
-				{:else}
-					{#each allStatusGroups as group (group.id)}
-						<section class="project-section" animate:flip={{ duration: 400 }}>
-							<div class="status-header all-view {group.type}">
-								<span class="status-indicator {group.type}" style="width: 8px; height: 8px;"></span>
-								<span class="project-name" style="font-size: 16px;">{group.label}</span>
-								<span class="project-count">{group.sessions.length}</span>
-							</div>
-
-							<div class="all-sessions-grid" class:compact={isCompact}>
-								{#each group.sessions as session (session.id)}
-									<div
-										class="card-wrapper"
-										transition:slide={{ duration: 400, easing: quintOut }}
-										animate:flip={{ duration: 400 }}
-									>
-										<SessionCard
-											{session}
-											compact={isCompact}
-											onexpand={() => handleExpand(session)}
-											onstop={() => handleStop(session.pid)}
-											onopen={() => handleOpen(session.pid, session.projectPath)}
-											onrename={() => showRenameHint = true}
-										/>
-									</div>
-								{/each}
-							</div>
-						</section>
-					{/each}
+								</section>
+							{/each}
+						{/if}
+					</div>
 				{/if}
-			{/if}
-		</div>
-	</main>
+			</div>
+		</main>
+	{/if}
+
 	{/if}
 
 	{#if expandedSession}
@@ -636,6 +707,7 @@
 		background: var(--bg-base);
 	}
 
+	/* ── Tab bar ───────────────────────────────────────────────────── */
 	.tab-bar {
 		height: 28px;
 		width: 100%;
@@ -645,18 +717,11 @@
 		background: transparent;
 		z-index: 1000;
 		position: relative;
-		/* 36px left padding clears the macOS traffic lights that extend
-		   ~80px from window edge, minus the 44px sidebar = ~36px overlap. */
 		padding: 0 var(--space-md) 0 36px;
 		transition: padding-left 0.35s ease;
-		/* Make the whole bar draggable (including the 80px padding over the
-		   traffic lights). Child buttons opt out via -webkit-app-region: no-drag. */
 		-webkit-app-region: drag;
 	}
 
-	/* Fills the right portion of the tab bar — draggable window handle area.
-	   Must use -webkit-app-region: drag (not just data-tauri-drag-region attr)
-	   for Tauri to actually recognize the drag zone. */
 	.tab-drag-region {
 		flex: 1;
 		display: flex;
@@ -666,8 +731,6 @@
 		cursor: grab;
 	}
 
-	/* Grip indicator — absolutely centered in the full window width.
-	   pointer-events: none so it never blocks tab button clicks. */
 	.drag-dots {
 		position: absolute;
 		left: 50%;
@@ -721,6 +784,7 @@
 		font-size: 10px;
 	}
 
+	/* ── Grid container ────────────────────────────────────────────── */
 	.grid-container {
 		flex: 1;
 		overflow-y: auto;
@@ -733,12 +797,145 @@
 		flex-direction: column;
 	}
 
+	/* ── Mission Control (idle dashboard) ──────────────────────────── */
+	.mission-control {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-xl);
+		max-width: 1200px;
+		margin: 0 auto;
+		width: 100%;
+	}
+
+	.mc-header {
+		display: flex;
+		align-items: center;
+		gap: var(--space-md);
+		padding-bottom: var(--space-md);
+		border-bottom: 1px solid var(--text-primary);
+	}
+
+	.mc-title {
+		font-family: var(--font-pixel);
+		font-size: 22px;
+		font-weight: 600;
+		color: var(--text-primary);
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		line-height: 1;
+	}
+
+	.mc-subtitle {
+		font-family: var(--font-mono);
+		font-size: 12px;
+		color: var(--text-muted);
+	}
+
+	.mc-spacer {
+		flex: 1;
+	}
+
+	.mc-pipeline {
+		border: 1px solid var(--border-muted);
+	}
+
+	.mc-completed {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.mc-section-header {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 0 0 8px 0;
+	}
+
+	.mc-section-title {
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		color: var(--text-muted);
+	}
+
+	.mc-section-count {
+		font-family: var(--font-mono);
+		font-size: 10px;
+		color: var(--text-muted);
+		opacity: 0.6;
+	}
+
+	.mc-sessions {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	/* ── Active Mission Focus placeholder ─────────────────────────── */
+	.active-focus-placeholder {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-xl);
+		max-width: 1200px;
+		margin: 0 auto;
+		width: 100%;
+	}
+
+	.placeholder-border {
+		height: 2px;
+		background: var(--mission-active);
+		opacity: 0.4;
+	}
+
+	.placeholder-content {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-sm);
+		padding: var(--space-3xl) 0;
+	}
+
+	.placeholder-label {
+		font-family: var(--font-pixel);
+		font-size: 18px;
+		font-weight: 600;
+		color: var(--text-secondary);
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+	}
+
+	.placeholder-sub {
+		font-family: var(--font-mono);
+		font-size: 12px;
+		color: var(--text-muted);
+	}
+
+	.placeholder-count {
+		font-family: var(--font-mono);
+		font-size: 11px;
+		color: var(--mission-active);
+	}
+
+	/* ── Sections (kept from old sessions view for active mode) ───── */
 	.sections-container {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-3xl);
+		max-width: 1200px;
 		margin: 0 auto;
 		width: 100%;
+	}
+
+	.system-section {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-md);
+	}
+
+	.system-status-container {
+		margin-top: var(--space-sm);
 	}
 
 	.project-section {
@@ -863,95 +1060,6 @@
 		gap: var(--space-lg);
 	}
 
-	/* Empty State */
-	.empty-state {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		height: 100%;
-		text-align: center;
-		gap: var(--space-3xl);
-		max-width: 1200px;
-		margin: 0 auto;
-		padding: var(--space-3xl) 0;
-	}
-
-	.empty-visual {
-		position: relative;
-		width: 80px;
-		height: 80px;
-		border: 1px solid var(--border-default);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.empty-orb {
-		position: relative;
-		width: 100%;
-		height: 100%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.orb-core {
-		width: 8px;
-		height: 8px;
-		background: var(--text-muted);
-		animation: pulse-glow 2s linear infinite;
-	}
-
-	.orb-ring {
-		display: none;
-	}
-
-	.empty-content {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: var(--space-md);
-	}
-
-	.empty-content h2 {
-		font-family: var(--font-pixel-grid);
-		font-size: 18px;
-		font-weight: 500;
-		color: var(--text-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.15em;
-	}
-
-	.empty-content p {
-		font-family: var(--font-mono);
-		font-size: 14px;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.empty-hint {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-sm);
-		margin-top: var(--space-md);
-		padding: var(--space-sm) var(--space-lg);
-		border: 1px solid var(--border-default);
-		font-family: var(--font-mono);
-		font-size: 13px;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.hint-icon {
-		display: flex;
-		color: var(--text-muted);
-	}
-
-
-
 	.header-spacer {
 		flex: 1;
 	}
@@ -999,12 +1107,6 @@
 		gap: var(--space-md);
 	}
 
-	.toggle-divider {
-		width: 1px;
-		background: var(--border-default);
-		margin: 2px 4px;
-	}
-
 	.demo-toggle {
 		width: auto;
 		padding: 0 var(--space-sm);
@@ -1049,38 +1151,12 @@
 		letter-spacing: 0.05em;
 	}
 
-	.demo-badge {
-		font-family: var(--font-mono);
-		font-size: 10px;
-		font-weight: 700;
-		color: var(--accent-amber);
-		background: rgba(255, 102, 0, 0.12);
-		padding: 2px 6px;
-		border: 1px solid var(--accent-amber);
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
-		line-height: 1;
-	}
-
-	.empty-header-row {
-		display: flex;
-		align-items: center;
-		gap: var(--space-md);
-		width: 100%;
-	}
-
-	.empty-header-row :global(.status-bar) {
-		flex: 1;
-	}
-
-	/* ── Fullscreen: align tab padding with content padding ────── */
-	/* In macOS native fullscreen the traffic lights are gone. Replace the
-	   80px clearance with var(--space-xl) to match the grid-container padding. */
+	/* ── Fullscreen ────────────────────────────────────────────────── */
 	.tab-bar.fullscreen {
 		padding-left: var(--space-xl);
 	}
 
-	/* ── Mobile Responsive ─────────────────────────────────────── */
+	/* ── Mobile Responsive ─────────────────────────────────────────── */
 	@media (max-width: 768px) {
 		.tab-bar {
 			height: 28px;
@@ -1111,7 +1187,6 @@
 			font-size: 14px;
 		}
 
-		/* Stack status groups vertically on mobile */
 		.status-groups {
 			flex-direction: column;
 			overflow-x: visible;
@@ -1123,7 +1198,6 @@
 			max-width: 100%;
 		}
 
-		/* Single column grid */
 		.all-sessions-grid {
 			grid-template-columns: 1fr;
 		}
@@ -1143,6 +1217,10 @@
 
 		.demo-toggle {
 			padding: 0 var(--space-xs);
+		}
+
+		.mc-title {
+			font-size: 16px;
 		}
 	}
 
