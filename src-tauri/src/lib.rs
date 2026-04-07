@@ -437,59 +437,78 @@ async fn get_mission_phases(
 ) -> Result<serde_json::Value, String> {
     let guard = cache.lock().await;
 
-    // Try individual phase state messages first
-    let phases = guard.get_phases_for_mission(&mission_id);
-    if !phases.is_empty() {
-        // Enrich each phase with its todos
-        let enriched: Vec<serde_json::Value> = phases.iter().map(|p| {
-            let todos = guard.get_todos_for_phase(&mission_id, &p.phase_id);
-            let todo_list: Vec<serde_json::Value> = todos.iter().map(|t| {
-                serde_json::json!({
-                    "todo_id": t.todo_id,
-                    "description": t.description,
-                    "status": t.status,
-                    "role": t.role,
-                })
-            }).collect();
+    // Build phase map from individual PhaseState messages (have latest status)
+    let state_phases = guard.get_phases_for_mission(&mission_id);
+    let mut phase_map: std::collections::HashMap<String, serde_json::Value> = std::collections::HashMap::new();
+
+    for p in &state_phases {
+        let todos = guard.get_todos_for_phase(&mission_id, &p.phase_id);
+        let todo_list: Vec<serde_json::Value> = todos.iter().map(|t| {
             serde_json::json!({
-                "phase_id": p.phase_id,
-                "name": p.name,
-                "order": p.order,
-                "status": p.status,
-                "todo_count": p.todo_count,
-                "completed_count": p.completed_count,
-                "todos": todo_list,
+                "todo_id": t.todo_id,
+                "description": t.description,
+                "status": t.status,
+                "role": t.role,
             })
         }).collect();
-        return Ok(serde_json::to_value(&enriched).unwrap_or_default());
+        phase_map.insert(p.phase_id.clone(), serde_json::json!({
+            "phase_id": p.phase_id,
+            "name": p.name,
+            "order": p.order,
+            "status": p.status,
+            "todo_count": if todo_list.is_empty() { p.todo_count as usize } else { todo_list.len() },
+            "completed_count": p.completed_count,
+            "todos": todo_list,
+        }));
     }
 
-    // Fallback: extract from PlanStateMessage.phases raw JSON
+    // Merge with plan JSON (has ALL phases including those not yet published individually)
     if let Some(plan) = guard.get_plan(&mission_id) {
-        let raw_phases: Vec<serde_json::Value> = plan.phases.iter().map(|p| {
+        for (i, p) in plan.phases.iter().enumerate() {
+            let phase_id = p.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            if phase_id.is_empty() { continue; }
+
+            // Skip if we already have this phase from individual state messages
+            if phase_map.contains_key(&phase_id) { continue; }
+
             let todos = p.get("todos").and_then(|v| v.as_array()).cloned().unwrap_or_default();
             let todo_list: Vec<serde_json::Value> = todos.iter().map(|t| {
-                serde_json::json!({
-                    "todo_id": t.get("id").and_then(|v| v.as_str()).unwrap_or(""),
-                    "description": t.get("title").or(t.get("description")).and_then(|v| v.as_str()).unwrap_or(""),
-                    "status": t.get("status").and_then(|v| v.as_str()).unwrap_or("pending"),
-                    "role": t.get("role").and_then(|v| v.as_str()).unwrap_or(""),
-                })
+                // Check if we have this todo in the state cache (might have updated status)
+                let tid = t.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                if let Some(cached) = guard.get_todo(tid) {
+                    serde_json::json!({
+                        "todo_id": cached.todo_id,
+                        "description": cached.description,
+                        "status": cached.status,
+                        "role": cached.role,
+                    })
+                } else {
+                    serde_json::json!({
+                        "todo_id": tid,
+                        "description": t.get("title").or(t.get("description")).and_then(|v| v.as_str()).unwrap_or(""),
+                        "status": t.get("status").and_then(|v| v.as_str()).unwrap_or("pending"),
+                        "role": t.get("role").and_then(|v| v.as_str()).unwrap_or(""),
+                    })
+                }
             }).collect();
-            serde_json::json!({
+
+            phase_map.insert(phase_id, serde_json::json!({
                 "phase_id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
                 "name": p.get("name").and_then(|v| v.as_str()).unwrap_or(""),
-                "order": p.get("order").and_then(|v| v.as_u64()).unwrap_or(0),
+                "order": p.get("order").and_then(|v| v.as_u64()).unwrap_or(i as u64),
                 "status": p.get("status").and_then(|v| v.as_str()).unwrap_or("blocked"),
                 "todo_count": todo_list.len(),
                 "completed_count": 0,
                 "todos": todo_list,
-            })
-        }).collect();
-        return Ok(serde_json::to_value(&raw_phases).unwrap_or_default());
+            }));
+        }
     }
 
-    Ok(serde_json::json!([]))
+    // Sort by order and return
+    let mut result: Vec<serde_json::Value> = phase_map.into_values().collect();
+    result.sort_by_key(|p| p.get("order").and_then(|v| v.as_u64()).unwrap_or(999));
+
+    Ok(serde_json::to_value(&result).unwrap_or_default())
 }
 
 /// Regenerate weaver/ context (CLAUDE.md + .claude/ + .weaver/) for a mission.
