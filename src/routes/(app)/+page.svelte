@@ -15,10 +15,13 @@
 		activeMissions,
 		completedMissions,
 		selectedMissionId,
+		selectedMission,
 		hasExecutingMissions,
 		attentionCount,
 		autoSelectMission,
 	} from '$lib/stores/missions';
+	import MissionHeader from '$lib/components/MissionHeader.svelte';
+	import MissionOverview from '$lib/components/MissionOverview.svelte';
 	import { getConversation, stopSession, openSession } from '$lib/api';
 	import { isDemoMode, toggleDemoMode } from '$lib/demo';
 	import { isTauri } from '$lib/ws';
@@ -57,12 +60,14 @@
 	let completed = $derived($completedMissions);
 	let isExecuting = $derived($hasExecutingMissions);
 	let attention = $derived($attentionCount);
+	let selected = $derived($selectedMission);
 
 	let viewMode = $state<'project' | 'all'>('project');
 
 	let isCompact = $state(false);
 
 	let activeTab = $state<'monitor' | 'history' | 'cost' | 'memory'>('monitor');
+	let missionTab = $state<'overview' | 'phases' | 'activity' | 'supervisor'>('overview');
 	let fdaLikelyNeeded = $state(false);
 	let showDebugConsole = $state(false);
 	let showRenameHint = $state(false);
@@ -428,227 +433,44 @@
 			</div>
 		</main>
 	{:else}
-		<!-- ACTIVE MISSION FOCUS - Phase 3 -->
+		<!-- ACTIVE MISSION FOCUS -->
 		<main class="grid-container">
-			<div class="active-focus-placeholder">
-				<div class="placeholder-border"></div>
-				<div class="placeholder-content">
-					<span class="placeholder-label">ACTIVE MISSION FOCUS</span>
-					<span class="placeholder-sub">Coming in Phase 3</span>
-					<span class="placeholder-count">{active.length} executing</span>
-				</div>
+			<div class="active-focus">
+				{#if selected}
+					<MissionHeader mission={selected} />
 
-				<!-- Keep sessions visible in active mode -->
-				{#if sessions.length > 0}
-					<section class="system-section">
-						<div class="project-header">
-							<span class="project-name">System status</span>
-							<span class="project-count">{sessions.length}</span>
-							<button
-								class="toggle-btn demo-toggle"
-								class:active={demoActive}
-								onclick={() => toggleDemoMode()}
-								title="Try with Sample Data (Cmd+D)"
-							>
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-									<path d="M10 2v7.31" />
-									<path d="M14 2v7.31" />
-									<path d="M8.5 2h7" />
-									<path d="M14 9.3c.7.4 1.3.9 1.8 1.5l3.8 4.4a3 3 0 0 1-2.3 4.8H6.7a3 3 0 0 1-2.3-4.8l3.8-4.4c.5-.6 1.1-1.1 1.8-1.5" />
-								</svg>
-								<span class="demo-label">DEMO</span>
-							</button>
-							{#if isTauri()}
-								<button
-									class="toggle-btn mobile-connect-btn"
-									onclick={() => (showQRModal = true)}
-									title="Connect Mobile Device"
-								>
-									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-										<rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
-										<line x1="12" y1="18" x2="12.01" y2="18" />
-									</svg>
-									<span class="mobile-label">MOBILE</span>
-								</button>
-							{/if}
-							<div class="header-spacer"></div>
-							<div class="view-toggle">
-								<button
-									class="toggle-btn"
-									class:active={isCompact}
-									onclick={() => isCompact = !isCompact}
-									title="Compact View"
-								>
-									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-										<polyline points="4 14 10 14 10 20" />
-										<polyline points="20 10 14 10 14 4" />
-										<line x1="14" y1="10" x2="21" y2="3" />
-										<line x1="3" y1="21" x2="10" y2="14" />
-									</svg>
-								</button>
-							</div>
-							<div class="view-toggle">
-								<button
-									class="toggle-btn"
-									class:active={viewMode === 'project'}
-									onclick={() => viewMode = 'project'}
-									title="Group by Project"
-								>
-									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-										<line x1="8" y1="6" x2="21" y2="6"></line>
-										<line x1="8" y1="12" x2="21" y2="12"></line>
-										<line x1="8" y1="18" x2="21" y2="18"></line>
-										<line x1="3" y1="6" x2="3.01" y2="6"></line>
-										<line x1="3" y1="12" x2="3.01" y2="12"></line>
-										<line x1="3" y1="18" x2="3.01" y2="18"></line>
-									</svg>
-								</button>
-								<button
-									class="toggle-btn"
-									class:active={viewMode === 'all'}
-									onclick={() => viewMode = 'all'}
-									title="Show All"
-								>
-									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-										<rect x="3" y="3" width="7" height="7" rx="1" />
-										<rect x="14" y="3" width="7" height="7" rx="1" />
-										<rect x="14" y="14" width="7" height="7" rx="1" />
-										<rect x="3" y="14" width="7" height="7" rx="1" />
-									</svg>
-								</button>
-							</div>
-						</div>
-
-						{#if sessions.length > 0}
-							<div class="system-status-container">
-								<StatusBar total={sessions.length} {summary} />
-							</div>
-						{/if}
-					</section>
-
-					<div class="sections-container">
-						{#if viewMode === 'project'}
-							{#each projectGroups as group (group.path)}
-								<section class="project-section" animate:flip={{ duration: 400 }}>
-									<div class="project-header">
-										<span class="project-name">{group.displayName}</span>
-										<span class="project-count">
-											{group.attention.length + group.idle.length + group.working.length}
-										</span>
-									</div>
-
-									<div class="status-groups">
-										<div class="status-group" class:empty={group.attention.length === 0} class:compact={isCompact}>
-											<div class="status-header attention">
-												<span class="status-indicator attention"></span>
-												<span class="status-title">Needs Attention</span>
-												<span class="status-count">{group.attention.length}</span>
-											</div>
-											<div class="session-grid">
-												{#each group.attention as session (session.id)}
-													<div
-														class="card-wrapper"
-														transition:slide={{ duration: 400, easing: quintOut }}
-														animate:flip={{ duration: 400 }}
-													>
-														<SessionCard
-															{session}
-															compact={isCompact}
-															onexpand={() => handleExpand(session)}
-															onstop={() => handleStop(session.pid)}
-															onopen={() => handleOpen(session.pid, session.projectPath)}
-															onrename={() => showRenameHint = true}
-														/>
-													</div>
-												{/each}
-											</div>
-										</div>
-
-										<div class="status-group" class:empty={group.idle.length === 0} class:compact={isCompact}>
-											<div class="status-header idle">
-												<span class="status-indicator idle"></span>
-												<span class="status-title">Idle</span>
-												<span class="status-count">{group.idle.length}</span>
-											</div>
-											<div class="session-grid">
-												{#each group.idle as session (session.id)}
-													<div
-														class="card-wrapper"
-														transition:slide={{ duration: 400, easing: quintOut }}
-														animate:flip={{ duration: 400 }}
-													>
-														<SessionCard
-															{session}
-															compact={isCompact}
-															onexpand={() => handleExpand(session)}
-															onstop={() => handleStop(session.pid)}
-															onopen={() => handleOpen(session.pid, session.projectPath)}
-															onrename={() => showRenameHint = true}
-														/>
-													</div>
-												{/each}
-											</div>
-										</div>
-
-										<div class="status-group" class:empty={group.working.length === 0} class:compact={isCompact}>
-											<div class="status-header working">
-												<span class="status-indicator working"></span>
-												<span class="status-title">Working</span>
-												<span class="status-count">{group.working.length}</span>
-											</div>
-											<div class="session-grid">
-												{#each group.working as session (session.id)}
-													<div
-														class="card-wrapper"
-														transition:slide={{ duration: 400, easing: quintOut }}
-														animate:flip={{ duration: 400 }}
-													>
-														<SessionCard
-															{session}
-															compact={isCompact}
-															onexpand={() => handleExpand(session)}
-															onstop={() => handleStop(session.pid)}
-															onopen={() => handleOpen(session.pid, session.projectPath)}
-															onrename={() => showRenameHint = true}
-														/>
-													</div>
-												{/each}
-											</div>
-										</div>
-									</div>
-								</section>
-							{/each}
-						{:else}
-							{#each allStatusGroups as group (group.id)}
-								<section class="project-section" animate:flip={{ duration: 400 }}>
-									<div class="status-header all-view {group.type}">
-										<span class="status-indicator {group.type}" style="width: 8px; height: 8px;"></span>
-										<span class="project-name" style="font-size: 16px;">{group.label}</span>
-										<span class="project-count">{group.sessions.length}</span>
-									</div>
-
-									<div class="all-sessions-grid" class:compact={isCompact}>
-										{#each group.sessions as session (session.id)}
-											<div
-												class="card-wrapper"
-												transition:slide={{ duration: 400, easing: quintOut }}
-												animate:flip={{ duration: 400 }}
-											>
-												<SessionCard
-													{session}
-													compact={isCompact}
-													onexpand={() => handleExpand(session)}
-													onstop={() => handleStop(session.pid)}
-													onopen={() => handleOpen(session.pid, session.projectPath)}
-													onrename={() => showRenameHint = true}
-												/>
-											</div>
-										{/each}
-									</div>
-								</section>
-							{/each}
-						{/if}
+					<div class="mission-tab-bar">
+						<button
+							class="mission-tab-btn"
+							class:active={missionTab === 'overview'}
+							onclick={() => missionTab = 'overview'}
+						>Overview</button>
+						<button
+							class="mission-tab-btn"
+							class:active={missionTab === 'phases'}
+							onclick={() => missionTab = 'phases'}
+						>Phases</button>
+						<button
+							class="mission-tab-btn"
+							class:active={missionTab === 'activity'}
+							onclick={() => missionTab = 'activity'}
+						>Activity</button>
+						<button
+							class="mission-tab-btn"
+							class:active={missionTab === 'supervisor'}
+							onclick={() => missionTab = 'supervisor'}
+						>Supervisor</button>
 					</div>
+
+					{#if missionTab === 'overview'}
+						<MissionOverview mission={selected} />
+					{:else if missionTab === 'phases'}
+						<div class="tab-placeholder">Phases tab -- coming soon</div>
+					{:else if missionTab === 'activity'}
+						<div class="tab-placeholder">Activity tab -- coming soon</div>
+					{:else if missionTab === 'supervisor'}
+						<div class="tab-placeholder">Supervisor tab -- coming soon</div>
+					{/if}
 				{/if}
 			</div>
 		</main>
@@ -873,49 +695,53 @@
 		gap: 8px;
 	}
 
-	/* ── Active Mission Focus placeholder ─────────────────────────── */
-	.active-focus-placeholder {
+	/* ── Active Mission Focus ─────────────────────────────────────── */
+	.active-focus {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-xl);
+		gap: var(--space-lg);
 		max-width: 1200px;
 		margin: 0 auto;
 		width: 100%;
 	}
 
-	.placeholder-border {
-		height: 2px;
-		background: var(--mission-active);
-		opacity: 0.4;
-	}
-
-	.placeholder-content {
+	.mission-tab-bar {
 		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: var(--space-sm);
-		padding: var(--space-3xl) 0;
+		gap: 0;
+		border-bottom: 1px solid var(--border-muted);
 	}
 
-	.placeholder-label {
-		font-family: var(--font-pixel);
-		font-size: 18px;
-		font-weight: 600;
-		color: var(--text-secondary);
-		text-transform: uppercase;
-		letter-spacing: 0.12em;
-	}
-
-	.placeholder-sub {
+	.mission-tab-btn {
+		padding: var(--space-sm) var(--space-lg);
 		font-family: var(--font-mono);
 		font-size: 12px;
+		font-weight: 500;
+		letter-spacing: 0.04em;
 		color: var(--text-muted);
+		background: transparent;
+		border: none;
+		border-bottom: 2px solid transparent;
+		cursor: pointer;
+		transition: color var(--transition-fast), border-color var(--transition-fast);
 	}
 
-	.placeholder-count {
+	.mission-tab-btn:hover {
+		color: var(--text-secondary);
+	}
+
+	.mission-tab-btn.active {
+		color: var(--text-primary);
+		border-bottom-color: var(--text-primary);
+	}
+
+	.tab-placeholder {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: var(--space-3xl) 0;
 		font-family: var(--font-mono);
-		font-size: 11px;
-		color: var(--mission-active);
+		font-size: 13px;
+		color: var(--text-muted);
 	}
 
 	/* ── Sections (kept from old sessions view for active mode) ───── */
