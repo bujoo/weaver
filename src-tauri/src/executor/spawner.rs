@@ -53,6 +53,7 @@ impl ClaudeCodeSpawner {
             "export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1; \
              claude --dangerously-load-development-channels server:weaver \
              --dangerously-skip-permissions \
+             --yes \
              --plugin-dir {}",
             plugin_dir.display()
         );
