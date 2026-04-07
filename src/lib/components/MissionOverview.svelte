@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { UnifiedMission } from '$lib/stores/missions';
+	import { cachedPhases } from '$lib/stores/missions';
 	import { workspaceStatus, refreshWorkspace } from '$lib/stores/workspace';
 	import { isTauri } from '$lib/ws';
 
@@ -11,6 +12,21 @@
 	let { mission }: Props = $props();
 
 	let workspace = $derived($workspaceStatus);
+	let cached = $derived($cachedPhases);
+
+	// Use cached phases if available (has latest status from state cache)
+	let displayPhases = $derived(() => {
+		const missionCached = cached[mission.missionId];
+		if (missionCached && missionCached.length > 0) {
+			return missionCached.map(p => ({
+				phaseId: p.phase_id,
+				phaseName: p.name,
+				todoCount: p.todo_count,
+				status: p.status,
+			}));
+		}
+		return mission.availablePhases;
+	});
 
 	// Ensure workspace data is loaded
 	onMount(() => {
@@ -107,9 +123,9 @@
 	<!-- Phase Progress -->
 	<section class="overview-section">
 		<h3 class="section-header">PHASE PROGRESS</h3>
-		{#if mission.availablePhases.length > 0}
+		{#if displayPhases().length > 0}
 			<div class="phase-grid">
-				{#each mission.availablePhases as phase (phase.phaseId)}
+				{#each displayPhases() as phase (phase.phaseId)}
 					<div class="phase-item">
 						<div class="phase-bar">
 							<div

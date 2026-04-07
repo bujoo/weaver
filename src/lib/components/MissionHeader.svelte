@@ -39,7 +39,7 @@
 		incoming: 0,
 		validating: 1,
 		ready: 2,
-		executing: 3,
+		executing: 4, // all 5 stages (0-4) should be filled
 		completed: 5, // all done
 		failed: -1,
 	};

@@ -1,11 +1,30 @@
 <script lang="ts">
+  import { selectedMissionId } from '$lib/stores/missions';
+  import { goto } from '$app/navigation';
+
+  let missionId = $derived($selectedMissionId);
+
+  function goHome() {
+    goto('/');
+  }
+
+  function goToPhases() {
+    if (missionId) {
+      goto(`/missions/${missionId}?tab=phases`);
+    }
+  }
 </script>
 
 <div class="redirect-page">
   <h2>Tasks</h2>
-  <p>Tasks are now managed per-mission.</p>
-  <p>Select a mission from the sidebar to view its phases and todos.</p>
-  <a href="/">Go to Mission Control</a>
+  <p>Tasks have moved. Each mission now manages its own phases and todos in the Phases tab.</p>
+  <p>Select a mission from the sidebar, then open the Phases tab to view and manage tasks.</p>
+  <div class="actions">
+    <button class="action-btn" onclick={goHome} type="button">Mission Control</button>
+    {#if missionId}
+      <button class="action-btn primary" onclick={goToPhases} type="button">Go to Phases</button>
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -36,21 +55,39 @@
     color: var(--text-muted);
     margin: 0;
     line-height: 1.5;
+    max-width: 420px;
   }
 
-  a {
+  .actions {
+    display: flex;
+    gap: var(--space-md);
+    margin-top: var(--space-md);
+  }
+
+  .action-btn {
     font-family: var(--font-mono);
     font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
     color: var(--text-primary);
-    text-decoration: none;
+    background: transparent;
     border: 1px solid var(--border-default);
     padding: var(--space-sm) var(--space-lg);
-    margin-top: var(--space-md);
+    cursor: pointer;
     transition: background var(--transition-fast), border-color var(--transition-fast);
   }
 
-  a:hover {
+  .action-btn:hover {
     background: rgba(255, 255, 255, 0.06);
     border-color: var(--text-secondary);
+  }
+
+  .action-btn.primary {
+    border-color: var(--accent-green);
+    color: var(--accent-green);
+  }
+
+  .action-btn.primary:hover {
+    background: rgba(var(--accent-green-rgb, 0, 255, 136), 0.08);
   }
 </style>
