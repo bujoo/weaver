@@ -70,6 +70,15 @@
 	let selected = $derived($selectedMission);
 	let incoming = $derived($incomingMissions);
 
+	// Loading state -- true until missions store has loaded initial data
+	let missionsLoading = $state(true);
+	$effect(() => {
+		// Once we have any data from the store (even empty array), loading is done
+		if (allMissions !== undefined) {
+			missionsLoading = false;
+		}
+	});
+
 	// Check if selected mission is in an incoming/pre-accept state
 	let isPreAccept = $derived(
 		selected != null &&
@@ -326,7 +335,9 @@
 			class:active={activeTab === 'monitor'}
 			onclick={() => (activeTab = 'monitor')}
 		>
-			<span class="tab-icon">&#9632;</span>
+			<svg class="tab-icon-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+			</svg>
 			<span class="tab-label">MONITOR</span>
 		</button>
 		<button
@@ -334,7 +345,9 @@
 			class:active={activeTab === 'history'}
 			onclick={() => (activeTab = 'history')}
 		>
-			<span class="tab-icon">&#9109;</span>
+			<svg class="tab-icon-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+			</svg>
 			<span class="tab-label">HISTORY</span>
 		</button>
 		<button
@@ -342,7 +355,9 @@
 			class:active={activeTab === 'cost'}
 			onclick={() => (activeTab = 'cost')}
 		>
-			<span class="tab-icon">$</span>
+			<svg class="tab-icon-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+			</svg>
 			<span class="tab-label">COST</span>
 		</button>
 		<button
@@ -350,12 +365,22 @@
 			class:active={activeTab === 'memory'}
 			onclick={() => (activeTab = 'memory')}
 		>
-			<span class="tab-icon">&#9670;</span>
+			<svg class="tab-icon-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4M4 12c0 2.21 3.582 4 8 4s8-1.79 8-4" />
+			</svg>
 			<span class="tab-label">MEMORY</span>
 		</button>
 		<div class="tab-drag-region" data-tauri-drag-region>
 			{#if !isFullscreen}
-				<span class="drag-dots" transition:fade={{ duration: 250 }}>&#10239; &#10239; &#10239;</span>
+				<span class="drag-dots" transition:fade={{ duration: 250 }}>
+					<svg width="48" height="6" viewBox="0 0 48 6" fill="currentColor">
+						<circle cx="6" cy="3" r="1.5" />
+						<circle cx="14" cy="3" r="1.5" />
+						<circle cx="22" cy="3" r="1.5" />
+						<circle cx="30" cy="3" r="1.5" />
+						<circle cx="38" cy="3" r="1.5" />
+					</svg>
+				</span>
 			{/if}
 		</div>
 	</div>
@@ -375,9 +400,28 @@
 	{:else}
 
 	<!-- ── Monitor tab: Mission Control (idle) vs Active Mission Focus ── -->
-	{#if !isExecuting}
-		<!-- MISSION CONTROL - idle dashboard -->
+	{#if missionsLoading}
 		<main class="grid-container">
+			<div class="skeleton-pipeline">
+				<div class="skeleton-header">
+					<div class="skeleton-line skeleton-shimmer" style="width: 180px; height: 22px;"></div>
+					<div class="skeleton-line skeleton-shimmer" style="width: 80px; height: 14px;"></div>
+				</div>
+				<div class="skeleton-cols">
+					<div class="skeleton-col skeleton-shimmer"></div>
+					<div class="skeleton-col skeleton-shimmer"></div>
+					<div class="skeleton-col skeleton-shimmer"></div>
+					<div class="skeleton-col skeleton-shimmer"></div>
+				</div>
+				<div class="skeleton-rows">
+					<div class="skeleton-row skeleton-shimmer"></div>
+					<div class="skeleton-row skeleton-shimmer"></div>
+				</div>
+			</div>
+		</main>
+	{:else if !isExecuting}
+		<!-- MISSION CONTROL - idle dashboard -->
+		<main class="grid-container" in:fade={{ duration: 150 }}>
 			<div class="mission-control">
 				<header class="mc-header">
 					<span class="mc-title">MISSION CONTROL</span>
@@ -451,7 +495,7 @@
 		</main>
 	{:else}
 		<!-- ACTIVE MISSION FOCUS -->
-		<main class="grid-container active-main">
+		<main class="grid-container active-main" in:fade={{ duration: 150 }}>
 			<div class="active-focus">
 				{#if selected}
 					<MissionHeader mission={selected} />
@@ -500,6 +544,14 @@
 							{/if}
 						</div>
 					{/if}
+				{:else}
+					<div class="empty-active-state">
+						<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+						</svg>
+						<span class="empty-active-title">Select a mission</span>
+						<span class="empty-active-hint">Choose a mission from the sidebar to view its details.</span>
+					</div>
 				{/if}
 			</div>
 			{#if selected && !isPreAccept}
@@ -630,8 +682,8 @@
 		border-bottom-color: var(--text-primary);
 	}
 
-	.tab-icon {
-		font-size: 8px;
+	.tab-icon-svg {
+		flex-shrink: 0;
 	}
 
 	.tab-label {
@@ -1194,5 +1246,85 @@
 	.rename-hint-close:hover {
 		background: var(--text-secondary);
 		border-color: var(--text-secondary);
+	}
+
+	/* ── Skeleton Loading ─────────────────────────────────────────── */
+	.skeleton-pipeline {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-xl);
+		max-width: 1200px;
+		margin: 0 auto;
+		width: 100%;
+	}
+
+	.skeleton-header {
+		display: flex;
+		align-items: center;
+		gap: var(--space-md);
+		padding-bottom: var(--space-md);
+		border-bottom: 1px solid var(--border-muted);
+	}
+
+	.skeleton-line {
+		height: 14px;
+		background: var(--bg-card);
+	}
+
+	.skeleton-shimmer {
+		background: linear-gradient(
+			90deg,
+			var(--bg-card) 25%,
+			var(--bg-card-hover) 50%,
+			var(--bg-card) 75%
+		);
+		background-size: 200% 100%;
+		animation: shimmer 1.5s ease-in-out infinite;
+	}
+
+	.skeleton-cols {
+		display: flex;
+		gap: var(--space-md);
+	}
+
+	.skeleton-col {
+		flex: 1;
+		height: 120px;
+		background: var(--bg-card);
+	}
+
+	.skeleton-rows {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-sm);
+	}
+
+	.skeleton-row {
+		height: 48px;
+		background: var(--bg-card);
+	}
+
+	/* ── Empty Active State ───────────────────────────────────────── */
+	.empty-active-state {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-md);
+		padding: var(--space-3xl) 0;
+		color: var(--text-muted);
+	}
+
+	.empty-active-title {
+		font-family: var(--font-mono);
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--text-secondary);
+	}
+
+	.empty-active-hint {
+		font-family: var(--font-mono);
+		font-size: 12px;
+		color: var(--text-muted);
 	}
 </style>

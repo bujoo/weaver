@@ -23,12 +23,22 @@
       class:active={activeTab === tab.id}
       onclick={() => onTabChange(tab.id)}
     >
-      <span class="tab-icon">{tab.icon}</span>
+      <svg class="tab-icon-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d={tab.icon} />
+      </svg>
       <span class="tab-label">{tab.label}</span>
     </button>
   {/each}
   <div class="tab-drag-region" data-tauri-drag-region>
-    <span class="drag-dots" transition:fade={{ duration: 250 }}>&#x2817; &#x2817; &#x2817;</span>
+    <span class="drag-dots" transition:fade={{ duration: 250 }}>
+      <svg width="48" height="6" viewBox="0 0 48 6" fill="currentColor">
+        <circle cx="6" cy="3" r="1.5" />
+        <circle cx="14" cy="3" r="1.5" />
+        <circle cx="22" cy="3" r="1.5" />
+        <circle cx="30" cy="3" r="1.5" />
+        <circle cx="38" cy="3" r="1.5" />
+      </svg>
+    </span>
   </div>
 </div>
 
@@ -60,8 +70,6 @@
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
-    font-size: 14px;
-    letter-spacing: 3px;
     color: var(--text-muted, #666);
     opacity: 0.3;
     pointer-events: none;
@@ -99,8 +107,8 @@
     border-bottom-color: var(--text-primary, #fff);
   }
 
-  .tab-icon {
-    font-size: 8px;
+  .tab-icon-svg {
+    flex-shrink: 0;
   }
 
   .tab-label {
