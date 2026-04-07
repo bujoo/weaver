@@ -3,7 +3,9 @@ use crate::mqtt::types::{
     ControlMessage, MqttConfig, MqttIncoming, PhaseAssignment, PhaseStateMessage,
     PlanStateMessage, TodoStateMessage, WorkspaceRegistryMessage,
 };
-use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS};
+use rumqttc::v5::mqttbytes::v5::Packet;
+use rumqttc::v5::mqttbytes::QoS;
+use rumqttc::v5::{AsyncClient, Event, MqttOptions};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, Mutex};
@@ -29,8 +31,8 @@ impl MqttClient {
         let mut mqtt_opts = MqttOptions::new(&client_id, &config.host, config.port);
         mqtt_opts.set_credentials(&config.username, &config.password);
         mqtt_opts.set_keep_alive(Duration::from_secs(60));
-        mqtt_opts.set_clean_session(true);
-        mqtt_opts.set_max_packet_size(10 * 1024 * 1024, 10 * 1024 * 1024);
+        mqtt_opts.set_clean_start(true);
+        mqtt_opts.set_max_packet_size(Some(10 * 1024 * 1024));
 
         let (client, mut eventloop) = AsyncClient::new(mqtt_opts, 64);
         let (incoming_tx, _) = broadcast::channel::<MqttIncoming>(128);
@@ -75,11 +77,11 @@ impl MqttClient {
                                 }
                             }
                             Event::Incoming(Packet::Publish(publish)) => {
-                                let topic = publish.topic.clone();
+                                let topic = std::str::from_utf8(&publish.topic).unwrap_or("");
                                 let payload = publish.payload.to_vec();
-                                dispatch_message(&tx_clone, &config_clone, &topic, &payload);
+                                dispatch_message(&tx_clone, &config_clone, topic, &payload);
                             }
-                            Event::Incoming(Packet::Disconnect) => {
+                            Event::Incoming(Packet::Disconnect(_)) => {
                                 *connected_clone.lock().await = false;
                                 debug_log::log_warn("[MQTT] Disconnected from broker");
                             }
@@ -118,7 +120,7 @@ impl MqttClient {
 
     pub async fn publish(&self, topic: &str, payload: &[u8]) -> Result<(), String> {
         self.client
-            .publish(topic, QoS::AtLeastOnce, false, payload)
+            .publish(topic, QoS::AtLeastOnce, false, payload.to_vec())
             .await
             .map_err(|e| format!("MQTT publish error: {}", e))
     }
