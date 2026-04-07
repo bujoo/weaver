@@ -8,11 +8,11 @@
 
 	let { mission }: Props = $props();
 
-	// Track which phases are expanded; auto-expand executing phases
+	// Track which phases are expanded
 	let expandedPhases: Set<string> = $state(new Set());
 
-	// When mission changes, auto-expand active phases
-	$effect(() => {
+	// Auto-expand executing phases -- derived, never written back into expandedPhases
+	let autoExpandedPhases = $derived.by(() => {
 		const next = new Set<string>();
 		for (const phase of mission.availablePhases) {
 			if (
@@ -23,14 +23,16 @@
 				next.add(phase.phaseId);
 			}
 		}
-		// Also preserve any user-toggled expansions that still exist
-		for (const id of expandedPhases) {
-			if (mission.availablePhases.some((p) => p.phaseId === id)) {
-				next.add(id);
-			}
+		if (next.size === 0 && mission.availablePhases.length > 0) {
+			next.add(mission.availablePhases[0].phaseId);
 		}
-		expandedPhases = next;
+		return next;
 	});
+
+	// Merge user toggles with auto-expanded
+	function isExpanded(phaseId: string): boolean {
+		return expandedPhases.has(phaseId) || autoExpandedPhases.has(phaseId);
+	}
 
 	function togglePhase(phaseId: string) {
 		expandedPhases = new Set(expandedPhases);
@@ -48,7 +50,7 @@
 			<PhaseAccordion
 				{phase}
 				missionId={mission.missionId}
-				expanded={expandedPhases.has(phase.phaseId)}
+				expanded={isExpanded(phase.phaseId)}
 				ontoggle={() => togglePhase(phase.phaseId)}
 			/>
 		{/each}

@@ -97,10 +97,7 @@
 
 	let isFullscreen = $state(false);
 
-	// Auto-select highest priority mission
-	$effect(() => {
-		autoSelectMission(allMissions, $selectedMissionId);
-	});
+	// Auto-select is handled by MissionSidebar -- no duplicate effect here
 
 	onMount(() => {
 		if (browser) {

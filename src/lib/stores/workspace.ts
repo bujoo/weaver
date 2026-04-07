@@ -38,6 +38,7 @@ export interface MissionSummary {
 	repos: { repo_id: string; repo_url: string | null; branch: string | null }[];
 	phase_count: number;
 	todo_count: number;
+	available_phases?: Array<{ phase_id: string; name: string; order: number; status: string; todo_count: number }>;
 }
 
 export interface WorkspaceRegistry {

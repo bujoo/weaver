@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		latestUrgentObservation,
+		dismissObservation,
 		type SupervisorObservation,
 	} from '$lib/stores/supervisor';
 
@@ -8,12 +9,13 @@
 
 	function handleApply() {
 		if (!obs) return;
-		console.log('[Supervisor] Apply fix from bar:', obs.type, obs.suggestion);
+		console.log('[Supervisor] Apply fix:', obs.type, obs.suggestion);
+		dismissObservation(obs.timestamp);
 	}
 
 	function handleDismiss() {
-		// For now just log; could remove from observations store
-		console.log('[Supervisor] Dismissed bar observation');
+		if (!obs) return;
+		dismissObservation(obs.timestamp);
 	}
 
 	function severityLabel(severity: SupervisorObservation['severity']): string {

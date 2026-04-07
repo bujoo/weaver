@@ -2,7 +2,51 @@ import { writable, derived, get, type Readable, type Writable } from 'svelte/sto
 import { registry, type MissionSummary } from './workspace';
 import { tasks, availablePhases, humanNeededPhases, type TaskQueueEntry, type AvailablePhase, type HumanPhaseAlert } from './tasks';
 import { sessions } from './sessions';
+import { isTauri } from '$lib/ws';
 import type { Session } from '$lib/types';
+
+/**
+ * Cached phase data from Rust state cache, keyed by mission_id.
+ */
+export const cachedPhases: Writable<Record<string, Array<{ phase_id: string; name: string; order: number; status: string; todo_count: number; completed_count: number }>>> = writable({});
+
+/**
+ * Fetch phases for a mission from the Rust state cache.
+ */
+export async function fetchMissionPhases(missionId: string): Promise<void> {
+	if (!isTauri()) return;
+	try {
+		const { invoke } = await import('@tauri-apps/api/core');
+		const phases = await invoke<Array<{ phase_id: string; name: string; order: number; status: string; todo_count: number; completed_count: number }>>('get_mission_phases', { missionId });
+		if (phases && phases.length > 0) {
+			cachedPhases.update((cache) => ({ ...cache, [missionId]: phases }));
+		}
+	} catch (e) {
+		console.error('[missions] Failed to fetch phases for', missionId, e);
+	}
+}
+
+/**
+ * Start polling phases for all missions in the registry.
+ */
+export function startPhasePolling(): () => void {
+	const interval = setInterval(() => {
+		const reg = get(registry);
+		if (reg?.missions) {
+			for (const m of reg.missions) {
+				fetchMissionPhases(m.mission_id);
+			}
+		}
+	}, 5000);
+	// Initial fetch
+	const reg = get(registry);
+	if (reg?.missions) {
+		for (const m of reg.missions) {
+			fetchMissionPhases(m.mission_id);
+		}
+	}
+	return () => clearInterval(interval);
+}
 
 export interface UnifiedMission {
 	missionId: string;
@@ -42,12 +86,12 @@ const STATUS_PRIORITY: Record<string, number> = {
  * Aggregates registry, tasks, available phases, human alerts, and sessions.
  */
 export const missions: Readable<UnifiedMission[]> = derived(
-	[registry, tasks, availablePhases, humanNeededPhases, sessions],
-	([$registry, $tasks, $availablePhases, $humanNeededPhases, $sessions]) => {
+	[registry, tasks, availablePhases, humanNeededPhases, sessions, cachedPhases],
+	([$registry, $tasks, $availablePhases, $humanNeededPhases, $sessions, $cachedPhases]) => {
 		if (!$registry?.missions) return [];
 
 		return $registry.missions
-			.map((m: MissionSummary) => buildUnifiedMission(m, $tasks, $availablePhases, $humanNeededPhases, $sessions))
+			.map((m: MissionSummary) => buildUnifiedMission(m, $tasks, $availablePhases, $humanNeededPhases, $sessions, $cachedPhases))
 			.sort(missionSortComparator);
 	}
 );
@@ -103,13 +147,20 @@ function buildUnifiedMission(
 	$tasks: TaskQueueEntry[],
 	$availablePhases: AvailablePhase[],
 	$humanNeededPhases: HumanPhaseAlert[],
-	$sessions: Session[]
+	$sessions: Session[],
+	$cachedPhases: Record<string, Array<{ phase_id: string; name: string; order: number; status: string; todo_count: number; completed_count: number }>>
 ): UnifiedMission {
 	// Tasks assigned to this mission
 	const missionTasks = $tasks.filter((t) => t.missionId === m.mission_id);
 
-	// Available phases for this mission
-	const missionPhases = $availablePhases
+	// Phases: prefer state cache (from Rust), then tasks store, then registry
+	const stateCachePhases = ($cachedPhases[m.mission_id] ?? []).map((p) => ({
+		phaseId: p.phase_id,
+		phaseName: p.name,
+		todoCount: p.todo_count,
+		status: p.status,
+	}));
+	const taskPhases = $availablePhases
 		.filter((p) => p.missionId === m.mission_id)
 		.map((p) => ({
 			phaseId: p.phaseId,
@@ -117,14 +168,22 @@ function buildUnifiedMission(
 			todoCount: p.todoCount,
 			status: p.status,
 		}));
+	const registryPhases = (m.available_phases ?? []).map((p) => ({
+		phaseId: p.phase_id,
+		phaseName: p.name,
+		todoCount: p.todo_count,
+		status: p.status,
+	}));
+	const missionPhases = stateCachePhases.length > 0 ? stateCachePhases : (taskPhases.length > 0 ? taskPhases : registryPhases);
 
 	// Human-needed phases for this mission
 	const humanAlerts = $humanNeededPhases.filter((h) => h.missionId === m.mission_id);
 
-	// Count active Claude Code sessions by matching branch pattern weaver-{missionId.slice(0,8)}
-	const branchPrefix = `weaver-${m.mission_id.slice(0, 8)}`;
+	// Count active Claude Code sessions by matching branch or CWD containing mission short ID
+	const shortMid = m.mission_id.slice(0, 8);
+	const branchPrefix = `weaver-${shortMid}`;
 	const activeSessions = $sessions.filter(
-		(s) => s.gitBranch?.startsWith(branchPrefix)
+		(s) => s.gitBranch?.startsWith(branchPrefix) || s.projectPath?.includes(shortMid)
 	).length;
 
 	// Calculate completed phases and todos from task data

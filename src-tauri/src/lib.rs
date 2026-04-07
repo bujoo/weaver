@@ -430,6 +430,16 @@ async fn get_mission_state(
     Ok(guard.snapshot())
 }
 
+#[tauri::command]
+async fn get_mission_phases(
+    mission_id: String,
+    cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
+) -> Result<serde_json::Value, String> {
+    let guard = cache.lock().await;
+    let phases = guard.get_phases_for_mission(&mission_id);
+    Ok(serde_json::to_value(&phases).unwrap_or_default())
+}
+
 /// Regenerate weaver/ context (CLAUDE.md + .claude/ + .weaver/) for a mission.
 /// Called when a phase transitions or when the developer wants to refresh context.
 #[cfg(not(mobile))]
@@ -1157,6 +1167,7 @@ pub fn run() {
             accept_phase_cmd,
             get_task_queue,
             get_mission_state,
+            get_mission_phases,
             load_fixture,
             regenerate_workspace_context,
             list_weaver_sessions,

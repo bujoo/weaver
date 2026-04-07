@@ -72,7 +72,7 @@ export async function initializeTaskListeners() {
 
 	// Load available phases from registry
 	try {
-		const reg = await invoke<{ missions?: Array<{ mission_id: string; title: string; available_phases?: Array<{ phase_id: string; phase_name: string; todo_count: number; status: string }> }> } | null>('get_registry');
+		const reg = await invoke<{ missions?: Array<{ mission_id: string; title: string; available_phases?: Array<{ phase_id: string; name: string; order?: number; todo_count: number; status: string }> }> } | null>('get_registry');
 		if (reg?.missions) {
 			const phases: AvailablePhase[] = [];
 			for (const m of reg.missions) {
@@ -81,7 +81,7 @@ export async function initializeTaskListeners() {
 						missionId: m.mission_id,
 						missionTitle: m.title,
 						phaseId: p.phase_id,
-						phaseName: p.phase_name,
+						phaseName: p.name,
 						todoCount: p.todo_count,
 						status: p.status,
 					});

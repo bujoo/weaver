@@ -10,7 +10,7 @@
 	import { startMqttPolling, stopMqttPolling } from '$lib/stores/mqtt';
 	import { initRegistryListener } from '$lib/stores/workspace';
 	import { initializeTaskListeners } from '$lib/stores/tasks';
-	import { missions, selectedMissionId } from '$lib/stores/missions';
+	import { missions, selectedMissionId, startPhasePolling } from '$lib/stores/missions';
 	import { registerShortcuts } from '$lib/shortcuts';
 	import MissionSidebar from '$lib/components/MissionSidebar.svelte';
 	import KeyboardShortcutOverlay from '$lib/components/KeyboardShortcutOverlay.svelte';
@@ -21,6 +21,7 @@
 	let allMissions = $derived($missions);
 
 	let cleanupShortcuts: (() => void) | null = null;
+	let cleanupPhasePolling: (() => void) | null = null;
 
 	onMount(async () => {
 		const demoActive = loadDemoDataIfActive();
@@ -37,6 +38,7 @@
 
 			checkForUpdates();
 			startMqttPolling();
+			cleanupPhasePolling = startPhasePolling();
 		}
 
 		cleanupShortcuts = registerShortcuts({
@@ -73,6 +75,7 @@
 	onDestroy(() => {
 		stopMqttPolling();
 		cleanupShortcuts?.();
+		cleanupPhasePolling?.();
 	});
 
 	function handleMissionSelect(missionId: string) {

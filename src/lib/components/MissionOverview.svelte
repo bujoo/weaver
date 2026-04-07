@@ -1,6 +1,7 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import type { UnifiedMission } from '$lib/stores/missions';
-	import { workspaceStatus } from '$lib/stores/workspace';
+	import { workspaceStatus, refreshWorkspace } from '$lib/stores/workspace';
 	import { isTauri } from '$lib/ws';
 
 	interface Props {
@@ -10,6 +11,13 @@
 	let { mission }: Props = $props();
 
 	let workspace = $derived($workspaceStatus);
+
+	// Ensure workspace data is loaded
+	onMount(() => {
+		if (!$workspaceStatus) {
+			refreshWorkspace();
+		}
+	});
 
 	// Format start time from lastActivity
 	let startedLabel = $derived(() => {
@@ -37,15 +45,20 @@
 	// Match workspace repos to mission repos
 	let matchedRepos = $derived(() => {
 		if (!workspace?.repos || !mission.repos) return [];
+		const shortMid = mission.missionId.slice(0, 8);
+		const worktreeBranch = `weaver-${shortMid}`;
 		return mission.repos.map((missionRepo) => {
-			const wsRepo = workspace!.repos.find(
-				(r) => r.name === extractRepoName(missionRepo.repoUrl ?? missionRepo.repoId)
+			const repoName = extractRepoName(missionRepo.repoUrl ?? missionRepo.repoId);
+			const wsRepo = workspace!.repos.find((r) => r.name === repoName);
+			// Find the worktree for this mission in this repo
+			const wt = wsRepo?.worktrees?.find(
+				(w: any) => w.branch === worktreeBranch || w.path?.includes(shortMid)
 			);
 			return {
-				name: extractRepoName(missionRepo.repoUrl ?? missionRepo.repoId),
-				baseBranch: wsRepo?.branch ?? 'main',
-				missionBranch: missionRepo.branch ?? '--',
-				clean: wsRepo?.clean ?? true,
+				name: repoName,
+				baseBranch: missionRepo.branch ?? 'main',
+				missionBranch: wt?.branch ?? worktreeBranch,
+				clean: wt ? (wt.clean ?? true) : (wsRepo?.clean ?? true),
 			};
 		});
 	});
@@ -56,6 +69,7 @@
 		const parts = urlOrId.replace(/\.git$/, '').split('/');
 		return parts[parts.length - 1] || urlOrId;
 	}
+
 
 	async function openWorkspace() {
 		if (!isTauri() || !workspace?.mountPath) return;

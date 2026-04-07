@@ -11,6 +11,7 @@
 	} from '$lib/stores/missions';
 	import { mqttConnected } from '$lib/stores/mqtt';
 	import { page } from '$app/stores';
+	import { untrack } from 'svelte';
 
 	let currentPath = $derived($page.url.pathname);
 	let connected = $derived($mqttConnected);
@@ -23,9 +24,19 @@
 
 	let completedCollapsed = $state(true);
 
-	// Auto-select highest priority mission when none is selected
+	// Auto-select highest priority mission when none is selected.
+	// Uses $effect.pre to only run once per mission list change, with deferred write.
+	let lastAutoSelectList = $state<string>('');
 	$effect(() => {
-		autoSelectMission(allMissions, currentSelectedId);
+		const list = allMissions; // tracked dependency
+		const listKey = list.map(m => m.missionId).join(',');
+		if (listKey !== lastAutoSelectList && list.length > 0) {
+			lastAutoSelectList = listKey;
+			const currentId = untrack(() => $selectedMissionId);
+			if (!currentId || !list.some((m) => m.missionId === currentId)) {
+				setTimeout(() => selectedMissionId.set(list[0].missionId), 0);
+			}
+		}
 	});
 
 	function selectMission(missionId: string) {

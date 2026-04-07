@@ -52,15 +52,30 @@ export function getInterventionsForMission(missionId: string): Readable<Supervis
 /**
  * Most recent critical or warning observation (for SupervisorBar).
  */
+/**
+ * Set of dismissed observation timestamps (used to hide them from the bar).
+ */
+export const dismissedObservations: Writable<Set<number>> = writable(new Set());
+
 export const latestUrgentObservation: Readable<SupervisorObservation | null> = derived(
-	observations,
-	($obs) => {
+	[observations, dismissedObservations],
+	([$obs, $dismissed]) => {
 		const urgent = $obs
-			.filter((o) => o.severity === 'critical' || o.severity === 'warning')
+			.filter((o) => (o.severity === 'critical' || o.severity === 'warning') && !$dismissed.has(o.timestamp))
 			.sort((a, b) => b.timestamp - a.timestamp);
 		return urgent[0] ?? null;
 	}
 );
+
+/**
+ * Dismiss an observation so it no longer shows in the bar.
+ */
+export function dismissObservation(timestamp: number): void {
+	dismissedObservations.update((set) => {
+		set.add(timestamp);
+		return new Set(set);
+	});
+}
 
 // ── Seed data for development ──────────────────────────────────────
 
@@ -121,8 +136,7 @@ function seedDemoData(): void {
  * Seeds demo data when no real events are available.
  */
 export async function initSupervisorListeners(): Promise<void> {
-	// Seed demo data for development
-	seedDemoData();
+	// Demo data removed -- real observations come from the Rust supervisor via Tauri events
 
 	if (!isTauri()) return;
 
