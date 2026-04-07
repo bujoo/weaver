@@ -142,6 +142,25 @@
 	--transition-normal: 150ms linear;
 	--transition-slow: 250ms linear;
 	--transition-spring: 200ms linear;
+
+	/* Sidebar */
+	--sidebar-width: 220px;
+
+	/* Mission status */
+	--mission-active: var(--status-working);
+	--mission-incoming: #0070f3;
+	--mission-completed: var(--accent-green);
+	--mission-failed: var(--accent-red);
+
+	/* Supervisor (for later phases) */
+	--supervisor-info: #0070f3;
+	--supervisor-action: var(--accent-amber);
+	--supervisor-escalation: var(--accent-red);
+
+	/* Icon sizes */
+	--icon-sm: 16px;
+	--icon-md: 20px;
+	--icon-lg: 24px;
 }
 
 /* CSS Reset */
