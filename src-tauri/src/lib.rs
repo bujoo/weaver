@@ -523,6 +523,100 @@ async fn get_mission_phases(
     Ok(serde_json::to_value(&result).unwrap_or_default())
 }
 
+/// Manually start execution of a phase by spawning Claude Code in tmux.
+/// Used for demos and testing when Brain hasn't published a PhaseAssignment.
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn start_phase_manually(
+    mission_id: String,
+    phase_id: String,
+    cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
+    spawner: tauri::State<'_, Arc<executor::spawner::ClaudeCodeSpawner>>,
+) -> Result<String, String> {
+    let mount = default_workspace_mount();
+    let short_mid = if mission_id.len() > 8 { &mission_id[..8] } else { &mission_id };
+    let weaver_cwd = mount.join(".worktrees").join(short_mid).join("weaver");
+
+    if !weaver_cwd.exists() {
+        return Err(format!("No weaver/ workspace at {}. Run autopilot first.", weaver_cwd.display()));
+    }
+
+    // Find plugin directory
+    let plugin_dir = mount.parent().unwrap_or(&mount)
+        .join("contexthub-weaver")
+        .join("weaver-plugin");
+    let plugin_dir = if plugin_dir.exists() {
+        plugin_dir
+    } else {
+        let home = dirs::home_dir().unwrap_or_default();
+        let alt = home.join("Sonic-Web-Dev").join("contexthub").join("contexthub-weaver").join("weaver-plugin");
+        if alt.exists() { alt } else { return Err("Weaver plugin directory not found".to_string()); }
+    };
+
+    // Get phase and todo info from cache
+    let phase_name = {
+        let guard = cache.lock().await;
+        guard.get_phase(&mission_id, &phase_id)
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| phase_id.clone())
+    };
+
+    crate::debug_log::log_info(&format!(
+        "[ManualStart] Starting phase '{}' ({}) for mission {}",
+        phase_name, phase_id, short_mid
+    ));
+
+    // Spawn Claude Code in tmux
+    let session = spawner.spawn_session(&mission_id, &weaver_cwd, &plugin_dir).await?;
+
+    // Wait for channel server to start
+    let port = executor::spawner::ClaudeCodeSpawner::wait_for_channel_port(&weaver_cwd).await?;
+
+    // Build assignment payload from cache
+    let assignment_json = {
+        let guard = cache.lock().await;
+        let todos = guard.get_todos_for_phase(&mission_id, &phase_id);
+        let todo_list: Vec<serde_json::Value> = todos.iter().map(|t| {
+            serde_json::json!({
+                "todo_id": t.todo_id,
+                "description": t.description,
+                "role": t.role,
+            })
+        }).collect();
+        serde_json::json!({
+            "type": "assignment",
+            "mission_id": mission_id,
+            "phase_id": phase_id,
+            "phase_name": phase_name,
+            "todos": todo_list,
+            "content": format!("Execute phase: {}. Read CLAUDE.md for context, then work through each todo.", phase_name),
+        })
+    };
+
+    // POST assignment to channel
+    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{}/", port);
+    match client.post(&url)
+        .json(&assignment_json)
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            crate::debug_log::log_info(&format!(
+                "[ManualStart] Assignment posted to channel port {}, status: {}",
+                port, resp.status()
+            ));
+        }
+        Err(e) => {
+            crate::debug_log::log_info(&format!(
+                "[ManualStart] Failed to POST assignment: {}", e
+            ));
+        }
+    }
+
+    Ok(session.session_name)
+}
+
 /// Regenerate weaver/ context (CLAUDE.md + .claude/ + .weaver/) for a mission.
 /// Called when a phase transitions or when the developer wants to refresh context.
 #[cfg(not(mobile))]
@@ -1251,6 +1345,7 @@ pub fn run() {
             get_task_queue,
             get_mission_state,
             get_mission_phases,
+            start_phase_manually,
             load_fixture,
             regenerate_workspace_context,
             list_weaver_sessions,

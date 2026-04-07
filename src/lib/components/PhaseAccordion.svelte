@@ -1,8 +1,35 @@
 <script lang="ts">
 	import TodoItem from './TodoItem.svelte';
 	import InterventionInput from './InterventionInput.svelte';
+	import { isTauri } from '$lib/ws';
 
 	import type { CachedTodo } from '$lib/stores/missions';
+
+	let starting = $state(false);
+	let started = $state(false);
+
+	let canStart = $derived(
+		isTauri() && !started && !starting &&
+		phase.status !== 'completed' && phase.status !== 'done' &&
+		phase.status !== 'blocked'
+	);
+
+	async function handleStartPhase() {
+		if (!isTauri() || starting) return;
+		starting = true;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			const sessionName = await invoke<string>('start_phase_manually', {
+				missionId,
+				phaseId: phase.phaseId,
+			});
+			console.log('[Phase] Started session:', sessionName);
+			started = true;
+		} catch (e) {
+			console.error('[Phase] Failed to start:', e);
+		}
+		starting = false;
+	}
 
 	interface Phase {
 		phaseId: string;
@@ -85,6 +112,14 @@
 			<span class="phase-name">{phase.phaseName}</span>
 		</div>
 		<div class="phase-meta">
+			{#if canStart}
+				<button class="btn-start" onclick={(e) => { e.stopPropagation(); handleStartPhase(); }} disabled={starting} type="button">
+					{starting ? 'Starting...' : 'Start'}
+				</button>
+			{/if}
+			{#if started}
+				<span class="started-badge">RUNNING</span>
+			{/if}
 			<span class="phase-progress">{completedCount}/{phase.todoCount}</span>
 			<span class="status-badge {statusClass}">{statusLabel}</span>
 		</div>
@@ -225,6 +260,40 @@
 		color: var(--task-queued);
 		border-color: var(--task-queued);
 		background: rgba(68, 68, 68, 0.1);
+	}
+
+	.btn-start {
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		padding: 2px 10px;
+		border: 1px solid var(--accent-green);
+		background: transparent;
+		color: var(--accent-green);
+		cursor: pointer;
+	}
+
+	.btn-start:hover {
+		background: var(--accent-green);
+		color: #000;
+	}
+
+	.btn-start:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.started-badge {
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		padding: 2px 8px;
+		border: 1px solid var(--accent-purple);
+		color: var(--accent-purple);
+		background: rgba(121, 40, 202, 0.08);
 	}
 
 	.phase-body {
