@@ -83,6 +83,13 @@ impl ClaudeCodeSpawner {
             cwd.display()
         ));
 
+        // Auto-confirm the development channels warning prompt (sends Enter)
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        let _ = Command::new("tmux")
+            .args(["send-keys", "-t", &session_name, "Enter"])
+            .output()
+            .await;
+
         self.processes.lock().await.insert(
             mission_id.to_string(),
             SpawnedProcess {
