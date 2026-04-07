@@ -1,0 +1,271 @@
+<script lang="ts">
+	import TodoItem from './TodoItem.svelte';
+	import InterventionInput from './InterventionInput.svelte';
+
+	interface Phase {
+		phaseId: string;
+		phaseName: string;
+		todoCount: number;
+		status: string;
+	}
+
+	interface Props {
+		phase: Phase;
+		missionId: string;
+		expanded?: boolean;
+		ontoggle?: () => void;
+	}
+
+	let { phase, missionId, expanded = false, ontoggle }: Props = $props();
+
+	let statusLabel = $derived(
+		phase.status === 'completed' || phase.status === 'done'
+			? 'DONE'
+			: phase.status === 'executing' || phase.status === 'in_progress' || phase.status === 'active'
+				? 'EXECUTING'
+				: 'QUEUED'
+	);
+
+	let statusClass = $derived(
+		phase.status === 'completed' || phase.status === 'done'
+			? 'done'
+			: phase.status === 'executing' || phase.status === 'in_progress' || phase.status === 'active'
+				? 'executing'
+				: 'queued'
+	);
+
+	// Generate placeholder todos from phase data
+	// In production these will come from the real task queue
+	let todos = $derived(
+		Array.from({ length: phase.todoCount }, (_, i) => {
+			let status: string;
+			if (statusClass === 'done') {
+				status = 'done';
+			} else if (statusClass === 'executing') {
+				if (i < Math.floor(phase.todoCount * 0.4)) {
+					status = 'done';
+				} else if (i === Math.floor(phase.todoCount * 0.4)) {
+					status = 'working';
+				} else {
+					status = 'queued';
+				}
+			} else {
+				status = 'queued';
+			}
+
+			return {
+				id: `${phase.phaseId}-todo-${i}`,
+				description: `Todo item ${i + 1}`,
+				status,
+			};
+		})
+	);
+
+	let completedCount = $derived(
+		todos.filter((t) => t.status === 'done' || t.status === 'completed').length
+	);
+
+	let activeTodo = $derived(
+		todos.find((t) => t.status === 'working' || t.status === 'executing' || t.status === 'in_progress')
+	);
+</script>
+
+<div class="phase-accordion" class:expanded>
+	<button class="phase-header" onclick={ontoggle} type="button">
+		<div class="phase-title-row">
+			<svg
+				class="chevron"
+				class:expanded
+				width="12"
+				height="12"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+			>
+				<polyline points="9 18 15 12 9 6" />
+			</svg>
+			<span class="phase-name">{phase.phaseName}</span>
+		</div>
+		<div class="phase-meta">
+			<span class="phase-progress">{completedCount}/{phase.todoCount}</span>
+			<span class="status-badge {statusClass}">{statusLabel}</span>
+		</div>
+	</button>
+
+	{#if expanded}
+		<div class="phase-body">
+			<!-- Column headers -->
+			<div class="todo-header-row">
+				<span class="col-todo">Todo</span>
+				<span class="col-status">Status</span>
+				<span class="col-time">Time</span>
+			</div>
+
+			<div class="todo-separator"></div>
+
+			<!-- Todo items -->
+			{#each todos as todo (todo.id)}
+				<TodoItem
+					{todo}
+					active={activeTodo?.id === todo.id}
+					{missionId}
+					phaseId={phase.phaseId}
+				/>
+			{/each}
+
+			<!-- Intervention controls for active phases -->
+			{#if statusClass === 'executing' && activeTodo}
+				<InterventionInput
+					{missionId}
+					phaseId={phase.phaseId}
+					todoId={activeTodo.id}
+				/>
+			{/if}
+		</div>
+	{/if}
+</div>
+
+<style>
+	.phase-accordion {
+		border: 1px solid var(--border-muted);
+		background: var(--bg-card);
+		margin-bottom: 2px;
+		transition: border-color var(--transition-fast);
+	}
+
+	.phase-accordion:hover {
+		border-color: var(--border-default);
+	}
+
+	.phase-accordion.expanded {
+		border-color: var(--border-default);
+	}
+
+	.phase-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		padding: var(--space-sm) var(--space-md);
+		min-height: 40px;
+		background: none;
+		border: none;
+		cursor: pointer;
+		color: inherit;
+		font: inherit;
+		transition: background var(--transition-fast);
+	}
+
+	.phase-header:hover {
+		background: var(--bg-card-hover);
+	}
+
+	.phase-title-row {
+		display: flex;
+		align-items: center;
+		gap: var(--space-sm);
+		min-width: 0;
+		flex: 1;
+	}
+
+	.chevron {
+		flex-shrink: 0;
+		color: var(--text-muted);
+		transition: transform var(--transition-normal);
+	}
+
+	.chevron.expanded {
+		transform: rotate(90deg);
+	}
+
+	.phase-name {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--text-primary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.phase-meta {
+		display: flex;
+		align-items: center;
+		gap: var(--space-sm);
+		flex-shrink: 0;
+	}
+
+	.phase-progress {
+		font-family: var(--font-mono);
+		font-size: 11px;
+		color: var(--text-muted);
+	}
+
+	.status-badge {
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		padding: 2px 8px;
+		border: 1px solid;
+	}
+
+	.status-badge.done {
+		color: var(--accent-green);
+		border-color: var(--accent-green);
+		background: rgba(0, 255, 136, 0.06);
+	}
+
+	.status-badge.executing {
+		color: var(--accent-purple);
+		border-color: var(--accent-purple);
+		background: rgba(121, 40, 202, 0.08);
+		animation: pulse-glow 2s ease-in-out infinite;
+	}
+
+	.status-badge.queued {
+		color: var(--task-queued);
+		border-color: var(--task-queued);
+		background: rgba(68, 68, 68, 0.1);
+	}
+
+	.phase-body {
+		border-top: 1px solid var(--border-muted);
+	}
+
+	.todo-header-row {
+		display: flex;
+		align-items: center;
+		padding: var(--space-xs) var(--space-md);
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		color: var(--text-muted);
+		text-transform: uppercase;
+	}
+
+	.col-todo {
+		flex: 1;
+		padding-left: calc(24px + var(--space-sm));
+	}
+
+	.col-status {
+		width: 60px;
+		text-align: right;
+	}
+
+	.col-time {
+		width: 52px;
+		text-align: right;
+	}
+
+	.todo-separator {
+		height: 1px;
+		background: var(--border-muted);
+		margin: 0 var(--space-md);
+	}
+</style>
