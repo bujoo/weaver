@@ -13,6 +13,7 @@
 	import {
 		missions,
 		activeMissions,
+		incomingMissions,
 		completedMissions,
 		selectedMissionId,
 		selectedMission,
@@ -22,6 +23,12 @@
 	} from '$lib/stores/missions';
 	import MissionHeader from '$lib/components/MissionHeader.svelte';
 	import MissionOverview from '$lib/components/MissionOverview.svelte';
+	import PhaseList from '$lib/components/PhaseList.svelte';
+	import ActivityFeed from '$lib/components/ActivityFeed.svelte';
+	import SupervisorPanel from '$lib/components/SupervisorPanel.svelte';
+	import SupervisorBar from '$lib/components/SupervisorBar.svelte';
+	import MissionAcceptFlow from '$lib/components/MissionAcceptFlow.svelte';
+	import { initSupervisorListeners } from '$lib/stores/supervisor';
 	import { getConversation, stopSession, openSession } from '$lib/api';
 	import { isDemoMode, toggleDemoMode } from '$lib/demo';
 	import { isTauri } from '$lib/ws';
@@ -61,6 +68,13 @@
 	let isExecuting = $derived($hasExecutingMissions);
 	let attention = $derived($attentionCount);
 	let selected = $derived($selectedMission);
+	let incoming = $derived($incomingMissions);
+
+	// Check if selected mission is in an incoming/pre-accept state
+	let isPreAccept = $derived(
+		selected != null &&
+		(selected.status === 'incoming' || selected.status === 'validating' || selected.status === 'ready')
+	);
 
 	let viewMode = $state<'project' | 'all'>('project');
 
@@ -90,6 +104,9 @@
 				isCompact = true;
 			}
 		}
+
+		// Initialize supervisor event listeners
+		initSupervisorListeners();
 
 		if (!isTauri()) return;
 
@@ -434,45 +451,60 @@
 		</main>
 	{:else}
 		<!-- ACTIVE MISSION FOCUS -->
-		<main class="grid-container">
+		<main class="grid-container active-main">
 			<div class="active-focus">
 				{#if selected}
 					<MissionHeader mission={selected} />
 
-					<div class="mission-tab-bar">
-						<button
-							class="mission-tab-btn"
-							class:active={missionTab === 'overview'}
-							onclick={() => missionTab = 'overview'}
-						>Overview</button>
-						<button
-							class="mission-tab-btn"
-							class:active={missionTab === 'phases'}
-							onclick={() => missionTab = 'phases'}
-						>Phases</button>
-						<button
-							class="mission-tab-btn"
-							class:active={missionTab === 'activity'}
-							onclick={() => missionTab = 'activity'}
-						>Activity</button>
-						<button
-							class="mission-tab-btn"
-							class:active={missionTab === 'supervisor'}
-							onclick={() => missionTab = 'supervisor'}
-						>Supervisor</button>
-					</div>
+					{#if isPreAccept}
+						<!-- Pre-accept funnel for incoming/validating/ready missions -->
+						<MissionAcceptFlow
+							mission={selected}
+							onaccept={() => { missionTab = 'overview'; }}
+							onreject={() => { selectedMissionId.set(null); }}
+						/>
+					{:else}
+						<!-- Tab bar for executing/completed missions -->
+						<div class="mission-tab-bar">
+							<button
+								class="mission-tab-btn"
+								class:active={missionTab === 'overview'}
+								onclick={() => missionTab = 'overview'}
+							>Overview</button>
+							<button
+								class="mission-tab-btn"
+								class:active={missionTab === 'phases'}
+								onclick={() => missionTab = 'phases'}
+							>Phases</button>
+							<button
+								class="mission-tab-btn"
+								class:active={missionTab === 'activity'}
+								onclick={() => missionTab = 'activity'}
+							>Activity</button>
+							<button
+								class="mission-tab-btn"
+								class:active={missionTab === 'supervisor'}
+								onclick={() => missionTab = 'supervisor'}
+							>Supervisor</button>
+						</div>
 
-					{#if missionTab === 'overview'}
-						<MissionOverview mission={selected} />
-					{:else if missionTab === 'phases'}
-						<div class="tab-placeholder">Phases tab -- coming soon</div>
-					{:else if missionTab === 'activity'}
-						<div class="tab-placeholder">Activity tab -- coming soon</div>
-					{:else if missionTab === 'supervisor'}
-						<div class="tab-placeholder">Supervisor tab -- coming soon</div>
+						<div class="tab-content">
+							{#if missionTab === 'overview'}
+								<MissionOverview mission={selected} />
+							{:else if missionTab === 'phases'}
+								<PhaseList mission={selected} />
+							{:else if missionTab === 'activity'}
+								<ActivityFeed missionId={selected.missionId} />
+							{:else if missionTab === 'supervisor'}
+								<SupervisorPanel missionId={selected.missionId} />
+							{/if}
+						</div>
 					{/if}
 				{/if}
 			</div>
+			{#if selected && !isPreAccept}
+				<SupervisorBar />
+			{/if}
 		</main>
 	{/if}
 
@@ -695,8 +727,15 @@
 		gap: 8px;
 	}
 
+	.active-main {
+		display: flex;
+		flex-direction: column;
+	}
+
 	/* ── Active Mission Focus ─────────────────────────────────────── */
 	.active-focus {
+		flex: 1;
+		min-height: 0;
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-lg);
@@ -732,6 +771,13 @@
 	.mission-tab-btn.active {
 		color: var(--text-primary);
 		border-bottom-color: var(--text-primary);
+	}
+
+	.tab-content {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.tab-placeholder {
