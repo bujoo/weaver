@@ -442,6 +442,26 @@ pub fn write_workspace_context(
         }
     }
 
+    // 8. .mcp.json (channel server discovery for Claude Code)
+    if let Some(plugin_dir) = resolve_plugin_dir(weaver_path) {
+        let channel_script = plugin_dir
+            .join("channels")
+            .join("weaver-channel")
+            .join("index.ts");
+        let mcp_json = serde_json::json!({
+            "mcpServers": {
+                "weaver": {
+                    "command": "bun",
+                    "args": [channel_script.to_string_lossy()]
+                }
+            }
+        });
+        let mcp_str = serde_json::to_string_pretty(&mcp_json)
+            .map_err(|e| format!(".mcp.json serialize: {}", e))?;
+        std::fs::write(weaver_path.join(".mcp.json"), mcp_str)
+            .map_err(|e| format!(".mcp.json: {}", e))?;
+    }
+
     crate::debug_log::log_info(&format!(
         "[Context] Wrote weaver/ ({} lines CLAUDE.md, {} agents, {} specs) to {}",
         claude_md.lines().count(),
@@ -507,6 +527,38 @@ fn extract_objectives(ctx: &str) -> String {
         return truncated;
     }
     result.trim().to_string()
+}
+
+/// Resolve the weaver-plugin directory.
+/// 1. Try `{workspace_mount}/../contexthub-weaver/weaver-plugin`
+///    (weaver_path is `{workspace_mount}/.worktrees/{mid}/weaver`, so 3 parents up)
+/// 2. Fallback: `~/Sonic-Web-Dev/contexthub/contexthub-weaver/weaver-plugin`
+fn resolve_plugin_dir(weaver_path: &Path) -> Option<std::path::PathBuf> {
+    // weaver_path = {mount}/.worktrees/{mid}/weaver  =>  mount = 3 parents up
+    if let Some(mount) = weaver_path.parent().and_then(|p| p.parent()).and_then(|p| p.parent()) {
+        let candidate = mount
+            .parent()
+            .unwrap_or(mount)
+            .join("contexthub-weaver")
+            .join("weaver-plugin");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    // Fallback to well-known location
+    let home = dirs::home_dir()?;
+    let alt = home
+        .join("Sonic-Web-Dev")
+        .join("contexthub")
+        .join("contexthub-weaver")
+        .join("weaver-plugin");
+    if alt.exists() {
+        return Some(alt);
+    }
+
+    crate::debug_log::log_info("[Context] weaver-plugin directory not found, skipping .mcp.json");
+    None
 }
 
 fn truncate(s: &str, max: usize) -> String {
