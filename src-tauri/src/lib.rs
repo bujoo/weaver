@@ -471,26 +471,38 @@ async fn get_mission_phases(
             // Skip if we already have this phase from individual state messages
             if phase_map.contains_key(&phase_id) { continue; }
 
-            let todos = p.get("todos").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-            let todo_list: Vec<serde_json::Value> = todos.iter().map(|t| {
-                // Check if we have this todo in the state cache (might have updated status)
-                let tid = t.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                if let Some(cached) = guard.get_todo(tid) {
+            // Get todos: first try plan JSON, then fall back to state cache
+            let plan_todos = p.get("todos").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+            let todo_list: Vec<serde_json::Value> = if !plan_todos.is_empty() {
+                plan_todos.iter().map(|t| {
+                    let tid = t.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                    if let Some(cached) = guard.get_todo(tid) {
+                        serde_json::json!({
+                            "todo_id": cached.todo_id,
+                            "description": cached.description,
+                            "status": cached.status,
+                            "role": cached.role,
+                        })
+                    } else {
+                        serde_json::json!({
+                            "todo_id": tid,
+                            "description": t.get("title").or(t.get("description")).and_then(|v| v.as_str()).unwrap_or(""),
+                            "status": t.get("status").and_then(|v| v.as_str()).unwrap_or("pending"),
+                            "role": t.get("role").and_then(|v| v.as_str()).unwrap_or(""),
+                        })
+                    }
+                }).collect()
+            } else {
+                // Plan phases don't embed todos -- look them up in state cache
+                guard.get_todos_for_phase(&mission_id, &phase_id).iter().map(|t| {
                     serde_json::json!({
-                        "todo_id": cached.todo_id,
-                        "description": cached.description,
-                        "status": cached.status,
-                        "role": cached.role,
+                        "todo_id": t.todo_id,
+                        "description": t.description,
+                        "status": t.status,
+                        "role": t.role,
                     })
-                } else {
-                    serde_json::json!({
-                        "todo_id": tid,
-                        "description": t.get("title").or(t.get("description")).and_then(|v| v.as_str()).unwrap_or(""),
-                        "status": t.get("status").and_then(|v| v.as_str()).unwrap_or("pending"),
-                        "role": t.get("role").and_then(|v| v.as_str()).unwrap_or(""),
-                    })
-                }
-            }).collect();
+                }).collect()
+            };
 
             phase_map.insert(phase_id, serde_json::json!({
                 "phase_id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
