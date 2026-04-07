@@ -2,11 +2,14 @@
 	import TodoItem from './TodoItem.svelte';
 	import InterventionInput from './InterventionInput.svelte';
 
+	import type { CachedTodo } from '$lib/stores/missions';
+
 	interface Phase {
 		phaseId: string;
 		phaseName: string;
 		todoCount: number;
 		status: string;
+		todos?: CachedTodo[];
 	}
 
 	interface Props {
@@ -34,39 +37,31 @@
 				: 'queued'
 	);
 
-	// Generate placeholder todos from phase data
-	// In production these will come from the real task queue
-	let todos = $derived(
-		Array.from({ length: phase.todoCount }, (_, i) => {
-			let status: string;
-			if (statusClass === 'done') {
-				status = 'done';
-			} else if (statusClass === 'executing') {
-				if (i < Math.floor(phase.todoCount * 0.4)) {
-					status = 'done';
-				} else if (i === Math.floor(phase.todoCount * 0.4)) {
-					status = 'working';
-				} else {
-					status = 'queued';
-				}
-			} else {
-				status = 'queued';
-			}
-
-			return {
-				id: `${phase.phaseId}-todo-${i}`,
-				description: `Todo item ${i + 1}`,
-				status,
-			};
-		})
-	);
+	// Use real todo data from state cache, fall back to placeholder if empty
+	let todos = $derived(() => {
+		if (phase.todos && phase.todos.length > 0) {
+			return phase.todos.map((t) => ({
+				id: t.todo_id,
+				description: t.description,
+				status: t.status === 'completed' || t.status === 'done' ? 'done'
+					: t.status === 'executing' || t.status === 'in_progress' || t.status === 'running' ? 'working'
+					: 'queued',
+			}));
+		}
+		// Fallback: generate placeholders from todoCount
+		return Array.from({ length: phase.todoCount }, (_, i) => ({
+			id: `${phase.phaseId}-todo-${i}`,
+			description: `Todo ${i + 1}`,
+			status: 'queued' as string,
+		}));
+	});
 
 	let completedCount = $derived(
-		todos.filter((t) => t.status === 'done' || t.status === 'completed').length
+		todos().filter((t) => t.status === 'done' || t.status === 'completed').length
 	);
 
 	let activeTodo = $derived(
-		todos.find((t) => t.status === 'working' || t.status === 'executing' || t.status === 'in_progress')
+		todos().find((t) => t.status === 'working' || t.status === 'executing' || t.status === 'in_progress')
 	);
 </script>
 
@@ -107,7 +102,7 @@
 			<div class="todo-separator"></div>
 
 			<!-- Todo items -->
-			{#each todos as todo (todo.id)}
+			{#each todos() as todo (todo.id)}
 				<TodoItem
 					{todo}
 					active={activeTodo?.id === todo.id}

@@ -436,8 +436,60 @@ async fn get_mission_phases(
     cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
 ) -> Result<serde_json::Value, String> {
     let guard = cache.lock().await;
+
+    // Try individual phase state messages first
     let phases = guard.get_phases_for_mission(&mission_id);
-    Ok(serde_json::to_value(&phases).unwrap_or_default())
+    if !phases.is_empty() {
+        // Enrich each phase with its todos
+        let enriched: Vec<serde_json::Value> = phases.iter().map(|p| {
+            let todos = guard.get_todos_for_phase(&mission_id, &p.phase_id);
+            let todo_list: Vec<serde_json::Value> = todos.iter().map(|t| {
+                serde_json::json!({
+                    "todo_id": t.todo_id,
+                    "description": t.description,
+                    "status": t.status,
+                    "role": t.role,
+                })
+            }).collect();
+            serde_json::json!({
+                "phase_id": p.phase_id,
+                "name": p.name,
+                "order": p.order,
+                "status": p.status,
+                "todo_count": p.todo_count,
+                "completed_count": p.completed_count,
+                "todos": todo_list,
+            })
+        }).collect();
+        return Ok(serde_json::to_value(&enriched).unwrap_or_default());
+    }
+
+    // Fallback: extract from PlanStateMessage.phases raw JSON
+    if let Some(plan) = guard.get_plan(&mission_id) {
+        let raw_phases: Vec<serde_json::Value> = plan.phases.iter().map(|p| {
+            let todos = p.get("todos").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+            let todo_list: Vec<serde_json::Value> = todos.iter().map(|t| {
+                serde_json::json!({
+                    "todo_id": t.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                    "description": t.get("title").or(t.get("description")).and_then(|v| v.as_str()).unwrap_or(""),
+                    "status": t.get("status").and_then(|v| v.as_str()).unwrap_or("pending"),
+                    "role": t.get("role").and_then(|v| v.as_str()).unwrap_or(""),
+                })
+            }).collect();
+            serde_json::json!({
+                "phase_id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                "name": p.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                "order": p.get("order").and_then(|v| v.as_u64()).unwrap_or(0),
+                "status": p.get("status").and_then(|v| v.as_str()).unwrap_or("blocked"),
+                "todo_count": todo_list.len(),
+                "completed_count": 0,
+                "todos": todo_list,
+            })
+        }).collect();
+        return Ok(serde_json::to_value(&raw_phases).unwrap_or_default());
+    }
+
+    Ok(serde_json::json!([]))
 }
 
 /// Regenerate weaver/ context (CLAUDE.md + .claude/ + .weaver/) for a mission.

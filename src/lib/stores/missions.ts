@@ -5,10 +5,27 @@ import { sessions } from './sessions';
 import { isTauri } from '$lib/ws';
 import type { Session } from '$lib/types';
 
+export interface CachedTodo {
+	todo_id: string;
+	description: string;
+	status: string;
+	role: string;
+}
+
+export interface CachedPhase {
+	phase_id: string;
+	name: string;
+	order: number;
+	status: string;
+	todo_count: number;
+	completed_count: number;
+	todos: CachedTodo[];
+}
+
 /**
  * Cached phase data from Rust state cache, keyed by mission_id.
  */
-export const cachedPhases: Writable<Record<string, Array<{ phase_id: string; name: string; order: number; status: string; todo_count: number; completed_count: number }>>> = writable({});
+export const cachedPhases: Writable<Record<string, CachedPhase[]>> = writable({});
 
 /**
  * Fetch phases for a mission from the Rust state cache.
@@ -17,7 +34,7 @@ export async function fetchMissionPhases(missionId: string): Promise<void> {
 	if (!isTauri()) return;
 	try {
 		const { invoke } = await import('@tauri-apps/api/core');
-		const phases = await invoke<Array<{ phase_id: string; name: string; order: number; status: string; todo_count: number; completed_count: number }>>('get_mission_phases', { missionId });
+		const phases = await invoke<CachedPhase[]>('get_mission_phases', { missionId });
 		if (phases && phases.length > 0) {
 			cachedPhases.update((cache) => ({ ...cache, [missionId]: phases }));
 		}
@@ -57,7 +74,7 @@ export interface UnifiedMission {
 	completedPhases: number;
 	completedTodos: number;
 	repos: Array<{ repoId: string; repoUrl: string | null; branch: string | null }>;
-	availablePhases: Array<{ phaseId: string; phaseName: string; todoCount: number; status: string }>;
+	availablePhases: Array<{ phaseId: string; phaseName: string; todoCount: number; status: string; todos?: CachedTodo[] }>;
 	taskQueue: TaskQueueEntry[];
 	activeSessions: number;
 	needsAttention: boolean;
@@ -159,6 +176,7 @@ function buildUnifiedMission(
 		phaseName: p.name,
 		todoCount: p.todo_count,
 		status: p.status,
+		todos: p.todos ?? [],
 	}));
 	const taskPhases = $availablePhases
 		.filter((p) => p.missionId === m.mission_id)
