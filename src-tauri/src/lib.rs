@@ -20,6 +20,8 @@ pub mod mqtt;
 #[cfg(not(mobile))]
 pub mod settings;
 #[cfg(not(mobile))]
+pub mod supervisor;
+#[cfg(not(mobile))]
 pub mod workspace;
 
 // Shared modules (types used by both desktop and mobile builds)
@@ -595,6 +597,7 @@ async fn connect_mqtt(
     control_handler: tauri::State<'_, Arc<mqtt::control::ControlHandler>>,
     spawner: tauri::State<'_, Arc<executor::spawner::ClaudeCodeSpawner>>,
     state_cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
+    supervisor_agent: tauri::State<'_, Arc<supervisor::SupervisorAgent>>,
     host: String,
     port: u16,
     username: String,
@@ -628,11 +631,16 @@ async fn connect_mqtt(
         std::time::Instant::now(),
     );
 
-    // Get broadcast receivers
-    let (rx1, rx2, rx3) = {
+    // Get broadcast receivers (4th for supervisor)
+    let (rx1, rx2, rx3, rx4) = {
         let g = mqtt_state.lock().await;
         let c = g.as_ref().unwrap();
-        (c.subscribe_incoming(), c.subscribe_incoming(), c.subscribe_incoming())
+        (
+            c.subscribe_incoming(),
+            c.subscribe_incoming(),
+            c.subscribe_incoming(),
+            c.subscribe_incoming(),
+        )
     };
 
     // Start handlers
@@ -648,6 +656,9 @@ async fn connect_mqtt(
         default_workspace_mount(),
         app,
     );
+
+    // Attach MQTT feed to supervisor (already running from setup)
+    supervisor_agent.attach_mqtt(rx4);
 
     debug_log::log_info("[MQTT] Connected and all handlers started");
     Ok(())
@@ -665,6 +676,42 @@ async fn get_settings() -> Result<settings::WeaverSettings, String> {
 #[tauri::command]
 async fn save_settings_cmd(s: settings::WeaverSettings) -> Result<(), String> {
     settings::save_settings(&s)
+}
+
+// ── Supervisor commands ────────────────────────────────────────────
+
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn get_supervisor_observations(
+    agent: tauri::State<'_, Arc<supervisor::SupervisorAgent>>,
+) -> Result<Vec<supervisor::agent::ObservationRecord>, String> {
+    Ok(agent.get_observations().await)
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn get_supervisor_interventions(
+    agent: tauri::State<'_, Arc<supervisor::SupervisorAgent>>,
+) -> Result<Vec<supervisor::agent::InterventionRecord>, String> {
+    Ok(agent.get_interventions().await)
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn get_supervisor_rules(
+    agent: tauri::State<'_, Arc<supervisor::SupervisorAgent>>,
+) -> Result<supervisor::SupervisorRules, String> {
+    Ok(agent.get_rules().await)
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn update_supervisor_rules(
+    agent: tauri::State<'_, Arc<supervisor::SupervisorAgent>>,
+    rules: supervisor::SupervisorRules,
+) -> Result<(), String> {
+    agent.update_rules(rules).await;
+    Ok(())
 }
 
 // ── Workspace commands ─────────────────────────────────────────────
@@ -831,6 +878,17 @@ pub fn run() {
                 Arc::new(Mutex::new(mqtt::state_cache::MissionStateCache::new()));
             app.manage(state_cache.clone());
 
+            // ── Supervisor agent ──
+            let supervisor_agent = Arc::new(supervisor::SupervisorAgent::new(
+                supervisor::SupervisorRules::default(),
+            ));
+            app.manage(supervisor_agent.clone());
+            // Hook event channel for forwarding web_server hook events to supervisor
+            let (hook_tx, hook_rx) = tokio::sync::mpsc::channel::<supervisor::agent::HookEvent>(128);
+            app.manage(hook_tx);
+            // Start supervisor immediately (it listens for hook events and MQTT via attach_mqtt)
+            supervisor_agent.start(app.handle().clone(), hook_rx);
+
             // ── Auto-connect MQTT from env vars or saved settings ──
             {
                 let mqtt_s = mqtt_state.clone();
@@ -839,6 +897,7 @@ pub fn run() {
                 let sp = spawner.clone();
                 let sc = state_cache.clone();
                 let app_h = app.handle().clone();
+                let sv = supervisor_agent.clone();
 
                 tauri::async_runtime::spawn(async move {
                     // Try env vars first, then saved settings
@@ -896,11 +955,16 @@ pub fn run() {
                         std::time::Instant::now(),
                     );
 
-                    // Get broadcast receivers from the client
-                    let (rx1, rx2, rx3) = {
+                    // Get broadcast receivers from the client (4th for supervisor)
+                    let (rx1, rx2, rx3, rx4) = {
                         let g = mqtt_s.lock().await;
                         let c = g.as_ref().unwrap();
-                        (c.subscribe_incoming(), c.subscribe_incoming(), c.subscribe_incoming())
+                        (
+                            c.subscribe_incoming(),
+                            c.subscribe_incoming(),
+                            c.subscribe_incoming(),
+                            c.subscribe_incoming(),
+                        )
                     };
 
                     // Start handlers
@@ -917,6 +981,9 @@ pub fn run() {
                         default_workspace_mount(),
                         app_h,
                     );
+
+                    // Attach MQTT feed to supervisor (already running)
+                    sv.attach_mqtt(rx4);
 
                     eprintln!("[MQTT] Auto-connect complete, all handlers started");
                     debug_log::log_info("[MQTT] Auto-connect complete, all handlers started");
@@ -1101,7 +1168,11 @@ pub fn run() {
             open_workspace_cmd,
             connect_mqtt,
             get_settings,
-            save_settings_cmd
+            save_settings_cmd,
+            get_supervisor_observations,
+            get_supervisor_interventions,
+            get_supervisor_rules,
+            update_supervisor_rules
         ]);
 
     // Mobile: minimal shell (all communication via WebSocket from the frontend)
