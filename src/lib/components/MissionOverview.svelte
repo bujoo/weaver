@@ -91,7 +91,10 @@
 		if (!isTauri() || !workspace?.mountPath) return;
 		try {
 			const { invoke } = await import('@tauri-apps/api/core');
-			await invoke('open_workspace_cmd', { path: workspace.mountPath });
+			// Open the mission's .code-workspace file in the worktree
+			const shortMid = mission.missionId.slice(0, 8);
+			const workspaceFile = `${workspace.mountPath}/.worktrees/${shortMid}/mission.code-workspace`;
+			await invoke('open_workspace_cmd', { path: workspaceFile });
 		} catch (e) {
 			console.error('Failed to open workspace:', e);
 		}
