@@ -45,8 +45,26 @@ export async function fetchMissionPhases(missionId: string): Promise<void> {
 
 /**
  * Start polling phases for all missions in the registry.
+ * Also listens for real-time 'mission-phases-updated' Tauri events
+ * so the frontend refreshes immediately when MQTT state arrives.
  */
 export function startPhasePolling(): () => void {
+	let unlisten: (() => void) | null = null;
+
+	// Listen for real-time push events from the Rust MQTT handler
+	if (isTauri()) {
+		import('@tauri-apps/api/event').then(({ listen }) => {
+			listen<{ mission_id: string }>('mission-phases-updated', (event) => {
+				if (event.payload?.mission_id) {
+					fetchMissionPhases(event.payload.mission_id);
+				}
+			}).then((fn) => {
+				unlisten = fn;
+			});
+		});
+	}
+
+	// Fallback polling at 5s interval
 	const interval = setInterval(() => {
 		const reg = get(registry);
 		if (reg?.missions) {
@@ -55,6 +73,7 @@ export function startPhasePolling(): () => void {
 			}
 		}
 	}, 5000);
+
 	// Initial fetch
 	const reg = get(registry);
 	if (reg?.missions) {
@@ -62,7 +81,11 @@ export function startPhasePolling(): () => void {
 			fetchMissionPhases(m.mission_id);
 		}
 	}
-	return () => clearInterval(interval);
+
+	return () => {
+		clearInterval(interval);
+		unlisten?.();
+	};
 }
 
 export interface UnifiedMission {

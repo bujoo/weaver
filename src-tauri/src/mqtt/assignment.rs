@@ -70,14 +70,22 @@ impl AssignmentHandler {
                         cache.lock().await.store_plan(plan);
                     }
                     Ok(MqttIncoming::PhaseState(phase)) => {
-                        use tauri::Manager;
+                        use tauri::{Emitter, Manager};
+                        let mission_id = phase.mission_id.clone();
                         let cache: tauri::State<'_, Arc<Mutex<MissionStateCache>>> = app.state();
                         cache.lock().await.store_phase(phase);
+                        let _ = app.emit("mission-phases-updated", serde_json::json!({
+                            "mission_id": mission_id
+                        }));
                     }
                     Ok(MqttIncoming::TodoState(todo)) => {
-                        use tauri::Manager;
+                        use tauri::{Emitter, Manager};
+                        let mission_id = todo.mission_id.clone();
                         let cache: tauri::State<'_, Arc<Mutex<MissionStateCache>>> = app.state();
                         cache.lock().await.store_todo(todo);
+                        let _ = app.emit("mission-phases-updated", serde_json::json!({
+                            "mission_id": mission_id
+                        }));
                     }
                     Ok(_) => {}
                     Err(broadcast::error::RecvError::Lagged(n)) => {
@@ -189,8 +197,15 @@ impl AssignmentHandler {
                         });
                     }
                     Ok(MqttIncoming::PhaseState(phase)) => {
-                        // Cache the phase state and check for human phases
+                        // Cache the phase state, emit event, and check for human phases
+                        let mission_id = phase.mission_id.clone();
                         state_cache.lock().await.store_phase(phase);
+                        {
+                            use tauri::Emitter;
+                            let _ = app.emit("mission-phases-updated", serde_json::json!({
+                                "mission_id": mission_id
+                            }));
+                        }
                         let cache = state_cache.lock().await;
                         autopilot::check_human_phases(
                             &cache,
@@ -198,6 +213,16 @@ impl AssignmentHandler {
                             &mut notified_phases,
                         )
                         .await;
+                    }
+                    Ok(MqttIncoming::TodoState(todo)) => {
+                        let mission_id = todo.mission_id.clone();
+                        state_cache.lock().await.store_todo(todo);
+                        {
+                            use tauri::Emitter;
+                            let _ = app.emit("mission-phases-updated", serde_json::json!({
+                                "mission_id": mission_id
+                            }));
+                        }
                     }
                     Ok(_) => {}
                     Err(broadcast::error::RecvError::Lagged(_)) => {}
