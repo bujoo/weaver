@@ -996,9 +996,8 @@ async fn update_conductor_config(
     Ok(())
 }
 
-/// Weavy chat: send a user message through the conductor for an AI response.
-/// When the conductor is enabled, this calls Bedrock to generate a contextual reply.
-/// When disabled, returns a simple status-based response.
+/// Weavy chat: free-form AI conversation powered by Bedrock.
+/// Returns a natural language response informed by mission state.
 #[cfg(not(mobile))]
 #[tauri::command]
 async fn weavy_chat(
@@ -1009,74 +1008,16 @@ async fn weavy_chat(
     let config = agent.get_config().await;
 
     if !config.enabled {
-        return Ok("Weavy conductor is not enabled. Set CONDUCTOR_ENABLED=1 and ensure AWS SSO is logged in.".to_string());
+        return Err("not_enabled".to_string());
     }
 
-    // Build a context-aware prompt from the user message + mission state
-    let cache_guard = cache.lock().await;
-    let snapshot = cache_guard.snapshot();
-    let phases_info: Vec<String> = snapshot
-        .get("plan_ids")
-        .and_then(|v| v.as_array())
-        .unwrap_or(&vec![])
-        .iter()
-        .filter_map(|id| id.as_str())
-        .flat_map(|mid| {
-            cache_guard
-                .get_phases_for_mission(mid)
-                .iter()
-                .map(|p| format!("{} ({}): {}", p.name, p.phase_id, p.status))
-                .collect::<Vec<_>>()
-        })
-        .collect();
-
-    let system = format!(
-        "You are Weavy, a friendly AI dev sidekick managing Claude Code sessions for ContextHub.\n\
-         Answer concisely. You have access to mission state.\n\n\
-         Current state: {} plans, {} phases, {} todos cached.\n\
-         Phases: {}",
-        snapshot.get("plans").and_then(|v| v.as_u64()).unwrap_or(0),
-        snapshot.get("phases").and_then(|v| v.as_u64()).unwrap_or(0),
-        snapshot.get("todos").and_then(|v| v.as_u64()).unwrap_or(0),
-        if phases_info.is_empty() {
-            "none loaded".to_string()
-        } else {
-            phases_info.join(", ")
-        }
-    );
-    drop(cache_guard);
-
-    // Call Bedrock via the conductor engine
+    // Use the conductor engine's chat() method for free-form text
     let engine = conductor::engine::ConductorEngine::new(config);
-    let events = vec![conductor::ConductorEvent::ChannelReply {
-        mission_id: "chat".to_string(),
-        reply_type: "user_message".to_string(),
-        message: message.clone(),
-    }];
+    let cache_guard = cache.lock().await;
 
-    // Use Haiku for fast chat responses
-    match engine
-        .decide(&events, &*cache.lock().await, conductor::types::ModelTier::Haiku)
-        .await
-    {
-        Ok((decision, _input_tok, _output_tok)) => {
-            // Extract the reason field as the chat response
-            let response = match &decision {
-                conductor::ConductorDecision::NoAction { reason } => reason.clone(),
-                conductor::ConductorDecision::PushNextPhase { reason, .. } => {
-                    format!("I'll push the next phase. {}", reason)
-                }
-                conductor::ConductorDecision::Escalate { reason, .. } => {
-                    format!("I need to escalate: {}", reason)
-                }
-                conductor::ConductorDecision::InjectContext { message, .. } => {
-                    format!("Injecting context: {}", message)
-                }
-                other => format!("{:?}", other),
-            };
-            Ok(response)
-        }
-        Err(e) => Ok(format!("Bedrock error: {}. Is AWS SSO logged in? (aws sso login --profile wds_dev)", e)),
+    match engine.chat(&message, &*cache_guard).await {
+        Ok(reply) => Ok(reply),
+        Err(e) => Err(format!("bedrock_error: {}", e)),
     }
 }
 

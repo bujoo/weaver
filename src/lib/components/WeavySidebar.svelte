@@ -273,220 +273,180 @@
 
   async function handleChat(lower: string, original: string): Promise<string> {
     setMood('thinking', 3000);
-
-    // Get Tauri invoke if available
     const invoke = isTauri() ? (await import('@tauri-apps/api/core')).invoke : null;
 
-    // ── Status / Overview ──
-    if (lower.includes('status') || lower === 'overview' || lower.includes('what\'s going on') || lower.includes('what is going on') || lower.includes('what is happening') || lower.includes('what\'s happening') || lower.includes('whats up') || lower.includes('sup') || lower.includes('sitrep')) {
-      try {
-        const mqtt = invoke ? await invoke<boolean>('get_mqtt_status') : false;
-        const state = invoke ? await invoke<{ plans: number; phases: number; todos: number }>('get_mission_state') : null;
-        const missionList = $missions;
-        const activeMissions = missionList.filter(m => m.status === 'executing' || m.status === 'ready');
-
-        let status = `MQTT: ${mqtt ? 'connected' : 'disconnected'}\n`;
-        status += `Missions: ${missionList.length} total, ${activeMissions.length} active\n`;
-        if (state) {
-          status += `Cache: ${state.plans} plans, ${state.phases} phases, ${state.todos} todos\n`;
-        }
-        if (activeMissions.length > 0) {
-          status += '\nActive:\n';
-          activeMissions.forEach(m => {
-            status += `  ${m.title} (${m.status}) -- ${m.phaseCount} phases\n`;
-          });
-        }
-        setMood('working');
-        return status;
-      } catch (e) {
-        return `Error getting status: ${e}`;
-      }
+    // ── Slash commands: instant local responses ──
+    if (original.startsWith('/')) {
+      return handleSlashCommand(lower.slice(1), original.slice(1), invoke);
     }
 
-    // ── List Missions ──
-    if (lower.includes('mission') || lower.includes('what are')) {
-      const missionList = $missions;
-      if (missionList.length === 0) {
-        return 'No missions loaded. Check MQTT connection or load a fixture with "load fixture".';
-      }
-      return missionList.map((m, i) =>
-        `${i + 1}. ${m.title}\n   ${m.missionId.slice(0, 8)}... | ${m.status} | ${m.phaseCount} phases | ${m.todoCount} todos`
-      ).join('\n\n');
-    }
-
-    // ── Sessions ──
-    if (lower.includes('session') || lower.includes('tmux') || lower.includes('claude code')) {
-      try {
-        const sessions = invoke ? await invoke<Array<{ name: string; created: string }>>('list_weaver_sessions') : [];
-        if (sessions.length === 0) {
-          return 'No active Claude Code sessions. Push a phase to start one, or run "start session".';
-        }
-        return `Active sessions:\n${sessions.map(s => `  ${s.name}`).join('\n')}\n\nAttach with: tmux attach -t ${sessions[0].name}\nType "watch" to see what Claude is doing.`;
-      } catch {
-        return 'Could not list sessions. tmux might not be running.';
-      }
-    }
-
-    // ── Watch / Read session ──
-    if (lower.includes('watch') || lower.includes('what is claude doing') || lower.includes('show session') || lower.includes('read session')) {
-      try {
-        const sessions = invoke ? await invoke<Array<{ name: string }>>('list_weaver_sessions') : [];
-        if (sessions.length === 0) return 'No active sessions to watch.';
-        const content = invoke ? await invoke<string>('read_weaver_session', { sessionName: sessions[0].name, lines: 30 }) : '';
-        const trimmed = content.trim().split('\n').filter((l: string) => l.trim()).slice(-15).join('\n');
-        setMood('working');
-        return `Session ${sessions[0].name}:\n\n${trimmed || '(empty -- Claude may be starting up)'}`;
-      } catch (e) {
-        return `Could not read session: ${e}`;
-      }
-    }
-
-    // ── Push Phase ──
-    if (lower.startsWith('push p') || lower.startsWith('start p') || lower.startsWith('execute p') || lower.startsWith('run p')) {
-      const phaseMatch = original.match(/p(\d+)/i);
-      if (phaseMatch) {
-        const phaseId = `P${phaseMatch[1]}`;
-        setMood('working');
-
-        // Try to find channel port and push
-        try {
-          const settings = invoke ? await invoke<{ workspaceMount: string }>('get_settings') : null;
-          if (!settings) return 'Cannot push -- settings not available.';
-
-          // Find the active mission's workspace
-          const missionList = $missions;
-          if (missionList.length === 0) return 'No missions loaded. Cannot push phase.';
-          const mid = missionList[0].missionId;
-          const midShort = mid.slice(0, 8);
-
-          // Read channel port via Tauri (or instruct user)
-          return `Pushing phase ${phaseId} for mission ${midShort}...\n\nRun in terminal:\ncurl -X POST http://127.0.0.1:$(cat ~/Workspace/.worktrees/${midShort}/weaver/.weaver/channel-port) -H "Content-Type: application/json" -d '{"type":"assignment","mission_id":"${mid}","phase_id":"${phaseId}","content":"Execute Phase ${phaseId}"}'`;
-        } catch (e) {
-          return `Failed to push: ${e}`;
-        }
-      }
-      return 'Specify a phase, e.g. "push P0" or "start P2".';
-    }
-
-    // ── Load Fixture ──
-    if (lower.includes('load fixture') || lower.includes('load test') || lower.includes('test mission')) {
-      try {
-        const result = invoke ? await invoke<{ missionId: string; title: string; phases: number; todos: number }>('load_fixture', { path: null }) : null;
-        if (result) {
-          setMood('happy', 5000);
-          xp += 20;
-          return `Loaded: ${result.title}\n${result.phases} phases, ${result.todos} todos\nMission ID: ${result.missionId.slice(0, 8)}...`;
-        }
-        return 'Fixture loaded (no details available).';
-      } catch (e) {
-        return `Failed to load fixture: ${e}`;
-      }
-    }
-
-    // ── MQTT ──
-    if (lower.includes('mqtt') || lower.includes('connect')) {
-      try {
-        const connected = invoke ? await invoke<boolean>('get_mqtt_status') : false;
-        return connected ? 'MQTT is connected and receiving messages.' : 'MQTT is disconnected. Check settings or restart Weaver.';
-      } catch {
-        return 'Cannot check MQTT status.';
-      }
-    }
-
-    // ── Workspace ──
-    if (lower.includes('workspace') || lower.includes('repos') || lower.includes('worktree')) {
-      try {
-        const ws = invoke ? await invoke<{ mountPath: string; repos: Array<{ name: string; branch: string; clean: boolean }> }>('get_workspace_status') : null;
-        if (!ws) return 'Cannot read workspace status.';
-        let out = `Mount: ${ws.mountPath}\nRepos:\n`;
-        ws.repos.forEach(r => {
-          out += `  ${r.name} (${r.branch}) ${r.clean ? '' : '-- dirty'}\n`;
-        });
-        return out;
-      } catch (e) {
-        return `Workspace error: ${e}`;
-      }
-    }
-
-    // ── Regenerate Context ──
-    if (lower.includes('regenerate') || lower.includes('refresh context') || lower.includes('update claude')) {
-      try {
-        const missionList = $missions;
-        if (missionList.length === 0) return 'No missions to regenerate context for.';
-        const mid = missionList[0].missionId;
-        const result = invoke ? await invoke<boolean>('regenerate_workspace_context', { missionId: mid }) : false;
-        setMood('happy', 3000);
-        return result ? `Regenerated CLAUDE.md + .weaver/ for mission ${mid.slice(0, 8)}.` : 'Nothing to regenerate (plan not cached).';
-      } catch (e) {
-        return `Regeneration failed: ${e}`;
-      }
-    }
-
-    // ── Help ──
-    if (lower.includes('help') || lower === '?') {
-      return `I can do:\n\n- "status" -- full system overview\n- "missions" -- list all missions\n- "sessions" -- active Claude Code sessions\n- "push P0" -- push a phase to Claude Code\n- "load fixture" -- load test mission\n- "mqtt" -- check MQTT connection\n- "workspace" -- list repos and worktrees\n- "regenerate" -- refresh CLAUDE.md context\n- "hello" -- say hi!\n\nOnce Bedrock conductor is wired, I'll make all these decisions autonomously.`;
-    }
-
-    // ── Greeting ──
-    if (lower.includes('hello') || lower.includes('hi ') || lower === 'hi' || lower.includes('hey')) {
-      setMood('happy', 3000);
-      const missionList = $missions;
-      if (missionList.length > 0) {
-        return `Hey! Currently tracking ${missionList.length} mission(s). The latest is "${missionList[0].title}". What do you need?`;
-      }
-      return 'Hey there! No missions loaded yet. Try "load fixture" to get started, or check "mqtt" status.';
-    }
-
-    // ── Continue / Send to Claude Code session ──
-    if (lower.startsWith('continue') || lower.startsWith('send ') || lower.startsWith('tell claude') || lower.startsWith('push ') || lower.startsWith('next phase')) {
-      const sessions = invoke ? await invoke<Array<{ name: string }>>('list_weaver_sessions').catch(() => []) : [];
-      if (sessions.length === 0) return 'No active Claude Code session. Start one first.';
-
-      // Determine the message to send
-      let msg: string;
-      if (lower.startsWith('continue') || lower.startsWith('next phase')) {
-        msg = 'Continue with the next phase. Read .weaver/specs/ for the todo specs. Follow the phase-workflow skill.';
-      } else if (lower.startsWith('push p')) {
-        const phaseMatch = original.match(/p(\d+)/i);
-        const phaseId = phaseMatch ? `P${phaseMatch[1]}` : 'P0';
-        msg = `Execute Phase ${phaseId}. Read .weaver/specs/ for each todo spec. Complete all todos then call weaver_phase_complete.`;
-      } else {
-        msg = original.replace(/^(send |tell claude )/i, '');
-      }
-
-      // Try channel first (reliable, bidirectional)
-      const port = await findChannelPort(invoke);
-      if (port) {
-        const sent = await sendToChannel(port, {
-          type: lower.startsWith('push') ? 'assignment' : 'message',
-          content: msg,
-          mission_id: $missions[0]?.missionId ?? '',
-        });
-        if (sent) {
-          setMood('working');
-          xp += 5;
-          return `Sent to Claude via channel (port ${port}):\n"${msg.slice(0, 80)}${msg.length > 80 ? '...' : ''}"`;
-        }
-      }
-
-      // Channel not available -- inform user
-      return `Channel not available (session may not have the weaver plugin loaded).\n\nManual option:\ntmux send-keys -t ${sessions[0].name} "${msg.slice(0, 60)}" Enter`;
-    }
-
-    // ── AI Response (via Bedrock if conductor enabled) ──
+    // ── AI-first: try Bedrock for everything ──
     if (invoke) {
       try {
         const aiReply = await invoke<string>('weavy_chat', { message: original });
-        if (aiReply && !aiReply.startsWith('Weavy conductor is not enabled') && !aiReply.startsWith('Bedrock error')) {
-          return aiReply;
+        setMood('happy', 3000);
+        xp += 1;
+        return aiReply;
+      } catch (e) {
+        const err = String(e);
+        if (err.includes('not_enabled')) {
+          // Conductor disabled -- fall through to local handlers
+        } else if (err.includes('bedrock_error')) {
+          // SSO not logged in or network issue -- fall through
         }
-      } catch {
-        // Bedrock not available, fall through
+        // Fall through to local keyword handlers
       }
     }
 
-    // ── Default ──
-    return `I'm not sure about that. Try:\n- "status" -- what's happening\n- "watch" -- see Claude Code output\n- "missions" -- list missions\n- "continue" -- push next phase\n- "help" -- all commands`;
+    // ── Offline fallback: keyword handlers ──
+    return handleOffline(lower, original, invoke);
+  }
+
+  async function handleSlashCommand(cmd: string, original: string, invoke: ((c: string, a?: Record<string, unknown>) => Promise<unknown>) | null): Promise<string> {
+    const lower = cmd.toLowerCase().trim();
+
+    if (lower === 'help' || lower === '?') {
+      return `Slash commands:\n/status -- system overview\n/watch -- see Claude Code output\n/continue -- push next phase\n/push P1 -- push specific phase\n/send <msg> -- send to Claude Code\n/missions -- list missions\n/sessions -- active sessions\n/workspace -- repos and worktrees\n/regenerate -- refresh CLAUDE.md\n\nAnything else: just type naturally and I'll answer with AI.`;
+    }
+    if (lower === 'status' || lower === 'sitrep') {
+      return handleOfflineStatus(invoke);
+    }
+    if (lower === 'watch') {
+      return handleOfflineWatch(invoke);
+    }
+    if (lower.startsWith('continue') || lower.startsWith('next')) {
+      return handleOfflineContinue(lower, original, invoke);
+    }
+    if (lower.startsWith('push') || lower.startsWith('send') || lower.startsWith('tell')) {
+      return handleOfflineContinue(lower, original, invoke);
+    }
+    if (lower === 'missions') {
+      return handleOfflineMissions(invoke);
+    }
+    if (lower === 'sessions') {
+      return handleOfflineSessions(invoke);
+    }
+    if (lower === 'workspace' || lower === 'repos') {
+      return handleOfflineWorkspace(invoke);
+    }
+    if (lower === 'regenerate') {
+      return handleOfflineRegenerate(invoke);
+    }
+    if (lower.startsWith('load')) {
+      return handleOfflineLoadFixture(invoke);
+    }
+    return `Unknown command: /${lower}. Type /help for available commands.`;
+  }
+
+  async function handleOffline(lower: string, original: string, invoke: ((c: string, a?: Record<string, unknown>) => Promise<unknown>) | null): Promise<string> {
+    // Status queries
+    if (lower.includes('status') || lower.includes('what') || lower.includes('happening') || lower.includes('going on') || lower.includes('sitrep') || lower.includes('overview')) {
+      return handleOfflineStatus(invoke);
+    }
+    if (lower.includes('mission') || lower.includes('list')) {
+      return handleOfflineMissions(invoke);
+    }
+    if (lower.includes('watch') || lower.includes('session') || lower.includes('tmux') || lower.includes('claude code')) {
+      return handleOfflineWatch(invoke);
+    }
+    if (lower.startsWith('continue') || lower.startsWith('push') || lower.startsWith('send') || lower.startsWith('next phase')) {
+      return handleOfflineContinue(lower, original, invoke);
+    }
+    if (lower.includes('hello') || lower.includes('hi') || lower === 'hey') {
+      setMood('happy', 3000);
+      return `Hey! I'm in offline mode (Bedrock not available). Type /help to see what I can do locally, or enable CONDUCTOR_ENABLED=1 with AWS SSO for full AI mode.`;
+    }
+    return `I'm in offline mode (no Bedrock). Use slash commands for local actions:\n/status, /watch, /continue, /missions, /help`;
+  }
+
+  async function handleOfflineStatus(invoke: ((c: string, a?: Record<string, unknown>) => Promise<unknown>) | null): Promise<string> {
+    try {
+      const mqtt = invoke ? await invoke<boolean>('get_mqtt_status') : false;
+      const state = invoke ? await invoke<{ plans: number; phases: number; todos: number }>('get_mission_state') : null;
+      const missionList = $missions;
+      const active = missionList.filter(m => m.status === 'executing' || m.status === 'ready');
+      let s = `MQTT: ${mqtt ? 'connected' : 'disconnected'}\nMissions: ${missionList.length} total, ${active.length} active\n`;
+      if (state) s += `Cache: ${state.plans} plans, ${state.phases} phases, ${state.todos} todos\n`;
+      active.forEach(m => { s += `\n  ${m.title} (${m.status}) -- ${m.phaseCount} phases`; });
+      setMood('working');
+      return s;
+    } catch (e) { return `Error: ${e}`; }
+  }
+
+  async function handleOfflineMissions(_invoke: ((c: string, a?: Record<string, unknown>) => Promise<unknown>) | null): Promise<string> {
+    const list = $missions;
+    if (list.length === 0) return 'No missions loaded. Check MQTT or use /load.';
+    return list.map((m, i) => `${i + 1}. ${m.title}\n   ${m.missionId.slice(0, 8)}... | ${m.status} | ${m.phaseCount} phases`).join('\n\n');
+  }
+
+  async function handleOfflineSessions(invoke: ((c: string, a?: Record<string, unknown>) => Promise<unknown>) | null): Promise<string> {
+    try {
+      const sessions = invoke ? await invoke<Array<{ name: string }>>('list_weaver_sessions') : [];
+      if (sessions.length === 0) return 'No active sessions.';
+      return `Sessions:\n${sessions.map(s => `  ${s.name}`).join('\n')}\n\nUse /watch to see output.`;
+    } catch { return 'Could not list sessions.'; }
+  }
+
+  async function handleOfflineWatch(invoke: ((c: string, a?: Record<string, unknown>) => Promise<unknown>) | null): Promise<string> {
+    try {
+      const sessions = invoke ? await invoke<Array<{ name: string }>>('list_weaver_sessions') : [];
+      if (sessions.length === 0) return 'No active sessions to watch.';
+      const content = invoke ? await invoke<string>('read_weaver_session', { sessionName: sessions[0].name, lines: 30 }) : '';
+      const trimmed = content.trim().split('\n').filter((l: string) => l.trim()).slice(-15).join('\n');
+      setMood('working');
+      return `${sessions[0].name}:\n\n${trimmed || '(empty)'}`;
+    } catch (e) { return `Error: ${e}`; }
+  }
+
+  async function handleOfflineContinue(lower: string, original: string, invoke: ((c: string, a?: Record<string, unknown>) => Promise<unknown>) | null): Promise<string> {
+    const sessions = invoke ? await invoke<Array<{ name: string }>>('list_weaver_sessions').catch(() => []) : [];
+    if (sessions.length === 0) return 'No active session.';
+
+    let msg: string;
+    if (lower.startsWith('continue') || lower.startsWith('next')) {
+      msg = 'Continue with the next phase. Read .weaver/specs/ for todo specs.';
+    } else if (lower.startsWith('push')) {
+      const m = original.match(/p(\d+)/i);
+      msg = `Execute Phase ${m ? `P${m[1]}` : 'P0'}. Read .weaver/specs/ for each todo spec.`;
+    } else {
+      msg = original.replace(/^(send |tell )/i, '');
+    }
+
+    const port = await findChannelPort(invoke);
+    if (port) {
+      const sent = await sendToChannel(port, { type: 'message', content: msg, mission_id: $missions[0]?.missionId ?? '' });
+      if (sent) { setMood('working'); xp += 5; return `Sent via channel: "${msg.slice(0, 80)}"`; }
+    }
+    return `Channel not available.\ntmux send-keys -t ${sessions[0].name} "${msg.slice(0, 60)}" Enter`;
+  }
+
+  async function handleOfflineWorkspace(invoke: ((c: string, a?: Record<string, unknown>) => Promise<unknown>) | null): Promise<string> {
+    try {
+      const ws = invoke ? await invoke<{ mountPath: string; repos: Array<{ name: string; branch: string; clean: boolean }> }>('get_workspace_status') : null;
+      if (!ws) return 'Cannot read workspace.';
+      let out = `Mount: ${ws.mountPath}\n`;
+      ws.repos.forEach(r => { out += `  ${r.name} (${r.branch})${r.clean ? '' : ' -- dirty'}\n`; });
+      return out;
+    } catch (e) { return `Error: ${e}`; }
+  }
+
+  async function handleOfflineRegenerate(invoke: ((c: string, a?: Record<string, unknown>) => Promise<unknown>) | null): Promise<string> {
+    const list = $missions;
+    if (list.length === 0) return 'No missions to regenerate.';
+    try {
+      const ok = invoke ? await invoke<boolean>('regenerate_workspace_context', { missionId: list[0].missionId }) : false;
+      setMood('happy', 3000);
+      return ok ? `Regenerated context for ${list[0].missionId.slice(0, 8)}.` : 'Nothing to regenerate.';
+    } catch (e) { return `Error: ${e}`; }
+  }
+
+  async function handleOfflineLoadFixture(invoke: ((c: string, a?: Record<string, unknown>) => Promise<unknown>) | null): Promise<string> {
+    try {
+      const r = invoke ? await invoke<{ missionId: string; title: string; phases: number; todos: number }>('load_fixture', { path: null }) : null;
+      if (r) { setMood('happy', 5000); xp += 20; return `Loaded: ${r.title} (${r.phases} phases, ${r.todos} todos)`; }
+      return 'Loaded.';
+    } catch (e) { return `Error: ${e}`; }
+  }
   }
 
   async function findChannelPort(invoke: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null): Promise<number | null> {

@@ -101,6 +101,87 @@ impl ConductorEngine {
         Ok((decision, input_tokens, output_tokens))
     }
 
+    /// Free-form chat: call Bedrock without tools, get a text response.
+    pub async fn chat(
+        &self,
+        message: &str,
+        state_cache: &MissionStateCache,
+    ) -> Result<String, String> {
+        let aws_config = aws_config::defaults(BehaviorVersion::latest())
+            .region(aws_config::Region::new(self.config.aws_region.clone()))
+            .profile_name(&self.config.aws_profile)
+            .load()
+            .await;
+        let client = Client::new(&aws_config);
+
+        let system_prompt = self.build_chat_prompt(state_cache);
+
+        let msg = Message::builder()
+            .role(ConversationRole::User)
+            .content(ContentBlock::Text(message.to_string()))
+            .build()
+            .map_err(|e| format!("Failed to build message: {}", e))?;
+
+        let response = client
+            .converse()
+            .model_id("us.anthropic.claude-haiku-4-5-20251001")
+            .system(SystemContentBlock::Text(system_prompt))
+            .messages(msg)
+            // No tool_config -- free-form text response
+            .send()
+            .await
+            .map_err(|e| format!("Bedrock Converse failed: {}", e))?;
+
+        // Extract text from response
+        let output = response.output().ok_or("No output")?;
+        let content = match output {
+            aws_sdk_bedrockruntime::types::ConverseOutput::Message(m) => m.content().to_vec(),
+            _ => return Err("Unexpected output type".to_string()),
+        };
+
+        for block in &content {
+            if let ContentBlock::Text(text) = block {
+                return Ok(text.clone());
+            }
+        }
+
+        Err("No text in response".to_string())
+    }
+
+    fn build_chat_prompt(&self, cache: &MissionStateCache) -> String {
+        let snapshot = cache.snapshot();
+        let plans = snapshot.get("plans").and_then(|v| v.as_u64()).unwrap_or(0);
+        let phases = snapshot.get("phases").and_then(|v| v.as_u64()).unwrap_or(0);
+        let todos = snapshot.get("todos").and_then(|v| v.as_u64()).unwrap_or(0);
+
+        let mut phase_details = String::new();
+        if let Some(plan_ids) = snapshot.get("plan_ids").and_then(|v| v.as_array()) {
+            for pid in plan_ids {
+                if let Some(mid) = pid.as_str() {
+                    for phase in cache.get_phases_for_mission(mid) {
+                        phase_details.push_str(&format!(
+                            "\n- {} ({}): status={}, {}/{} done",
+                            phase.name, phase.phase_id, phase.status,
+                            phase.completed_count, phase.todo_count
+                        ));
+                    }
+                }
+            }
+        }
+
+        format!(
+            "You are Weavy, a friendly AI dev sidekick inside ContextHub Weaver.\n\
+             Answer concisely and helpfully. You have full awareness of the system state.\n\n\
+             Current state: {} plans, {} phases, {} todos cached.\n\
+             Phases:{}\n\n\
+             The user can also use slash commands: /status, /watch, /continue, /push P1, /missions, /workspace, /help\n\
+             If the user asks to do something actionable (push a phase, continue, etc.), suggest the appropriate slash command.\n\
+             Keep responses short and direct.",
+            plans, phases, todos,
+            if phase_details.is_empty() { " none loaded".to_string() } else { phase_details }
+        )
+    }
+
     fn build_system_prompt(&self, cache: &MissionStateCache) -> String {
         let mut prompt = String::from(
             "You are Weavy, the AI conductor for ContextHub Weaver. \
