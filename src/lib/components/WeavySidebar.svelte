@@ -278,7 +278,7 @@
     const invoke = isTauri() ? (await import('@tauri-apps/api/core')).invoke : null;
 
     // ── Status / Overview ──
-    if (lower.includes('status') || lower === 'overview' || lower.includes('what\'s going on')) {
+    if (lower.includes('status') || lower === 'overview' || lower.includes('what\'s going on') || lower.includes('what is going on') || lower.includes('what is happening') || lower.includes('what\'s happening') || lower.includes('whats up') || lower.includes('sup') || lower.includes('sitrep')) {
       try {
         const mqtt = invoke ? await invoke<boolean>('get_mqtt_status') : false;
         const state = invoke ? await invoke<{ plans: number; phases: number; todos: number }>('get_mission_state') : null;
@@ -477,7 +477,7 @@
     if (invoke) {
       try {
         const aiReply = await invoke<string>('weavy_chat', { message: original });
-        if (aiReply && !aiReply.startsWith('Weavy conductor is not enabled')) {
+        if (aiReply && !aiReply.startsWith('Weavy conductor is not enabled') && !aiReply.startsWith('Bedrock error')) {
           return aiReply;
         }
       } catch {
@@ -486,7 +486,7 @@
     }
 
     // ── Default ──
-    return `I don't have a specific handler for that yet. Try "help" to see what I can do, or enable CONDUCTOR_ENABLED=1 for AI responses.`;
+    return `I'm not sure about that. Try:\n- "status" -- what's happening\n- "watch" -- see Claude Code output\n- "missions" -- list missions\n- "continue" -- push next phase\n- "help" -- all commands`;
   }
 
   async function findChannelPort(invoke: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null): Promise<number | null> {
