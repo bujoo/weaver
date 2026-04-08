@@ -602,6 +602,7 @@ async fn kill_mission(
     let http_client = reqwest::Client::new();
     let _ = http_client
         .post(&url)
+        .header("X-Workspace", &saved.workspace)
         .json(&serde_json::json!({
             "action": "kill",
             "reason": "Killed from Weaver UI",
@@ -689,6 +690,7 @@ async fn start_mission_execution(
     let client = reqwest::Client::new();
     let resp = client
         .put(&url)
+        .header("X-Workspace", &saved.workspace)
         .json(&serde_json::json!({ "status": "executing" }))
         .send()
         .await
