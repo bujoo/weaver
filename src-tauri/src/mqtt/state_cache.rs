@@ -63,6 +63,15 @@ impl MissionStateCache {
         }
     }
 
+    /// Mark a phase as completed.
+    pub fn mark_phase_completed(&mut self, mission_id: &str, phase_id: &str) {
+        let key = format!("{}:{}", mission_id, phase_id);
+        if let Some(phase) = self.phases.get_mut(&key) {
+            phase.status = "completed".to_string();
+            phase.completed_count = phase.todo_count;
+        }
+    }
+
     /// Update a phase's completed count.
     pub fn increment_phase_completed(&mut self, mission_id: &str, phase_id: &str) {
         let key = format!("{}:{}", mission_id, phase_id);
@@ -73,6 +82,17 @@ impl MissionStateCache {
                 phase.status = "completed".to_string();
             }
         }
+    }
+
+    /// Resolve a short or full mission ID to the full ID in the cache.
+    pub fn resolve_mission_id(&self, short_or_full: &str) -> Option<String> {
+        if self.plans.contains_key(short_or_full) {
+            return Some(short_or_full.to_string());
+        }
+        self.plans
+            .keys()
+            .find(|k| k.starts_with(short_or_full))
+            .cloned()
     }
 
     pub fn get_todo(&self, todo_id: &str) -> Option<&TodoStateMessage> {

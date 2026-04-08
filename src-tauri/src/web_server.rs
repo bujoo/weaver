@@ -275,11 +275,25 @@ async fn channel_todo_complete(
         let cache: tauri::State<'_, std::sync::Arc<tokio::sync::Mutex<crate::mqtt::state_cache::MissionStateCache>>> = app.state();
         {
             let mut c = cache.lock().await;
+            // Resolve short mission ID (Claude sends "04fdbaf8", cache has "04fdbaf8-1598-...")
+            let full_mid = c.resolve_mission_id(mission_id)
+                .unwrap_or_else(|| mission_id.to_string());
             c.update_todo_status(todo_id, "completed");
+            // Try to find the phase_id from the todo if not provided
             let phase_id = payload.get("phase_id").and_then(|v| v.as_str()).unwrap_or("");
-            if !phase_id.is_empty() {
-                c.increment_phase_completed(mission_id, phase_id);
+            let resolved_phase = if phase_id.is_empty() {
+                // Derive phase from todo ID (P1.3 -> P1)
+                todo_id.split('.').next().unwrap_or("").to_string()
+            } else {
+                phase_id.to_string()
+            };
+            if !resolved_phase.is_empty() {
+                c.increment_phase_completed(&full_mid, &resolved_phase);
             }
+            crate::debug_log::log_info(&format!(
+                "[Channel] Cache updated: todo={} phase={} mission={}",
+                todo_id, resolved_phase, &full_mid[..8.min(full_mid.len())]
+            ));
         }
 
         let _ = app.emit("claude-activity", serde_json::json!({
@@ -331,10 +345,34 @@ async fn channel_phase_complete(
     ));
 
     if let Some(app) = &state.app_handle {
+        // Update phase status in cache
+        use tauri::Manager;
+        let cache: tauri::State<'_, std::sync::Arc<tokio::sync::Mutex<crate::mqtt::state_cache::MissionStateCache>>> = app.state();
+        {
+            let mut c = cache.lock().await;
+            let full_mid = c.resolve_mission_id(mission_id)
+                .unwrap_or_else(|| mission_id.to_string());
+            let key = format!("{}:{}", full_mid, phase_id);
+            // Mark all todos in this phase as completed
+            let todos = c.get_todos_for_phase(&full_mid, phase_id)
+                .iter()
+                .map(|t| t.todo_id.clone())
+                .collect::<Vec<_>>();
+            for tid in &todos {
+                c.update_todo_status(tid, "completed");
+            }
+            // Mark the phase itself
+            c.mark_phase_completed(&full_mid, phase_id);
+        }
+
         let _ = app.emit("claude-activity", serde_json::json!({
             "source": "claude_code",
             "event_type": "phase_completed",
             "message": format!("Phase {} completed: {}", phase_id, &summary[..100.min(summary.len())]),
+            "mission_id": mission_id,
+        }));
+
+        let _ = app.emit("mission-phases-updated", serde_json::json!({
             "mission_id": mission_id,
         }));
     }
