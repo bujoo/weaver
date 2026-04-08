@@ -270,12 +270,29 @@ async fn channel_todo_complete(
         &summary[..120.min(summary.len())],
     ));
     if let Some(app) = &state.app_handle {
+        // Update the state cache so the dashboard reflects the change
+        use tauri::Manager;
+        let cache: tauri::State<'_, std::sync::Arc<tokio::sync::Mutex<crate::mqtt::state_cache::MissionStateCache>>> = app.state();
+        {
+            let mut c = cache.lock().await;
+            c.update_todo_status(todo_id, "completed");
+            let phase_id = payload.get("phase_id").and_then(|v| v.as_str()).unwrap_or("");
+            if !phase_id.is_empty() {
+                c.increment_phase_completed(mission_id, phase_id);
+            }
+        }
+
         let _ = app.emit("claude-activity", serde_json::json!({
             "source": "claude_code",
             "event_type": "todo_completed",
             "message": format!("Todo {} completed: {}", todo_id, &summary[..80.min(summary.len())]),
             "mission_id": mission_id,
             "todo_id": todo_id,
+        }));
+
+        // Emit phase update so the dashboard refreshes
+        let _ = app.emit("mission-phases-updated", serde_json::json!({
+            "mission_id": mission_id,
         }));
     }
 

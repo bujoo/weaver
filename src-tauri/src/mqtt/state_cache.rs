@@ -53,6 +53,28 @@ impl MissionStateCache {
         self.phases.get(&key)
     }
 
+    /// Update a todo's status (e.g., when Claude Code completes it via channel).
+    pub fn update_todo_status(&mut self, todo_id: &str, status: &str) -> bool {
+        if let Some(todo) = self.todos.get_mut(todo_id) {
+            todo.status = status.to_string();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Update a phase's completed count.
+    pub fn increment_phase_completed(&mut self, mission_id: &str, phase_id: &str) {
+        let key = format!("{}:{}", mission_id, phase_id);
+        if let Some(phase) = self.phases.get_mut(&key) {
+            phase.completed_count += 1;
+            // Auto-set phase status to completed when all done
+            if phase.completed_count >= phase.todo_count && phase.todo_count > 0 {
+                phase.status = "completed".to_string();
+            }
+        }
+    }
+
     pub fn get_todo(&self, todo_id: &str) -> Option<&TodoStateMessage> {
         self.todos.get(todo_id)
     }
