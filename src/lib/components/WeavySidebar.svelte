@@ -1,6 +1,91 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { isTauri } from '$lib/ws';
+
+  // ── Robot Poses ────────────────────────────────────────────────────
+
+  interface RobotPose {
+    left: string;
+    eyes: string;
+    right: string;
+  }
+
+  type Mood = 'idle' | 'working' | 'happy' | 'thinking' | 'alert' | 'flexing';
+
+  const moodPoses: Record<Mood, RobotPose[]> = {
+    idle: [
+      { left: '', eyes: '[-_-]', right: '' },
+      { left: '', eyes: '[-_-]', right: 'z' },
+      { left: '', eyes: '[-_-]', right: 'zZ' },
+      { left: '', eyes: '[-_-]', right: 'zZz' },
+      { left: '', eyes: '[~_~]', right: '' },
+      { left: '\\', eyes: '[-_-]', right: '/' },
+      { left: '\u00AF\\_', eyes: '[-_-]', right: '_/\u00AF' },
+    ],
+    working: [
+      { left: '', eyes: '[*_*]', right: '/' },
+      { left: '\\', eyes: '[*_*]', right: '' },
+      { left: '', eyes: '[\u2022_\u2022]', right: '/' },
+      { left: '\\', eyes: '[\u2022_\u2022]', right: '/' },
+      { left: '', eyes: '[\u2022_-]', right: '' },
+      { left: '', eyes: '[-_\u2022]', right: '' },
+      { left: '\\', eyes: '[\u2022_\u2022]', right: '' },
+    ],
+    happy: [
+      { left: '\\', eyes: '[^_^]', right: '/' },
+      { left: '', eyes: '[^_^]', right: '' },
+      { left: '\\', eyes: '[*_*]', right: '/' },
+      { left: '', eyes: '[\u2022_\u2022]', right: '/' },
+    ],
+    thinking: [
+      { left: '', eyes: '[o_o]', right: '' },
+      { left: '\u00AF\\_', eyes: '[\u2022_\u2022]', right: '_/\u00AF' },
+      { left: '', eyes: '[\u2022_\u2022]', right: '' },
+      { left: '', eyes: '[-_\u2022]', right: '' },
+      { left: '', eyes: '[\u2022_-]', right: '...' },
+    ],
+    alert: [
+      { left: '\\', eyes: '[!_!]', right: '/' },
+      { left: '\\', eyes: '[o_o]', right: '/' },
+      { left: '', eyes: '[>_<]', right: '' },
+      { left: '\u1D66', eyes: '[!_!]', right: '\u1D64' },
+    ],
+    flexing: [
+      { left: '\u1D66', eyes: '[^_^]', right: '\u1D64' },
+      { left: '\u1D66', eyes: '[*_*]', right: '\u1D64' },
+      { left: '\\', eyes: '[^_^]', right: '/' },
+      { left: '\u1D66', eyes: '[\u2022_\u2022]', right: '\u1D64' },
+    ],
+  };
+
+  // ── Level System ───────────────────────────────────────────────────
+
+  const levels = [
+    { name: 'Intern', xp: 0 },
+    { name: 'Junior', xp: 100 },
+    { name: 'Mid', xp: 300 },
+    { name: 'Senior', xp: 600 },
+    { name: 'Architect', xp: 1000 },
+    { name: 'CTO', xp: 2000 },
+  ];
+
+  function getLevel(xp: number): { level: number; name: string; nextXp: number; percent: number } {
+    let lvl = 0;
+    for (let i = levels.length - 1; i >= 0; i--) {
+      if (xp >= levels[i].xp) { lvl = i; break; }
+    }
+    const next = lvl < levels.length - 1 ? levels[lvl + 1].xp : levels[lvl].xp;
+    const prev = levels[lvl].xp;
+    const range = next - prev || 1;
+    return {
+      level: lvl + 1,
+      name: levels[lvl].name,
+      nextXp: next,
+      percent: Math.min(100, ((xp - prev) / range) * 100),
+    };
+  }
+
+  // ── State ──────────────────────────────────────────────────────────
 
   interface WeavyMessage {
     id: string;
@@ -16,134 +101,183 @@
   let isExpanded = $state(true);
   let messagesEnd: HTMLElement | undefined;
 
+  let mood = $state<Mood>('idle');
+  let currentPose = $state<RobotPose>({ left: '', eyes: '[-_-]', right: '' });
+  let xp = $state(0);
+  let levelInfo = $derived(getLevel(xp));
+
+  let poseInterval: ReturnType<typeof setInterval>;
+  let moodTimeout: ReturnType<typeof setTimeout>;
+  let lastActivity = $state(Date.now());
+
+  function randomPose(m: Mood): RobotPose {
+    const poses = moodPoses[m];
+    return poses[Math.floor(Math.random() * poses.length)];
+  }
+
+  function setMood(m: Mood, durationMs?: number) {
+    mood = m;
+    currentPose = randomPose(m);
+    lastActivity = Date.now();
+    if (moodTimeout) clearTimeout(moodTimeout);
+    if (durationMs) {
+      moodTimeout = setTimeout(() => {
+        mood = 'idle';
+        currentPose = randomPose('idle');
+      }, durationMs);
+    }
+  }
+
   function scrollToBottom() {
     if (messagesEnd) {
       messagesEnd.scrollIntoView({ behavior: 'smooth' });
     }
   }
 
+  // ── Lifecycle ──────────────────────────────────────────────────────
+
   onMount(async () => {
-    // Welcome message
+    // Rotate poses every 3s
+    poseInterval = setInterval(() => {
+      // Auto-idle after 30s of no events
+      if (Date.now() - lastActivity > 30000 && mood !== 'alert') {
+        mood = 'idle';
+      }
+      currentPose = randomPose(mood);
+    }, 3000);
+
+    // Welcome
     messages.push({
       id: 'welcome',
       timestamp: Date.now(),
       role: 'weavy',
-      content: 'Hey! I\'m Weavy, your AI dev sidekick. I watch over your Claude Code sessions and make decisions about phase transitions, error recovery, and context injection. Ask me anything or tell me what to do.',
+      content: 'Hey! I\'m Weavy, your AI dev sidekick. I watch over your Claude Code sessions and keep things moving.',
     });
 
     if (isTauri()) {
       const { listen } = await import('@tauri-apps/api/event');
 
-      // Listen for conductor decisions
+      // Conductor decisions
       listen<{ model_used?: string; decision?: { action?: string; reason?: string; phase_id?: string; mission_id?: string }; input_tokens?: number; output_tokens?: number }>('conductor-decision', (event) => {
         const p = event.payload;
         const d = p.decision;
         const action = d?.action ?? '?';
         const reason = d?.reason ?? '';
-        messages.push({
+        setMood('thinking', 3000);
+        messages = [...messages, {
           id: `dec-${Date.now()}`,
           timestamp: Date.now(),
           role: 'weavy',
           content: reason,
           decision: action,
           model: p.model_used?.split('.').pop() ?? '?',
-        });
-        messages = [...messages];
+        }];
         scrollToBottom();
       });
 
-      // Listen for conductor actions (executed decisions)
+      // Conductor actions
       listen<{ action?: string; mission_id?: string; phase_id?: string; reason?: string }>('conductor-action', (event) => {
         const p = event.payload;
-        messages.push({
+        setMood('working');
+        messages = [...messages, {
           id: `act-${Date.now()}`,
           timestamp: Date.now(),
           role: 'system',
           content: `Executed: ${p.action} ${p.phase_id ?? ''} -- ${p.reason ?? ''}`,
-        });
-        messages = [...messages];
+        }];
         scrollToBottom();
       });
 
-      // Listen for escalations
+      // Escalations
       listen<{ mission_id?: string; reason?: string }>('conductor-escalation', (event) => {
-        messages.push({
+        setMood('alert');
+        messages = [...messages, {
           id: `esc-${Date.now()}`,
           timestamp: Date.now(),
           role: 'weavy',
           content: `I need your help: ${event.payload.reason ?? 'Unknown issue'}`,
-        });
-        messages = [...messages];
+        }];
         scrollToBottom();
       });
 
-      // Listen for claude activity highlights
+      // Claude activity
       listen<{ event_type?: string; message?: string; todo_id?: string }>('claude-activity', (event) => {
         const p = event.payload;
-        if (p.event_type === 'todo_completed' || p.event_type === 'channel_reply') {
-          messages.push({
+        if (p.event_type === 'todo_completed') {
+          setMood('happy', 5000);
+          xp += 10;
+          messages = [...messages, {
+            id: `cc-${Date.now()}`,
+            timestamp: Date.now(),
+            role: 'system',
+            content: p.message ?? 'Todo completed',
+          }];
+          scrollToBottom();
+        } else if (p.event_type === 'channel_reply') {
+          messages = [...messages, {
             id: `cc-${Date.now()}`,
             timestamp: Date.now(),
             role: 'system',
             content: p.message ?? 'Claude Code update',
-          });
-          messages = [...messages];
+          }];
           scrollToBottom();
+        } else if (p.event_type === 'tool_use') {
+          setMood('working');
         }
+      });
+
+      // Phase complete (from MQTT events)
+      listen<{ mission_id?: string }>('mission-phases-updated', () => {
+        setMood('flexing', 8000);
+        xp += 50;
       });
     }
   });
+
+  onDestroy(() => {
+    clearInterval(poseInterval);
+    if (moodTimeout) clearTimeout(moodTimeout);
+  });
+
+  // ── Chat ───────────────────────────────────────────────────────────
 
   async function sendMessage() {
     if (!input.trim()) return;
     const text = input.trim();
     input = '';
 
-    messages.push({
+    messages = [...messages, {
       id: `user-${Date.now()}`,
       timestamp: Date.now(),
       role: 'user',
       content: text,
-    });
-    messages = [...messages];
+    }];
     scrollToBottom();
+    setMood('thinking', 3000);
 
-    // Handle simple commands
     const lower = text.toLowerCase();
     if (lower.startsWith('push p') || lower.startsWith('start p')) {
       const phaseMatch = text.match(/p(\d+)/i);
       if (phaseMatch) {
         const phaseId = `P${phaseMatch[1]}`;
-        messages.push({
+        messages = [...messages, {
           id: `weavy-${Date.now()}`,
           timestamp: Date.now(),
           role: 'weavy',
-          content: `Got it. Pushing phase ${phaseId} to the active session...`,
-        });
-        messages = [...messages];
-
-        // TODO: call Tauri command to push phase via channel
-        // For now, show what would happen
-        messages.push({
-          id: `sys-${Date.now()}`,
-          timestamp: Date.now(),
-          role: 'system',
-          content: `Phase ${phaseId} push requested (conductor wiring pending)`,
-        });
-        messages = [...messages];
+          content: `Got it! Pushing phase ${phaseId} to the active session...`,
+        }];
+        setMood('working');
         scrollToBottom();
         return;
       }
     }
 
-    // Default: acknowledge and explain
-    messages.push({
+    messages = [...messages, {
       id: `weavy-${Date.now()}`,
       timestamp: Date.now(),
       role: 'weavy',
       content: `I'll handle that once the conductor is fully wired. For now, I'm watching Claude Code sessions and logging decisions.`,
-    });
-    messages = [...messages];
+    }];
     scrollToBottom();
   }
 
@@ -154,15 +288,24 @@
 
 <aside class="weavy-sidebar" class:collapsed={!isExpanded}>
   <button class="toggle-btn" onclick={() => (isExpanded = !isExpanded)} type="button">
-    {isExpanded ? '>' : '<'}
+    {isExpanded ? '\u203A' : '\u2039'}
   </button>
 
   {#if isExpanded}
-    <div class="sidebar-header">
-      <span class="weavy-name">WEAVY</span>
-      <span class="weavy-status">AI Sidekick</span>
+    <!-- Robot Avatar -->
+    <div class="weavy-avatar">
+      <div class="robot-pose" class:alert={mood === 'alert'} class:happy={mood === 'happy' || mood === 'flexing'}>
+        <span class="arm-left">{currentPose.left}</span><span class="eyes">{currentPose.eyes}</span><span class="arm-right">{currentPose.right}</span>
+      </div>
+      <div class="xp-bar-container">
+        <div class="xp-bar">
+          <div class="xp-fill" style="width: {levelInfo.percent}%"></div>
+        </div>
+      </div>
+      <span class="level-label">Lv.{levelInfo.level} {levelInfo.name} -- {xp} XP</span>
     </div>
 
+    <!-- Messages -->
     <div class="messages-container">
       {#each messages as msg (msg.id)}
         <div class="message" class:weavy={msg.role === 'weavy'} class:user={msg.role === 'user'} class:system={msg.role === 'system'}>
@@ -181,6 +324,7 @@
       <div bind:this={messagesEnd}></div>
     </div>
 
+    <!-- Input -->
     <form class="input-area" onsubmit={(e) => { e.preventDefault(); sendMessage(); }}>
       <input
         type="text"
@@ -220,7 +364,7 @@
     border: 1px solid var(--border-muted, rgba(255, 255, 255, 0.06));
     border-right: none;
     color: var(--text-muted);
-    font-size: 10px;
+    font-size: 14px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -233,29 +377,78 @@
     background: rgba(255, 255, 255, 0.04);
   }
 
-  .sidebar-header {
-    padding: 12px 14px 8px;
+  /* Robot Avatar */
+  .weavy-avatar {
+    text-align: center;
+    padding: 16px 8px 12px;
     border-bottom: 1px solid var(--border-muted, rgba(255, 255, 255, 0.06));
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
   }
 
-  .weavy-name {
-    font-family: var(--font-pixel, monospace);
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
+  .robot-pose {
+    font-family: var(--font-mono, monospace);
+    font-size: 22px;
     color: #a78bfa;
+    letter-spacing: 0;
+    line-height: 1;
+    transition: color 0.3s;
+    white-space: nowrap;
+    user-select: none;
   }
 
-  .weavy-status {
+  .robot-pose.happy {
+    color: #4ade80;
+  }
+
+  .robot-pose.alert {
+    color: #f87171;
+    animation: pulse 1s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .arm-left, .arm-right {
+    font-size: 18px;
+    vertical-align: middle;
+  }
+
+  .eyes {
+    vertical-align: middle;
+  }
+
+  .xp-bar-container {
+    display: flex;
+    justify-content: center;
+    margin: 10px 0 4px;
+  }
+
+  .xp-bar {
+    width: 75%;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .xp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #a78bfa, #c4b5fd);
+    transition: width 0.5s ease;
+    border-radius: 2px;
+  }
+
+  .level-label {
+    display: block;
     font-family: var(--font-mono, monospace);
     font-size: 9px;
     color: var(--text-muted);
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
+    margin-top: 2px;
   }
 
+  /* Messages */
   .messages-container {
     flex: 1;
     overflow-y: auto;
@@ -327,6 +520,7 @@
     color: #a78bfa;
   }
 
+  /* Input */
   .input-area {
     padding: 8px;
     border-top: 1px solid var(--border-muted, rgba(255, 255, 255, 0.06));
