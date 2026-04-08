@@ -77,15 +77,31 @@ async fn handle_control(
 
     match ctrl.action.as_str() {
         "kill" | "skip" => {
-            // Signal abort for the matching phase
-            if let (Some(mid), Some(pid)) = (&ctrl.mission_id, &ctrl.phase_id) {
-                let key = format!("{}:{}", mid, pid);
+            if let Some(mid) = &ctrl.mission_id {
                 let signals = abort_signals.lock().await;
-                if let Some(tx) = signals.get(&key) {
-                    let _ = tx.send(true);
+                if let Some(pid) = &ctrl.phase_id {
+                    // Phase-specific abort
+                    let key = format!("{}:{}", mid, pid);
+                    if let Some(tx) = signals.get(&key) {
+                        let _ = tx.send(true);
+                        crate::debug_log::log_info(&format!(
+                            "[Control] Abort signal sent for {}",
+                            key
+                        ));
+                    }
+                } else {
+                    // Mission-level kill: abort ALL phases for this mission
+                    let prefix = format!("{}:", mid);
+                    let mut count = 0;
+                    for (key, tx) in signals.iter() {
+                        if key.starts_with(&prefix) {
+                            let _ = tx.send(true);
+                            count += 1;
+                        }
+                    }
                     crate::debug_log::log_info(&format!(
-                        "[Control] Abort signal sent for {}",
-                        key
+                        "[Control] Mission-level {} for {}: aborted {} phases",
+                        ctrl.action, mid, count
                     ));
                 }
             }

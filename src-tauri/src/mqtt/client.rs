@@ -165,7 +165,7 @@ async fn subscribe_topics(client: &AsyncClient, config: &MqttConfig) -> Result<(
     let iid = &config.instance_id;
 
     let topics = vec![
-        format!("weaver/{}/assign/pool", ws),
+        format!("$share/pool/weaver/{}/assign/pool", ws),
         format!("weaver/{}/assign/{}", ws, iid),
         format!("weaver/{}/control/{}", ws, iid),
         format!("weaver/{}/control/all", ws),
