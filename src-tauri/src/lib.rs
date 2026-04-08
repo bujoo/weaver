@@ -518,9 +518,15 @@ async fn get_mission_phases(
         }
     }
 
-    // Sort by order and return
+    // Sort by phase_id numerically (P0=0, P1=1, P10=10)
     let mut result: Vec<serde_json::Value> = phase_map.into_values().collect();
-    result.sort_by_key(|p| p.get("order").and_then(|v| v.as_u64()).unwrap_or(999));
+    result.sort_by_key(|p| {
+        let pid = p.get("phase_id").and_then(|v| v.as_str()).unwrap_or("P999");
+        // Parse number from "P0", "P1", "P10" etc.
+        pid.trim_start_matches('P')
+            .parse::<u64>()
+            .unwrap_or(999)
+    });
 
     Ok(serde_json::to_value(&result).unwrap_or_default())
 }

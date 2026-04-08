@@ -67,13 +67,20 @@
 	// Use real todo data from state cache, fall back to placeholder if empty
 	let todos = $derived(() => {
 		if (phase.todos && phase.todos.length > 0) {
-			return phase.todos.map((t) => ({
-				id: t.todo_id,
-				description: t.description,
-				status: t.status === 'completed' || t.status === 'done' ? 'done'
-					: t.status === 'executing' || t.status === 'in_progress' || t.status === 'running' ? 'working'
-					: 'queued',
-			}));
+			return phase.todos
+				.map((t) => ({
+					id: t.todo_id,
+					description: t.description,
+					status: t.status === 'completed' || t.status === 'done' ? 'done'
+						: t.status === 'executing' || t.status === 'in_progress' || t.status === 'running' ? 'working'
+						: 'queued',
+				}))
+				.sort((a, b) => {
+					// Sort by numeric part of ID: P1.1 < P1.2 < P1.10
+					const numA = parseFloat(a.id.replace(/^P/, '')) || 0;
+					const numB = parseFloat(b.id.replace(/^P/, '')) || 0;
+					return numA - numB;
+				});
 		}
 		// Fallback: generate placeholders from todoCount
 		return Array.from({ length: phase.todoCount }, (_, i) => ({
@@ -109,6 +116,7 @@
 			>
 				<polyline points="9 18 15 12 9 6" />
 			</svg>
+			<span class="phase-id-badge">{phase.phaseId}</span>
 			<span class="phase-name">{phase.phaseName}</span>
 		</div>
 		<div class="phase-meta">
@@ -209,6 +217,18 @@
 
 	.chevron.expanded {
 		transform: rotate(90deg);
+	}
+
+	.phase-id-badge {
+		font-family: var(--font-mono);
+		font-size: 11px;
+		font-weight: 700;
+		color: #a78bfa;
+		background: rgba(167, 139, 250, 0.1);
+		padding: 1px 6px;
+		border-radius: 2px;
+		letter-spacing: 0.02em;
+		flex-shrink: 0;
 	}
 
 	.phase-name {

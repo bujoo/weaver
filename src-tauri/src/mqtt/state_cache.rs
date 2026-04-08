@@ -29,6 +29,16 @@ impl MissionStateCache {
 
     pub fn store_phase(&mut self, msg: PhaseStateMessage) {
         let key = format!("{}:{}", msg.mission_id, msg.phase_id);
+        // Never downgrade status: completed > executing > pending
+        if let Some(existing) = self.phases.get(&key) {
+            if existing.status == "completed" && msg.status != "completed" {
+                crate::debug_log::log_info(&format!(
+                    "[StateCache] Skipping phase {} status downgrade: {} -> {}",
+                    key, existing.status, msg.status
+                ));
+                return;
+            }
+        }
         crate::debug_log::log_info(&format!(
             "[StateCache] Stored phase: {} ({}) status={}",
             msg.name, key, msg.status
@@ -37,9 +47,19 @@ impl MissionStateCache {
     }
 
     pub fn store_todo(&mut self, msg: TodoStateMessage) {
+        // Never downgrade status: completed > executing > pending
+        if let Some(existing) = self.todos.get(&msg.todo_id) {
+            if existing.status == "completed" && msg.status != "completed" {
+                crate::debug_log::log_info(&format!(
+                    "[StateCache] Skipping todo {} status downgrade: {} -> {}",
+                    msg.todo_id, existing.status, msg.status
+                ));
+                return;
+            }
+        }
         crate::debug_log::log_info(&format!(
-            "[StateCache] Stored todo: {} role={} has_spec={}",
-            msg.todo_id, msg.role, msg.spec.is_some()
+            "[StateCache] Stored todo: {} role={} status={} has_spec={}",
+            msg.todo_id, msg.role, msg.status, msg.spec.is_some()
         ));
         self.todos.insert(msg.todo_id.clone(), msg);
     }
