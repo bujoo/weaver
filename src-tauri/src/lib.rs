@@ -439,45 +439,24 @@ async fn get_mission_phases(
 ) -> Result<serde_json::Value, String> {
     let guard = cache.lock().await;
 
-    // Build phase map from individual PhaseState messages (have latest status)
-    let state_phases = guard.get_phases_for_mission(&mission_id);
     let mut phase_map: std::collections::HashMap<String, serde_json::Value> = std::collections::HashMap::new();
 
-    for p in &state_phases {
-        let todos = guard.get_todos_for_phase(&mission_id, &p.phase_id);
-        let todo_list: Vec<serde_json::Value> = todos.iter().map(|t| {
-            serde_json::json!({
-                "todo_id": t.todo_id,
-                "description": t.description,
-                "status": t.status,
-                "role": t.role,
-            })
-        }).collect();
-        phase_map.insert(p.phase_id.clone(), serde_json::json!({
-            "phase_id": p.phase_id,
-            "name": p.name,
-            "order": p.order,
-            "status": p.status,
-            "todo_count": if todo_list.is_empty() { p.todo_count as usize } else { todo_list.len() },
-            "completed_count": p.completed_count,
-            "todos": todo_list,
-        }));
-    }
-
-    // Merge with plan JSON (has ALL phases including those not yet published individually)
+    // Plan is the authoritative source for the phase list.
+    // State cache (from retained MQTT messages) only enriches status/completion.
     if let Some(plan) = guard.get_plan(&mission_id) {
         for (i, p) in plan.phases.iter().enumerate() {
             let phase_id = p.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
             if phase_id.is_empty() { continue; }
 
-            // Skip if we already have this phase from individual state messages
-            if phase_map.contains_key(&phase_id) { continue; }
+            let plan_name = p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let plan_order = p.get("order").and_then(|v| v.as_u64()).unwrap_or(i as u64);
 
-            // Get todos: first try plan JSON, then fall back to state cache
+            // Get todos: plan JSON first, then state cache
             let plan_todos = p.get("todos").and_then(|v| v.as_array()).cloned().unwrap_or_default();
             let todo_list: Vec<serde_json::Value> = if !plan_todos.is_empty() {
                 plan_todos.iter().map(|t| {
                     let tid = t.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                    // Prefer cached todo (has latest status from retained messages)
                     if let Some(cached) = guard.get_todo(tid) {
                         serde_json::json!({
                             "todo_id": cached.todo_id,
@@ -495,7 +474,7 @@ async fn get_mission_phases(
                     }
                 }).collect()
             } else {
-                // Plan phases don't embed todos -- look them up in state cache
+                // Plan phase has no embedded todos -- look them up in state cache
                 guard.get_todos_for_phase(&mission_id, &phase_id).iter().map(|t| {
                     serde_json::json!({
                         "todo_id": t.todo_id,
@@ -506,13 +485,45 @@ async fn get_mission_phases(
                 }).collect()
             };
 
+            // Enrich with state cache status (from retained phase messages)
+            let (status, completed_count, todo_count) = if let Some(sp) = guard.get_phase(&mission_id, &phase_id) {
+                let tc = if todo_list.is_empty() { sp.todo_count as usize } else { todo_list.len() };
+                (sp.status.clone(), sp.completed_count, tc)
+            } else {
+                let status = p.get("status").and_then(|v| v.as_str()).unwrap_or("blocked").to_string();
+                (status, 0, todo_list.len())
+            };
+
             phase_map.insert(phase_id, serde_json::json!({
                 "phase_id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
-                "name": p.get("name").and_then(|v| v.as_str()).unwrap_or(""),
-                "order": p.get("order").and_then(|v| v.as_u64()).unwrap_or(i as u64),
-                "status": p.get("status").and_then(|v| v.as_str()).unwrap_or("blocked"),
-                "todo_count": todo_list.len(),
-                "completed_count": 0,
+                "name": plan_name,
+                "order": plan_order,
+                "status": status,
+                "todo_count": todo_count,
+                "completed_count": completed_count,
+                "todos": todo_list,
+            }));
+        }
+    } else {
+        // No plan available -- fall back to state cache phases only
+        let state_phases = guard.get_phases_for_mission(&mission_id);
+        for p in &state_phases {
+            let todos = guard.get_todos_for_phase(&mission_id, &p.phase_id);
+            let todo_list: Vec<serde_json::Value> = todos.iter().map(|t| {
+                serde_json::json!({
+                    "todo_id": t.todo_id,
+                    "description": t.description,
+                    "status": t.status,
+                    "role": t.role,
+                })
+            }).collect();
+            phase_map.insert(p.phase_id.clone(), serde_json::json!({
+                "phase_id": p.phase_id,
+                "name": p.name,
+                "order": p.order,
+                "status": p.status,
+                "todo_count": if todo_list.is_empty() { p.todo_count as usize } else { todo_list.len() },
+                "completed_count": p.completed_count,
                 "todos": todo_list,
             }));
         }
@@ -529,6 +540,109 @@ async fn get_mission_phases(
     });
 
     Ok(serde_json::to_value(&result).unwrap_or_default())
+}
+
+/// Kill a mission: purge all MQTT retained messages and clear the in-memory cache.
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn kill_mission(
+    mission_id: String,
+    cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
+    mqtt_state: tauri::State<'_, Arc<Mutex<Option<mqtt::client::MqttClient>>>>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    // Resolve full mission ID and purge cache
+    let (full_mid, purge) = {
+        let mut c = cache.lock().await;
+        let fmid = c.resolve_mission_id(&mission_id)
+            .unwrap_or_else(|| mission_id.clone());
+        let purge = c.purge_mission(&fmid);
+        (fmid, purge)
+    };
+
+    // Clear retained messages on the MQTT broker
+    let mqtt_guard = mqtt_state.lock().await;
+    if let Some(client) = mqtt_guard.as_ref() {
+        let ws = &client.config().workspace;
+
+        // Clear plan
+        let _ = client.clear_retained(&format!("weaver/{}/state/{}/plan", ws, full_mid)).await;
+
+        // Clear each phase
+        for pid in &purge.phase_ids {
+            let _ = client.clear_retained(&format!("weaver/{}/state/{}/phase/{}", ws, full_mid, pid)).await;
+        }
+
+        // Clear each todo
+        for tid in &purge.todo_ids {
+            let _ = client.clear_retained(&format!("weaver/{}/state/{}/todo/{}", ws, full_mid, tid)).await;
+        }
+
+        // Notify Brain
+        let _ = client.publish_json(
+            &format!("brain/{}/release/{}", ws, full_mid),
+            &serde_json::json!({
+                "mission_id": full_mid,
+                "instance_id": client.config().instance_id,
+                "reason": "manual_kill",
+                "published_at": chrono::Utc::now().to_rfc3339(),
+            }),
+        ).await;
+    }
+
+    // Refresh frontend
+    let _ = app.emit("mission-phases-updated", serde_json::json!({ "mission_id": full_mid }));
+    let _ = app.emit("mqtt-registry", serde_json::json!({}));
+
+    Ok(format!("Killed mission {}: cleared {} phases, {} todos",
+        &full_mid[..8.min(full_mid.len())], purge.phase_ids.len(), purge.todo_ids.len()))
+}
+
+/// Take/claim a mission for this instance. Publishes claim to Brain.
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn take_mission(
+    mission_id: String,
+    cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
+    mqtt_state: tauri::State<'_, Arc<Mutex<Option<mqtt::client::MqttClient>>>>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    let hostname = gethostname::gethostname().to_string_lossy().to_string();
+
+    let full_mid = {
+        let mut c = cache.lock().await;
+        let fmid = c.resolve_mission_id(&mission_id)
+            .unwrap_or_else(|| mission_id.clone());
+        // Store claim locally
+        let mqtt_guard = mqtt_state.lock().await;
+        let iid = mqtt_guard.as_ref()
+            .map(|c| c.config().instance_id.clone())
+            .unwrap_or_default();
+        c.claim_mission(&fmid, &iid);
+        fmid
+    };
+
+    // Publish claim to Brain
+    let mqtt_guard = mqtt_state.lock().await;
+    if let Some(client) = mqtt_guard.as_ref() {
+        let ws = &client.config().workspace;
+        let iid = &client.config().instance_id;
+
+        let _ = client.publish_json(
+            &format!("brain/{}/claim/{}", ws, full_mid),
+            &serde_json::json!({
+                "mission_id": full_mid,
+                "instance_id": iid,
+                "hostname": hostname,
+                "workspace": ws,
+                "claimed_at": chrono::Utc::now().to_rfc3339(),
+            }),
+        ).await;
+    }
+
+    let _ = app.emit("mission-phases-updated", serde_json::json!({ "mission_id": full_mid }));
+
+    Ok(format!("Claimed mission {} for {}", &full_mid[..8.min(full_mid.len())], hostname))
 }
 
 /// Manually start execution of a phase by spawning Claude Code in tmux.
@@ -1022,6 +1136,7 @@ async fn connect_mqtt(
     // Start heartbeat using managed state
     mqtt::heartbeat::start_heartbeat(
         mqtt_state.inner().clone(),
+        state_cache.inner().clone(),
         instance_id.clone(),
         workspace,
         2,
@@ -1428,6 +1543,7 @@ pub fn run() {
                     // Start heartbeat (uses managed state)
                     mqtt::heartbeat::start_heartbeat(
                         mqtt_s.clone(),
+                        sc.clone(),
                         instance_id.clone(),
                         workspace.clone(),
                         2,
@@ -1637,6 +1753,8 @@ pub fn run() {
             get_task_queue,
             get_mission_state,
             get_mission_phases,
+            kill_mission,
+            take_mission,
             start_phase_manually,
             load_fixture,
             regenerate_workspace_context,

@@ -391,7 +391,6 @@ async fn channel_phase_complete(
             let mut c = cache.lock().await;
             let full_mid = c.resolve_mission_id(mission_id)
                 .unwrap_or_else(|| mission_id.to_string());
-            let key = format!("{}:{}", full_mid, phase_id);
             // Mark all todos in this phase as completed
             let todos = c.get_todos_for_phase(&full_mid, phase_id)
                 .iter()
@@ -416,9 +415,15 @@ async fn channel_phase_complete(
         }));
 
         // Publish to MQTT as retained (survives Weaver restart)
-        let full_mid = {
+        // Read actual phase metadata from cache so retained msg preserves name/order/counts
+        let (full_mid, phase_name, phase_order, phase_todo_count, phase_completed_count) = {
             let c = cache.lock().await;
-            c.resolve_mission_id(mission_id).unwrap_or_else(|| mission_id.to_string())
+            let fmid = c.resolve_mission_id(mission_id).unwrap_or_else(|| mission_id.to_string());
+            if let Some(p) = c.get_phase(&fmid, phase_id) {
+                (fmid, p.name.clone(), p.order, p.todo_count, p.completed_count)
+            } else {
+                (fmid, phase_id.to_string(), 0, 0, 0)
+            }
         };
         let mqtt_state: tauri::State<'_, std::sync::Arc<tokio::sync::Mutex<Option<crate::mqtt::client::MqttClient>>>> = app.state();
         let mqtt_guard = mqtt_state.lock().await;
@@ -429,11 +434,11 @@ async fn channel_phase_complete(
             let _ = client.publish_retained(&topic, &serde_json::json!({
                 "mission_id": full_mid,
                 "phase_id": phase_id,
-                "name": phase_id,
+                "name": phase_name,
                 "status": "completed",
-                "order": 0,
-                "todo_count": 0,
-                "completed_count": 0,
+                "order": phase_order,
+                "todo_count": phase_todo_count,
+                "completed_count": phase_completed_count,
                 "blocked_by": [],
                 "config": {},
                 "published_at": chrono::Utc::now().to_rfc3339(),

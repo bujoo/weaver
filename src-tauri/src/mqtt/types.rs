@@ -59,6 +59,8 @@ pub struct TodoStatusEvent {
 pub struct HeartbeatEvent {
     pub instance_id: String,
     pub workspace: String,
+    #[serde(default)]
+    pub hostname: String,
     pub capacity: u32,
     pub active_agents: u32,
     pub missions: Vec<String>,

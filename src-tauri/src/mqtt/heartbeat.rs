@@ -1,4 +1,5 @@
 use crate::mqtt::client::MqttClient;
+use crate::mqtt::state_cache::MissionStateCache;
 use crate::mqtt::types::HeartbeatEvent;
 use chrono::Utc;
 use std::collections::HashMap;
@@ -8,11 +9,16 @@ use tokio::sync::Mutex;
 
 pub fn start_heartbeat(
     mqtt: Arc<Mutex<Option<MqttClient>>>,
+    cache: Arc<Mutex<MissionStateCache>>,
     instance_id: String,
     workspace: String,
     capacity: u32,
     app_start: Instant,
 ) {
+    let hostname = gethostname::gethostname()
+        .to_string_lossy()
+        .to_string();
+
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
         loop {
@@ -27,12 +33,19 @@ pub fn start_heartbeat(
             // Count active Claude Code sessions via sysinfo
             let active_agents = count_claude_processes();
 
+            // Get claimed mission IDs from cache
+            let claimed_missions = {
+                let c = cache.lock().await;
+                c.get_claimed_mission_ids()
+            };
+
             let event = HeartbeatEvent {
                 instance_id: instance_id.clone(),
                 workspace: workspace.clone(),
+                hostname: hostname.clone(),
                 capacity,
                 active_agents,
-                missions: vec![], // TODO: populated from assignment handler
+                missions: claimed_missions,
                 instance_type: "local".into(),
                 tags: HashMap::from([
                     ("os".into(), std::env::consts::OS.into()),
@@ -42,8 +55,9 @@ pub fn start_heartbeat(
                 published_at: Utc::now().to_rfc3339(),
             };
 
+            // Publish as retained so Brain/Obsidian always has the latest device info
             let topic = format!("brain/{}/heartbeat/{}", workspace, instance_id);
-            if let Err(e) = client.publish_json(&topic, &event).await {
+            if let Err(e) = client.publish_retained(&topic, &event).await {
                 crate::debug_log::log_error(&format!("[MQTT] Heartbeat publish error: {}", e));
             }
         }

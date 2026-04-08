@@ -8,6 +8,7 @@ pub struct MissionStateCache {
     plans: HashMap<String, PlanStateMessage>,
     phases: HashMap<String, PhaseStateMessage>,   // key: "{mission_id}:{phase_id}"
     todos: HashMap<String, TodoStateMessage>,      // key: "{todo_id}"
+    claims: HashMap<String, String>,              // mission_id -> instance_id
 }
 
 impl MissionStateCache {
@@ -16,6 +17,7 @@ impl MissionStateCache {
             plans: HashMap::new(),
             phases: HashMap::new(),
             todos: HashMap::new(),
+            claims: HashMap::new(),
         }
     }
 
@@ -39,11 +41,27 @@ impl MissionStateCache {
                 return;
             }
         }
+        // Preserve existing metadata if incoming message has bare/missing fields
+        let merged = if let Some(existing) = self.phases.get(&key) {
+            PhaseStateMessage {
+                name: if msg.name.is_empty() || msg.name == msg.phase_id {
+                    existing.name.clone()
+                } else {
+                    msg.name
+                },
+                order: if msg.order == 0 && existing.order > 0 { existing.order } else { msg.order },
+                todo_count: if msg.todo_count == 0 && existing.todo_count > 0 { existing.todo_count } else { msg.todo_count },
+                completed_count: if msg.completed_count == 0 && existing.completed_count > 0 { existing.completed_count } else { msg.completed_count },
+                ..msg
+            }
+        } else {
+            msg
+        };
         crate::debug_log::log_info(&format!(
             "[StateCache] Stored phase: {} ({}) status={}",
-            msg.name, key, msg.status
+            merged.name, key, merged.status
         ));
-        self.phases.insert(key, msg);
+        self.phases.insert(key, merged);
     }
 
     pub fn store_todo(&mut self, msg: TodoStateMessage) {
@@ -129,12 +147,27 @@ impl MissionStateCache {
 
     /// Snapshot of all cached state for frontend/debug queries.
     pub fn snapshot(&self) -> serde_json::Value {
+        let phase_details: Vec<serde_json::Value> = self.phases.values().map(|p| {
+            let todo_count_actual = self.todos.values()
+                .filter(|t| t.mission_id == p.mission_id && t.phase_id == p.phase_id)
+                .count();
+            serde_json::json!({
+                "phase_id": p.phase_id,
+                "name": p.name,
+                "order": p.order,
+                "status": p.status,
+                "todo_count_declared": p.todo_count,
+                "todo_count_actual": todo_count_actual,
+                "completed_count": p.completed_count,
+            })
+        }).collect();
         serde_json::json!({
             "plans": self.plans.len(),
             "phases": self.phases.len(),
             "todos": self.todos.len(),
             "plan_ids": self.plans.keys().collect::<Vec<_>>(),
             "todo_ids": self.todos.keys().collect::<Vec<_>>(),
+            "phase_details": phase_details,
         })
     }
 
@@ -333,6 +366,52 @@ impl MissionStateCache {
             .into_iter()
             .find(|p| p.status != "completed" && p.status != "skipped")
     }
+
+    // ── Mission lifecycle ──────────────────────────────────────────
+
+    /// Purge all cached data for a mission. Returns topic info for MQTT cleanup.
+    pub fn purge_mission(&mut self, mission_id: &str) -> PurgeResult {
+        let phase_ids: Vec<String> = self.phases.keys()
+            .filter(|k| k.starts_with(&format!("{}:", mission_id)))
+            .map(|k| k.split(':').nth(1).unwrap_or("").to_string())
+            .collect();
+        let todo_ids: Vec<String> = self.todos.values()
+            .filter(|t| t.mission_id == mission_id)
+            .map(|t| t.todo_id.clone())
+            .collect();
+
+        self.plans.remove(mission_id);
+        self.phases.retain(|k, _| !k.starts_with(&format!("{}:", mission_id)));
+        self.todos.retain(|_, t| t.mission_id != mission_id);
+        self.claims.remove(mission_id);
+
+        crate::debug_log::log_info(&format!(
+            "[StateCache] Purged mission {}: {} phases, {} todos",
+            mission_id, phase_ids.len(), todo_ids.len()
+        ));
+
+        PurgeResult { phase_ids, todo_ids }
+    }
+
+    /// Claim a mission for an instance.
+    pub fn claim_mission(&mut self, mission_id: &str, instance_id: &str) {
+        self.claims.insert(mission_id.to_string(), instance_id.to_string());
+    }
+
+    /// Release a mission claim.
+    pub fn release_mission(&mut self, mission_id: &str) {
+        self.claims.remove(mission_id);
+    }
+
+    /// Get the instance that claimed a mission.
+    pub fn get_claim(&self, mission_id: &str) -> Option<&str> {
+        self.claims.get(mission_id).map(|s| s.as_str())
+    }
+
+    /// Get all claimed mission IDs (for heartbeat).
+    pub fn get_claimed_mission_ids(&self) -> Vec<String> {
+        self.claims.keys().cloned().collect()
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -342,4 +421,10 @@ pub struct LoadResult {
     pub title: String,
     pub phases: u32,
     pub todos: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct PurgeResult {
+    pub phase_ids: Vec<String>,
+    pub todo_ids: Vec<String>,
 }

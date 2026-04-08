@@ -87,17 +87,56 @@
 	}
 
 
+	let claiming = $state(false);
+	let killing = $state(false);
+	let claimResult = $state('');
+	let killResult = $state('');
+
 	async function openWorkspace() {
 		if (!isTauri() || !workspace?.mountPath) return;
 		try {
 			const { invoke } = await import('@tauri-apps/api/core');
-			// Open the mission's .code-workspace file in the worktree
 			const shortMid = mission.missionId.slice(0, 8);
 			const workspaceFile = `${workspace.mountPath}/.worktrees/${shortMid}/mission.code-workspace`;
 			await invoke('open_workspace_cmd', { path: workspaceFile });
 		} catch (e) {
 			console.error('Failed to open workspace:', e);
 		}
+	}
+
+	async function takeMission() {
+		if (!isTauri() || claiming) return;
+		claiming = true;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			const result = await invoke<string>('take_mission', { missionId: mission.missionId });
+			claimResult = result;
+		} catch (e) {
+			console.error('Failed to take mission:', e);
+			claimResult = `Error: ${e}`;
+		}
+		claiming = false;
+	}
+
+	let confirmKill = $state(false);
+
+	function requestKill() {
+		confirmKill = true;
+	}
+
+	async function killMission() {
+		if (!isTauri() || killing) return;
+		confirmKill = false;
+		killing = true;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			const result = await invoke<string>('kill_mission', { missionId: mission.missionId });
+			killResult = result;
+		} catch (e) {
+			console.error('Failed to kill mission:', e);
+			killResult = `Error: ${e}`;
+		}
+		killing = false;
 	}
 </script>
 
@@ -168,9 +207,32 @@
 				{/each}
 			</div>
 			{#if isTauri()}
-				<button class="workspace-btn" onclick={openWorkspace} type="button">
-					Open VS Code Workspace
-				</button>
+				<div class="action-row">
+					<button class="workspace-btn" onclick={openWorkspace} type="button">
+						Open VS Code Workspace
+					</button>
+					<button class="action-btn take" onclick={takeMission} disabled={claiming} type="button">
+						{claiming ? 'Claiming...' : 'Take Mission'}
+					</button>
+					{#if confirmKill}
+						<button class="action-btn kill confirm" onclick={killMission} disabled={killing} type="button">
+							{killing ? 'Killing...' : 'Confirm Kill'}
+						</button>
+						<button class="action-btn cancel" onclick={() => confirmKill = false} type="button">
+							Cancel
+						</button>
+					{:else}
+						<button class="action-btn kill" onclick={requestKill} type="button">
+							Kill Mission
+						</button>
+					{/if}
+				</div>
+				{#if claimResult}
+					<span class="action-result claim">{claimResult}</span>
+				{/if}
+				{#if killResult}
+					<span class="action-result kill">{killResult}</span>
+				{/if}
 			{/if}
 		{:else}
 			<div class="empty-state">
@@ -381,6 +443,79 @@
 	.workspace-btn:hover {
 		background: rgba(255, 255, 255, 0.06);
 		border-color: var(--text-secondary);
+	}
+
+	.action-row {
+		display: flex;
+		gap: var(--space-sm);
+		margin-top: var(--space-sm);
+		flex-wrap: wrap;
+	}
+
+	.action-btn {
+		padding: 6px 16px;
+		font-family: var(--font-mono);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		background: transparent;
+		cursor: pointer;
+		transition: background var(--transition-fast), border-color var(--transition-fast);
+	}
+
+	.action-btn.take {
+		color: var(--accent-green);
+		border: 1px solid var(--accent-green);
+	}
+
+	.action-btn.take:hover {
+		background: var(--accent-green);
+		color: #000;
+	}
+
+	.action-btn.kill {
+		color: var(--accent-red, #ff4444);
+		border: 1px solid var(--accent-red, #ff4444);
+	}
+
+	.action-btn.kill:hover {
+		background: var(--accent-red, #ff4444);
+		color: #000;
+	}
+
+	.action-btn.kill.confirm {
+		background: var(--accent-red, #ff4444);
+		color: #000;
+	}
+
+	.action-btn.cancel {
+		color: var(--text-muted);
+		border: 1px solid var(--border-default);
+	}
+
+	.action-btn.cancel:hover {
+		border-color: var(--text-secondary);
+	}
+
+	.action-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.action-result {
+		display: block;
+		font-family: var(--font-mono);
+		font-size: 11px;
+		margin-top: var(--space-xs);
+	}
+
+	.action-result.claim {
+		color: var(--accent-green);
+	}
+
+	.action-result.kill {
+		color: var(--accent-red, #ff4444);
 	}
 
 	/* ── Quick Stats ──────────────────────────────────────────────── */

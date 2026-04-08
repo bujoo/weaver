@@ -147,6 +147,14 @@ impl MqttClient {
             .map_err(|e| format!("MQTT publish retained error: {}", e))
     }
 
+    /// Clear a retained message from the broker by publishing empty payload with retain=true.
+    pub async fn clear_retained(&self, topic: &str) -> Result<(), String> {
+        self.client
+            .publish(topic, QoS::AtLeastOnce, true, vec![])
+            .await
+            .map_err(|e| format!("MQTT clear retained error: {}", e))
+    }
+
     pub fn config(&self) -> &MqttConfig {
         &self.config
     }
