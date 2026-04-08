@@ -417,7 +417,18 @@
       const sent = await sendToChannel(port, { type: 'message', content: msg, mission_id: $missions[0]?.missionId ?? '' });
       if (sent) { setMood('working'); xp += 5; return `Sent via channel: "${msg.slice(0, 80)}"`; }
     }
-    return `Channel not available.\ntmux send-keys -t ${sessions[0].name} "${msg.slice(0, 60)}" Enter`;
+
+    // Fallback: send directly via tmux
+    if (invoke) {
+      try {
+        await invoke('send_to_weaver_session', { sessionName: sessions[0].name, text: msg });
+        setMood('working'); xp += 3;
+        return `Sent via tmux to ${sessions[0].name}: "${msg.slice(0, 80)}"`;
+      } catch (e) {
+        return `Failed to send: ${e}`;
+      }
+    }
+    return 'No way to send -- neither channel nor tmux available.';
   }
 
   async function handleOfflineWorkspace(invoke: ((c: string, a?: Record<string, unknown>) => Promise<unknown>) | null): Promise<string> {

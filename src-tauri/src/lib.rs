@@ -776,6 +776,23 @@ async fn get_channel_port(mission_id: Option<String>) -> Result<Option<u16>, Str
     Ok(None)
 }
 
+/// Send text to a tmux session as keystrokes.
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn send_to_weaver_session(session_name: String, text: String) -> Result<(), String> {
+    let output = tokio::process::Command::new("tmux")
+        .args(["send-keys", "-t", &session_name, &text, "Enter"])
+        .output()
+        .await
+        .map_err(|e| format!("tmux send-keys failed: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Send failed: {}", stderr));
+    }
+    Ok(())
+}
+
 /// Read the current content of a weaver tmux session.
 #[cfg(not(mobile))]
 #[tauri::command]
@@ -1500,6 +1517,7 @@ pub fn run() {
             list_weaver_sessions,
             attach_weaver_session,
             read_weaver_session,
+            send_to_weaver_session,
             get_channel_port,
             get_workspace_status,
             clone_repo_cmd,
