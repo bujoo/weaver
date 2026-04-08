@@ -124,7 +124,7 @@ impl ConductorEngine {
 
         let response = client
             .converse()
-            .model_id("us.anthropic.claude-haiku-4-5-20251001")
+            .model_id("us.anthropic.claude-haiku-4-5-20251001-v1:0")
             .system(SystemContentBlock::Text(system_prompt))
             .messages(msg)
             // No tool_config -- free-form text response

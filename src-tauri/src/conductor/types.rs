@@ -117,9 +117,9 @@ pub enum ModelTier {
 impl ModelTier {
     pub fn model_id(&self) -> &'static str {
         match self {
-            ModelTier::Haiku => "us.anthropic.claude-haiku-4-5-20251001",
-            ModelTier::Sonnet => "us.anthropic.claude-sonnet-4-6-20250514",
-            ModelTier::Opus => "us.anthropic.claude-opus-4-6-v1",
+            ModelTier::Haiku => "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            ModelTier::Sonnet => "us.anthropic.claude-sonnet-4-6-20250514-v1:0",
+            ModelTier::Opus => "us.anthropic.claude-opus-4-6-v1:0",
         }
     }
 }
