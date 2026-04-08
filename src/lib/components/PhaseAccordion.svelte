@@ -49,6 +49,11 @@
 
 	let { phase, missionId, expanded = false, ontoggle }: Props = $props();
 
+	// Extract phase order number from phaseId (e.g. "P0" -> 0, UUID -> index from parent)
+	let phaseOrder = $derived(
+		phase.phaseId.startsWith('P') ? phase.phaseId.slice(1) : phase.phaseId.slice(0, 4)
+	);
+
 	let statusLabel = $derived(
 		phase.status === 'completed' || phase.status === 'done'
 			? 'DONE'
@@ -154,9 +159,10 @@
 					{/if}
 				</div>
 			{:else}
-				{#each todos() as todo (todo.id)}
+				{#each todos() as todo, i (todo.id)}
 					<TodoItem
 						{todo}
+						label="P{phaseOrder}.{i + 1}"
 						active={activeTodo?.id === todo.id}
 						{missionId}
 						phaseId={phase.phaseId}

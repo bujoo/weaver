@@ -9,12 +9,13 @@
 
 	interface Props {
 		todo: Todo;
+		label?: string;
 		active?: boolean;
 		missionId?: string;
 		phaseId?: string;
 	}
 
-	let { todo, active = false, missionId = '', phaseId = '' }: Props = $props();
+	let { todo, label = '', active = false, missionId = '', phaseId = '' }: Props = $props();
 
 	let statusIcon = $derived(
 		todo.status === 'done' || todo.status === 'completed'
@@ -44,6 +45,7 @@
 <div class="todo-item" class:active>
 	<div class="todo-row">
 		<span class="todo-icon {statusClass}">{statusIcon}</span>
+		{#if label}<span class="todo-label">{label}</span>{/if}
 		<span class="todo-description">{todo.description}</span>
 		<span class="todo-status {statusClass}">{statusLabel}</span>
 		<span class="todo-time">--</span>
@@ -102,6 +104,16 @@
 
 	.todo-icon.queued {
 		color: var(--task-queued);
+	}
+
+	.todo-label {
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 700;
+		color: var(--text-muted);
+		flex-shrink: 0;
+		min-width: 36px;
+		letter-spacing: 0.02em;
 	}
 
 	.todo-description {
