@@ -647,6 +647,39 @@ async fn take_mission(
     Ok(format!("Claimed mission {} for {}", &full_mid[..8.min(full_mid.len())], hostname))
 }
 
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn start_mission_execution(
+    mission_id: String,
+    cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
+    mqtt_state: tauri::State<'_, Arc<Mutex<Option<mqtt::client::MqttClient>>>>,
+) -> Result<String, String> {
+    let full_mid = {
+        let c = cache.lock().await;
+        c.resolve_mission_id(&mission_id)
+            .unwrap_or_else(|| mission_id.clone())
+    };
+
+    let mqtt_guard = mqtt_state.lock().await;
+    let client = mqtt_guard.as_ref().ok_or("MQTT not connected")?;
+    let ws = &client.config().workspace;
+    let iid = &client.config().instance_id;
+
+    let topic = format!("brain/{}/execute/{}", ws, full_mid);
+    let payload = serde_json::json!({
+        "mission_id": full_mid,
+        "instance_id": iid,
+        "workspace": ws,
+        "published_at": chrono::Utc::now().to_rfc3339(),
+    });
+    client.publish_json(&topic, &payload).await?;
+    debug_log::log_info(&format!(
+        "[MQTT] Execute mission {} -> {}",
+        &full_mid[..8.min(full_mid.len())], topic
+    ));
+    Ok(format!("Execute signal sent for mission {}", &full_mid[..8.min(full_mid.len())]))
+}
+
 /// Manually start execution of a phase by spawning Claude Code in tmux.
 /// Used for demos and testing when Brain hasn't published a PhaseAssignment.
 #[cfg(not(mobile))]
@@ -1757,6 +1790,7 @@ pub fn run() {
             get_mission_phases,
             kill_mission,
             take_mission,
+            start_mission_execution,
             start_phase_manually,
             load_fixture,
             regenerate_workspace_context,

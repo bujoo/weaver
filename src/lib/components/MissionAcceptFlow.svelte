@@ -36,16 +36,12 @@
 		if (isTauri()) {
 			try {
 				const { invoke } = await import('@tauri-apps/api/core');
-				// Accept first available phase
-				const firstPhase = mission.availablePhases[0];
-				if (firstPhase) {
-					await invoke('accept_phase_cmd', {
-						missionId: mission.missionId,
-						phaseId: firstPhase.phaseId,
-					});
-				}
+				// Claim the mission for this Weaver instance
+				await invoke('take_mission', { missionId: mission.missionId });
+				// Tell Brain to start executing (triggers DAG resolution + assignments)
+				await invoke('start_mission_execution', { missionId: mission.missionId });
 			} catch (err) {
-				console.error('[AcceptFlow] accept_phase_cmd failed:', err);
+				console.error('[AcceptFlow] Accept & Start failed:', err);
 			}
 		}
 		onaccept();
