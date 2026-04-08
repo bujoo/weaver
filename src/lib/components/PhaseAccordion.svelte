@@ -49,9 +49,9 @@
 
 	let { phase, missionId, expanded = false, ontoggle }: Props = $props();
 
-	// Extract 1-based phase number from phaseId (e.g. "P0" -> 1, "P3" -> 4)
+	// Extract phase number from phaseId (e.g. "P1" -> "1", "P3" -> "3")
 	let phaseOrder = $derived(
-		phase.phaseId.startsWith('P') ? String(Number(phase.phaseId.slice(1)) + 1) : phase.phaseId.slice(0, 4)
+		phase.phaseId.startsWith('P') ? phase.phaseId.slice(1) : phase.phaseId.slice(0, 4)
 	);
 
 	let statusLabel = $derived(
