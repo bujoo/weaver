@@ -14,6 +14,7 @@
 	import { initActivityListeners } from '$lib/stores/activity';
 	import { registerShortcuts } from '$lib/shortcuts';
 	import MissionSidebar from '$lib/components/MissionSidebar.svelte';
+	import WeavySidebar from '$lib/components/WeavySidebar.svelte';
 	import KeyboardShortcutOverlay from '$lib/components/KeyboardShortcutOverlay.svelte';
 	import FuzzyMissionSearch from '$lib/components/FuzzyMissionSearch.svelte';
 
@@ -91,6 +92,7 @@
 	<main class="content">
 		<slot />
 	</main>
+	<WeavySidebar />
 </div>
 
 {#if showShortcuts}
