@@ -79,9 +79,13 @@
 		}
 	});
 
+	// Track accepted missions locally (before Brain confirms via MQTT)
+	let acceptedMissionIds = $state<Set<string>>(new Set());
+
 	// Check if selected mission is in an incoming/pre-accept state
 	let isPreAccept = $derived(
 		selected != null &&
+		!acceptedMissionIds.has(selected.missionId) &&
 		(selected.status === 'incoming' || selected.status === 'validating' || selected.status === 'ready')
 	);
 
@@ -501,7 +505,10 @@
 						<!-- Pre-accept funnel for incoming/validating/ready missions -->
 						<MissionAcceptFlow
 							mission={selected}
-							onaccept={() => { missionTab = 'overview'; }}
+							onaccept={() => {
+							if (selected) acceptedMissionIds.add(selected.missionId);
+							missionTab = 'overview';
+						}}
 							onreject={() => { selectedMissionId.set(null); }}
 						/>
 					{:else}
