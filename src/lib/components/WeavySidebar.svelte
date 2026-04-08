@@ -321,9 +321,23 @@
         if (sessions.length === 0) {
           return 'No active Claude Code sessions. Push a phase to start one, or run "start session".';
         }
-        return `Active sessions:\n${sessions.map(s => `  ${s.name}`).join('\n')}\n\nAttach with: tmux attach -t ${sessions[0].name}`;
+        return `Active sessions:\n${sessions.map(s => `  ${s.name}`).join('\n')}\n\nAttach with: tmux attach -t ${sessions[0].name}\nType "watch" to see what Claude is doing.`;
       } catch {
         return 'Could not list sessions. tmux might not be running.';
+      }
+    }
+
+    // ── Watch / Read session ──
+    if (lower.includes('watch') || lower.includes('what is claude doing') || lower.includes('show session') || lower.includes('read session')) {
+      try {
+        const sessions = invoke ? await invoke<Array<{ name: string }>>('list_weaver_sessions') : [];
+        if (sessions.length === 0) return 'No active sessions to watch.';
+        const content = invoke ? await invoke<string>('read_weaver_session', { sessionName: sessions[0].name, lines: 30 }) : '';
+        const trimmed = content.trim().split('\n').filter((l: string) => l.trim()).slice(-15).join('\n');
+        setMood('working');
+        return `Session ${sessions[0].name}:\n\n${trimmed || '(empty -- Claude may be starting up)'}`;
+      } catch (e) {
+        return `Could not read session: ${e}`;
       }
     }
 

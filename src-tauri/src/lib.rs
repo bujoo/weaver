@@ -737,6 +737,32 @@ async fn attach_weaver_session(session_name: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Read the current content of a weaver tmux session.
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn read_weaver_session(session_name: String, lines: Option<u32>) -> Result<String, String> {
+    let scroll = lines.unwrap_or(50);
+    let output = tokio::process::Command::new("tmux")
+        .args([
+            "capture-pane",
+            "-t",
+            &session_name,
+            "-p",
+            "-S",
+            &format!("-{}", scroll),
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("tmux capture-pane failed: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Session '{}' not found: {}", session_name, stderr));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 /// Load a WeaverPlan from a fixture file or raw JSON into the MissionStateCache.
 /// Used for dev/testing without MQTT. Also works as a general "import plan" command.
 #[cfg(not(mobile))]
@@ -1493,6 +1519,7 @@ pub fn run() {
             regenerate_workspace_context,
             list_weaver_sessions,
             attach_weaver_session,
+            read_weaver_session,
             get_workspace_status,
             clone_repo_cmd,
             create_worktree_cmd,
