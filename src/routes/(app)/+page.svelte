@@ -416,8 +416,8 @@
 				</div>
 			</div>
 		</main>
-	{:else if !isExecuting}
-		<!-- MISSION CONTROL - idle dashboard -->
+	{:else if !isExecuting && !selected}
+		<!-- MISSION CONTROL - idle dashboard (no mission selected) -->
 		<main class="grid-container" in:fade={{ duration: 150 }}>
 			<div class="mission-control">
 				<header class="mc-header">

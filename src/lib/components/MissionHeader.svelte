@@ -1,11 +1,16 @@
 <script lang="ts">
 	import type { UnifiedMission } from '$lib/stores/missions';
+	import { selectedMissionId } from '$lib/stores/missions';
 
 	interface Props {
 		mission: UnifiedMission;
 	}
 
 	let { mission }: Props = $props();
+
+	function goBack() {
+		selectedMissionId.set(null);
+	}
 
 	const statusColors: Record<string, string> = {
 		incoming: 'var(--mission-incoming)',
@@ -57,6 +62,11 @@
 
 <div class="mission-header">
 	<div class="header-top">
+		<button class="back-btn" onclick={goBack} title="Back to Mission Control">
+			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M19 12H5" /><path d="m12 19-7-7 7-7" />
+			</svg>
+		</button>
 		<h1 class="mission-title">{mission.title}</h1>
 		<span class="status-badge" style="background: {statusColor}; color: #000;">
 			{statusLabel}
@@ -105,6 +115,25 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: var(--space-lg);
+	}
+
+	.back-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		flex-shrink: 0;
+		background: transparent;
+		border: 1px solid var(--border-default);
+		color: var(--text-secondary);
+		cursor: pointer;
+		transition: all var(--transition-fast);
+	}
+
+	.back-btn:hover {
+		border-color: var(--text-primary);
+		color: var(--text-primary);
 	}
 
 	.mission-title {
