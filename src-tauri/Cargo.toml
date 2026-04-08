@@ -44,6 +44,7 @@ reqwest = { version = "0.12", features = ["json"] }
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 aws-sdk-bedrockruntime = "1"
 aws-smithy-types = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [target."cfg(target_os = \"macos\")".dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", rev = "da9c9a8d4eb7f0524a2508988df1a7d9585b4904" }

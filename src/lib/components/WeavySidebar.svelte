@@ -325,7 +325,7 @@
     const lower = cmd.toLowerCase().trim();
 
     if (lower === 'help' || lower === '?') {
-      return `Slash commands:\n/status -- system overview\n/watch -- see Claude Code output\n/continue -- push next phase\n/push P1 -- push specific phase\n/send <msg> -- send to Claude Code\n/missions -- list missions\n/sessions -- active sessions\n/workspace -- repos and worktrees\n/regenerate -- refresh CLAUDE.md\n\nAnything else: just type naturally and I'll answer with AI.`;
+      return `Slash commands:\n/status -- system overview\n/watch -- see Claude Code output\n/continue -- push next phase\n/push P1 -- push specific phase\n/send <msg> -- send to Claude Code\n/missions -- list missions\n/sessions -- active sessions\n/memories -- recent observations from claude-mem\n/search <q> -- search claude-mem history\n/workspace -- repos and worktrees\n/open -- open VS Code workspace\n/regenerate -- refresh CLAUDE.md\n\nAnything else: just type naturally and I'll answer with AI.`;
     }
     if (lower === 'status' || lower === 'sitrep') {
       return handleOfflineStatus(invoke);
@@ -365,6 +365,23 @@
     }
     if (lower.startsWith('load')) {
       return handleOfflineLoadFixture(invoke);
+    }
+    if (lower.startsWith('memories') || lower.startsWith('mem')) {
+      if (!invoke) return 'Not available.';
+      try {
+        const obs = await invoke<Array<{ id: number; type: string; title: string; project: string; timestamp: number }>>('get_claude_mem_observations', { project: 'contexthub-weaver', limit: 10 });
+        if (obs.length === 0) return 'No observations found in claude-mem.';
+        return `Recent observations:\n\n${obs.map(o => `#${o.id} [${o.type}] ${o.title}`).join('\n')}`;
+      } catch (e) { return `claude-mem error: ${e}`; }
+    }
+    if (lower.startsWith('search ')) {
+      const q = original.slice(8).trim();
+      if (!q || !invoke) return 'Usage: /search <keyword>';
+      try {
+        const results = await invoke<Array<{ id: number; type: string; title: string; narrative: string }>>('search_claude_mem', { query: q, limit: 10 });
+        if (results.length === 0) return `No results for "${q}".`;
+        return `Search "${q}":\n\n${results.map(r => `#${r.id} [${r.type}] ${r.title}\n  ${r.narrative.slice(0, 100)}...`).join('\n\n')}`;
+      } catch (e) { return `Search error: ${e}`; }
     }
     return `Unknown command: /${lower}. Type /help for available commands.`;
   }

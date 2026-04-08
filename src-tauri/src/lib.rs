@@ -793,6 +793,126 @@ async fn send_to_weaver_session(session_name: String, text: String) -> Result<()
     Ok(())
 }
 
+/// Read observations from claude-mem's SQLite database.
+/// Gives Weavy access to the persistent memory across all Claude Code sessions.
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn get_claude_mem_observations(
+    project: Option<String>,
+    limit: Option<u32>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let home = dirs::home_dir().ok_or("No home dir")?;
+    let db_path = home.join(".claude-mem").join("claude-mem.db");
+
+    if !db_path.exists() {
+        return Ok(vec![]);
+    }
+
+    let conn = rusqlite::Connection::open_with_flags(
+        &db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .map_err(|e| format!("Failed to open claude-mem DB: {}", e))?;
+
+    let limit = limit.unwrap_or(50);
+
+    let (query, param): (String, Option<String>) = if let Some(proj) = project {
+        (
+            format!(
+                "SELECT id, type, title, narrative, project, memory_session_id, created_at_epoch \
+                 FROM observations WHERE project = ?1 \
+                 ORDER BY created_at_epoch DESC LIMIT {}",
+                limit
+            ),
+            Some(proj),
+        )
+    } else {
+        (
+            format!(
+                "SELECT id, type, title, narrative, project, memory_session_id, created_at_epoch \
+                 FROM observations \
+                 ORDER BY created_at_epoch DESC LIMIT {}",
+                limit
+            ),
+            None,
+        )
+    };
+
+    let mut stmt = conn.prepare(&query).map_err(|e| format!("SQL error: {}", e))?;
+
+    let map_row = |row: &rusqlite::Row| -> rusqlite::Result<serde_json::Value> {
+        Ok(serde_json::json!({
+            "id": row.get::<_, i64>(0)?,
+            "type": row.get::<_, String>(1).unwrap_or_default(),
+            "title": row.get::<_, String>(2).unwrap_or_default(),
+            "narrative": row.get::<_, String>(3).unwrap_or_default(),
+            "project": row.get::<_, String>(4).unwrap_or_default(),
+            "session_id": row.get::<_, String>(5).unwrap_or_default(),
+            "timestamp": row.get::<_, i64>(6)?,
+        }))
+    };
+
+    let results: Vec<serde_json::Value> = if let Some(p) = &param {
+        stmt.query_map(rusqlite::params![p], map_row)
+            .map_err(|e| format!("Query error: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect()
+    } else {
+        stmt.query_map([], map_row)
+            .map_err(|e| format!("Query error: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect()
+    };
+
+    Ok(results)
+}
+
+/// Search claude-mem observations by keyword.
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn search_claude_mem(
+    query: String,
+    limit: Option<u32>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let home = dirs::home_dir().ok_or("No home dir")?;
+    let db_path = home.join(".claude-mem").join("claude-mem.db");
+
+    if !db_path.exists() {
+        return Ok(vec![]);
+    }
+
+    let conn = rusqlite::Connection::open_with_flags(
+        &db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .map_err(|e| format!("Failed to open claude-mem DB: {}", e))?;
+
+    let limit = limit.unwrap_or(20);
+    let sql = format!(
+        "SELECT o.id, o.type, o.title, o.narrative, o.project, o.created_at_epoch \
+         FROM observations_fts f JOIN observations o ON o.id = f.rowid \
+         WHERE observations_fts MATCH ?1 \
+         ORDER BY o.created_at_epoch DESC LIMIT {}",
+        limit
+    );
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| format!("SQL error: {}", e))?;
+    let rows = stmt
+        .query_map(rusqlite::params![query], |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, i64>(0)?,
+                "type": row.get::<_, String>(1).unwrap_or_default(),
+                "title": row.get::<_, String>(2).unwrap_or_default(),
+                "narrative": row.get::<_, String>(3).unwrap_or_default(),
+                "project": row.get::<_, String>(4).unwrap_or_default(),
+                "timestamp": row.get::<_, i64>(5)?,
+            }))
+        })
+        .map_err(|e| format!("Query error: {}", e))?;
+
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
 /// Read the current content of a weaver tmux session.
 #[cfg(not(mobile))]
 #[tauri::command]
@@ -1519,6 +1639,8 @@ pub fn run() {
             read_weaver_session,
             send_to_weaver_session,
             get_channel_port,
+            get_claude_mem_observations,
+            search_claude_mem,
             get_workspace_status,
             clone_repo_cmd,
             create_worktree_cmd,
