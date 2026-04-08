@@ -1205,8 +1205,8 @@ pub fn run() {
             // ── Weavy conductor agent ──
             let conductor_config = conductor::ConductorConfig {
                 enabled: std::env::var("CONDUCTOR_ENABLED")
-                    .unwrap_or_default()
-                    == "1",
+                    .unwrap_or("1".to_string())
+                    != "0",
                 ..conductor::ConductorConfig::default()
             };
             let conductor_agent = Arc::new(conductor::ConductorAgent::new(conductor_config));
@@ -1222,7 +1222,7 @@ pub fn run() {
             );
             debug_log::log_info(&format!(
                 "[Weavy] Conductor initialized (enabled={})",
-                std::env::var("CONDUCTOR_ENABLED").unwrap_or_default() == "1"
+                std::env::var("CONDUCTOR_ENABLED").unwrap_or("1".to_string()) != "0"
             ));
 
             // ── Auto-connect MQTT from env vars or saved settings ──
