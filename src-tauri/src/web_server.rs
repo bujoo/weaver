@@ -11,6 +11,7 @@ use axum::{
 use rust_embed::Embed;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tauri::Emitter;
 use tokio::sync::broadcast;
 
 /// Embed the SvelteKit build output into the binary
@@ -27,6 +28,7 @@ pub struct WsState {
     pub sessions_tx: broadcast::Sender<String>,
     pub notifications_tx: broadcast::Sender<String>,
     pub app_handle: Option<tauri::AppHandle>,
+    pub conductor_tx: Option<tokio::sync::mpsc::Sender<crate::conductor::ConductorEvent>>,
 }
 
 // ── Protocol types ──────────────────────────────────────────────────
@@ -277,14 +279,29 @@ async fn channel_todo_complete(
         }));
     }
 
-    // TODO: publish to MQTT brain/{ws}/status/{mid}/{tid}
-    // TODO: emit Tauri event to dashboard
-    // TODO: update PhaseMonitor
+    // Forward to Weavy conductor
+    if let Some(tx) = &state.conductor_tx {
+        let files = payload
+            .get("files_modified")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        let _ = tx.send(crate::conductor::ConductorEvent::TodoCompleted {
+            mission_id: mission_id.to_string(),
+            phase_id: payload.get("phase_id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            todo_id: todo_id.to_string(),
+            summary: summary.to_string(),
+            files_modified: files,
+        }).await;
+    }
 
     StatusCode::OK
 }
 
-async fn channel_phase_complete(Json(payload): Json<serde_json::Value>) -> StatusCode {
+async fn channel_phase_complete(
+    State(state): State<Arc<WsState>>,
+    Json(payload): Json<serde_json::Value>,
+) -> StatusCode {
     let phase_id = payload.get("phase_id").and_then(|v| v.as_str()).unwrap_or("?");
     let mission_id = payload.get("mission_id").and_then(|v| v.as_str()).unwrap_or("?");
     let summary = payload.get("summary").and_then(|v| v.as_str()).unwrap_or("");
@@ -296,9 +313,24 @@ async fn channel_phase_complete(Json(payload): Json<serde_json::Value>) -> Statu
         &summary[..200.min(summary.len())],
     ));
 
-    // TODO: publish to MQTT brain/{ws}/phase-complete/{mid}/{pid}
-    // TODO: push next phase via channel
-    // TODO: emit Tauri event to dashboard
+    if let Some(app) = &state.app_handle {
+        let _ = app.emit("claude-activity", serde_json::json!({
+            "source": "claude_code",
+            "event_type": "phase_completed",
+            "message": format!("Phase {} completed: {}", phase_id, &summary[..100.min(summary.len())]),
+            "mission_id": mission_id,
+        }));
+    }
+
+    // Forward to Weavy conductor -- THIS is where the magic happens
+    // Weavy will call Bedrock to decide: push next phase, escalate, or report
+    if let Some(tx) = &state.conductor_tx {
+        let _ = tx.send(crate::conductor::ConductorEvent::PhaseCompleted {
+            mission_id: mission_id.to_string(),
+            phase_id: phase_id.to_string(),
+            summary: summary.to_string(),
+        }).await;
+    }
 
     StatusCode::OK
 }

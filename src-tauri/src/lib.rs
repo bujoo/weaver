@@ -903,6 +903,118 @@ async fn update_supervisor_rules(
     Ok(())
 }
 
+// ── Weavy conductor commands ───────────────────────────────────────
+
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn get_conductor_decisions(
+    agent: tauri::State<'_, Arc<conductor::ConductorAgent>>,
+) -> Result<Vec<conductor::DecisionRecord>, String> {
+    Ok(agent.get_decisions().await)
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn get_conductor_config(
+    agent: tauri::State<'_, Arc<conductor::ConductorAgent>>,
+) -> Result<conductor::ConductorConfig, String> {
+    Ok(agent.get_config().await)
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn update_conductor_config(
+    agent: tauri::State<'_, Arc<conductor::ConductorAgent>>,
+    config: conductor::ConductorConfig,
+) -> Result<(), String> {
+    agent.update_config(config).await;
+    Ok(())
+}
+
+/// Weavy chat: send a user message through the conductor for an AI response.
+/// When the conductor is enabled, this calls Bedrock to generate a contextual reply.
+/// When disabled, returns a simple status-based response.
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn weavy_chat(
+    message: String,
+    agent: tauri::State<'_, Arc<conductor::ConductorAgent>>,
+    cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
+) -> Result<String, String> {
+    let config = agent.get_config().await;
+
+    if !config.enabled {
+        return Ok("Weavy conductor is not enabled. Set CONDUCTOR_ENABLED=1 and ensure AWS SSO is logged in.".to_string());
+    }
+
+    // Build a context-aware prompt from the user message + mission state
+    let cache_guard = cache.lock().await;
+    let snapshot = cache_guard.snapshot();
+    let phases_info: Vec<String> = snapshot
+        .get("plan_ids")
+        .and_then(|v| v.as_array())
+        .unwrap_or(&vec![])
+        .iter()
+        .filter_map(|id| id.as_str())
+        .flat_map(|mid| {
+            cache_guard
+                .get_phases_for_mission(mid)
+                .iter()
+                .map(|p| format!("{} ({}): {}", p.name, p.phase_id, p.status))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    let system = format!(
+        "You are Weavy, a friendly AI dev sidekick managing Claude Code sessions for ContextHub.\n\
+         Answer concisely. You have access to mission state.\n\n\
+         Current state: {} plans, {} phases, {} todos cached.\n\
+         Phases: {}",
+        snapshot.get("plans").and_then(|v| v.as_u64()).unwrap_or(0),
+        snapshot.get("phases").and_then(|v| v.as_u64()).unwrap_or(0),
+        snapshot.get("todos").and_then(|v| v.as_u64()).unwrap_or(0),
+        if phases_info.is_empty() {
+            "none loaded".to_string()
+        } else {
+            phases_info.join(", ")
+        }
+    );
+    drop(cache_guard);
+
+    // Call Bedrock via the conductor engine
+    let engine = conductor::engine::ConductorEngine::new(config);
+    let events = vec![conductor::ConductorEvent::ChannelReply {
+        mission_id: "chat".to_string(),
+        reply_type: "user_message".to_string(),
+        message: message.clone(),
+    }];
+
+    // Use Haiku for fast chat responses
+    match engine
+        .decide(&events, &*cache.lock().await, conductor::types::ModelTier::Haiku)
+        .await
+    {
+        Ok((decision, _input_tok, _output_tok)) => {
+            // Extract the reason field as the chat response
+            let response = match &decision {
+                conductor::ConductorDecision::NoAction { reason } => reason.clone(),
+                conductor::ConductorDecision::PushNextPhase { reason, .. } => {
+                    format!("I'll push the next phase. {}", reason)
+                }
+                conductor::ConductorDecision::Escalate { reason, .. } => {
+                    format!("I need to escalate: {}", reason)
+                }
+                conductor::ConductorDecision::InjectContext { message, .. } => {
+                    format!("Injecting context: {}", message)
+                }
+                other => format!("{:?}", other),
+            };
+            Ok(response)
+        }
+        Err(e) => Ok(format!("Bedrock error: {}. Is AWS SSO logged in? (aws sso login --profile wds_dev)", e)),
+    }
+}
+
 // ── Workspace commands ─────────────────────────────────────────────
 
 #[cfg(not(mobile))]
@@ -1038,11 +1150,16 @@ pub fn run() {
             };
             app.manage(server_info);
 
+            // Create conductor event channel early so WsState can hold a sender
+            let (conductor_tx_for_ws, conductor_rx_for_agent) =
+                tokio::sync::mpsc::channel::<conductor::ConductorEvent>(256);
+
             let ws_state = Arc::new(web_server::WsState {
                 auth_token: token,
                 sessions_tx: sessions_tx.clone(),
                 notifications_tx: notifications_tx.clone(),
                 app_handle: Some(app.handle().clone()),
+                conductor_tx: Some(conductor_tx_for_ws.clone()),
             });
             tauri::async_runtime::spawn(web_server::start_server(ws_state));
 
@@ -1078,6 +1195,29 @@ pub fn run() {
             app.manage(hook_tx);
             // Start supervisor immediately (it listens for hook events and MQTT via attach_mqtt)
             supervisor_agent.start(app.handle().clone(), hook_rx);
+
+            // ── Weavy conductor agent ──
+            let conductor_config = conductor::ConductorConfig {
+                enabled: std::env::var("CONDUCTOR_ENABLED")
+                    .unwrap_or_default()
+                    == "1",
+                ..conductor::ConductorConfig::default()
+            };
+            let conductor_agent = Arc::new(conductor::ConductorAgent::new(conductor_config));
+            app.manage(conductor_agent.clone());
+            app.manage(conductor_tx_for_ws);
+            // Start conductor with the receiver created alongside WsState
+            conductor_agent.start(
+                conductor_rx_for_agent,
+                mqtt_state.clone(),
+                spawner.clone(),
+                state_cache.clone(),
+                app.handle().clone(),
+            );
+            debug_log::log_info(&format!(
+                "[Weavy] Conductor initialized (enabled={})",
+                std::env::var("CONDUCTOR_ENABLED").unwrap_or_default() == "1"
+            ));
 
             // ── Auto-connect MQTT from env vars or saved settings ──
             {
@@ -1364,7 +1504,11 @@ pub fn run() {
             get_supervisor_observations,
             get_supervisor_interventions,
             get_supervisor_rules,
-            update_supervisor_rules
+            update_supervisor_rules,
+            get_conductor_decisions,
+            get_conductor_config,
+            update_conductor_config,
+            weavy_chat
         ]);
 
     // Mobile: minimal shell (all communication via WebSocket from the frontend)

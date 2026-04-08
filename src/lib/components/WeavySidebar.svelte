@@ -423,8 +423,20 @@
       return 'Hey there! No missions loaded yet. Try "load fixture" to get started, or check "mqtt" status.';
     }
 
+    // ── AI Response (via Bedrock if conductor enabled) ──
+    if (invoke) {
+      try {
+        const aiReply = await invoke<string>('weavy_chat', { message: original });
+        if (aiReply && !aiReply.startsWith('Weavy conductor is not enabled')) {
+          return aiReply;
+        }
+      } catch {
+        // Bedrock not available, fall through
+      }
+    }
+
     // ── Default ──
-    return `I don't have a specific handler for that yet. Try "help" to see what I can do, or wait until the Bedrock conductor is wired for full AI responses.`;
+    return `I don't have a specific handler for that yet. Try "help" to see what I can do, or enable CONDUCTOR_ENABLED=1 for AI responses.`;
   }
 
   function formatTime(ts: number): string {
