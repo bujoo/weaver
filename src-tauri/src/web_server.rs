@@ -308,6 +308,45 @@ async fn channel_todo_complete(
         let _ = app.emit("mission-phases-updated", serde_json::json!({
             "mission_id": mission_id,
         }));
+
+        // Publish to MQTT as retained (survives Weaver restart)
+        let full_mid = {
+            let c = cache.lock().await;
+            c.resolve_mission_id(mission_id).unwrap_or_else(|| mission_id.to_string())
+        };
+        let resolved_phase = {
+            let ph = payload.get("phase_id").and_then(|v| v.as_str()).unwrap_or("");
+            if ph.is_empty() { todo_id.split('.').next().unwrap_or("").to_string() } else { ph.to_string() }
+        };
+        let mqtt_state: tauri::State<'_, std::sync::Arc<tokio::sync::Mutex<Option<crate::mqtt::client::MqttClient>>>> = app.state();
+        let mqtt_guard = mqtt_state.lock().await;
+        if let Some(client) = mqtt_guard.as_ref() {
+            let ws = &client.config().workspace;
+            // Retained todo state update
+            let topic = format!("weaver/{}/state/{}/todo/{}", ws, full_mid, todo_id);
+            let _ = client.publish_retained(&topic, &serde_json::json!({
+                "mission_id": full_mid,
+                "phase_id": resolved_phase,
+                "todo_id": todo_id,
+                "status": "completed",
+                "description": summary,
+                "role": "",
+                "file_paths": payload.get("files_modified").unwrap_or(&serde_json::json!([])),
+                "blocked_by": [],
+                "published_at": chrono::Utc::now().to_rfc3339(),
+            })).await;
+            // Also publish to Brain topic
+            let brain_topic = format!("brain/{}/status/{}/{}", ws, full_mid, todo_id);
+            let _ = client.publish_json(&brain_topic, &serde_json::json!({
+                "mission_id": full_mid,
+                "todo_id": todo_id,
+                "phase_id": resolved_phase,
+                "status": "completed",
+                "summary": summary,
+                "source": "weaver",
+                "published_at": chrono::Utc::now().to_rfc3339(),
+            })).await;
+        }
     }
 
     // Forward to Weavy conductor
@@ -375,6 +414,41 @@ async fn channel_phase_complete(
         let _ = app.emit("mission-phases-updated", serde_json::json!({
             "mission_id": mission_id,
         }));
+
+        // Publish to MQTT as retained (survives Weaver restart)
+        let full_mid = {
+            let c = cache.lock().await;
+            c.resolve_mission_id(mission_id).unwrap_or_else(|| mission_id.to_string())
+        };
+        let mqtt_state: tauri::State<'_, std::sync::Arc<tokio::sync::Mutex<Option<crate::mqtt::client::MqttClient>>>> = app.state();
+        let mqtt_guard = mqtt_state.lock().await;
+        if let Some(client) = mqtt_guard.as_ref() {
+            let ws = &client.config().workspace;
+            // Retained phase state update
+            let topic = format!("weaver/{}/state/{}/phase/{}", ws, full_mid, phase_id);
+            let _ = client.publish_retained(&topic, &serde_json::json!({
+                "mission_id": full_mid,
+                "phase_id": phase_id,
+                "name": phase_id,
+                "status": "completed",
+                "order": 0,
+                "todo_count": 0,
+                "completed_count": 0,
+                "blocked_by": [],
+                "config": {},
+                "published_at": chrono::Utc::now().to_rfc3339(),
+            })).await;
+            // Also publish to Brain
+            let brain_topic = format!("brain/{}/status/{}/{}", ws, full_mid, phase_id);
+            let _ = client.publish_json(&brain_topic, &serde_json::json!({
+                "mission_id": full_mid,
+                "phase_id": phase_id,
+                "status": "completed",
+                "summary": summary,
+                "source": "weaver",
+                "published_at": chrono::Utc::now().to_rfc3339(),
+            })).await;
+        }
     }
 
     // Forward to Weavy conductor -- THIS is where the magic happens

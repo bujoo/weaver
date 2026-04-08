@@ -134,6 +134,19 @@ impl MqttClient {
         self.publish(topic, &json).await
     }
 
+    /// Publish a JSON payload as a retained message (survives broker restart).
+    pub async fn publish_retained<T: serde::Serialize>(
+        &self,
+        topic: &str,
+        payload: &T,
+    ) -> Result<(), String> {
+        let json = serde_json::to_vec(payload).map_err(|e| format!("JSON serialize error: {}", e))?;
+        self.client
+            .publish(topic, QoS::AtLeastOnce, true, json)
+            .await
+            .map_err(|e| format!("MQTT publish retained error: {}", e))
+    }
+
     pub fn config(&self) -> &MqttConfig {
         &self.config
     }
