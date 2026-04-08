@@ -1412,14 +1412,9 @@ tauri_panel! {
 pub fn run() {
     let builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
 
-    // MCP plugin: expose Weaver as an MCP server for AI agent integration
-    let builder = builder.plugin(
-        tauri_plugin_mcp::init_with_config(
-            tauri_plugin_mcp::PluginConfig::new("Weaver".to_string())
-                .tcp_localhost(9311)
-                .start_socket_server(true),
-        ),
-    );
+    // MCP Bridge: expose Weaver to AI agents via hypothesi/mcp-server-tauri (debug only)
+    #[cfg(debug_assertions)]
+    let builder = builder.plugin(tauri_plugin_mcp_bridge::init());
 
     // Desktop: full setup with all plugins and commands
     #[cfg(not(mobile))]
