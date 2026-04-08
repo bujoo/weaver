@@ -447,7 +447,6 @@
       return 'Loaded.';
     } catch (e) { return `Error: ${e}`; }
   }
-  }
 
   async function findChannelPort(invoke: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null): Promise<number | null> {
     if (!invoke) return null;
