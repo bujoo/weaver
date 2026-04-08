@@ -272,7 +272,7 @@ function normalizeStatus(
 	missionTasks: TaskQueueEntry[]
 ): UnifiedMission['status'] {
 	const s = rawStatus.toLowerCase();
-	if (s === 'incoming') return 'incoming';
+	if (s === 'incoming' || s === 'draft' || s === 'pending') return 'incoming';
 	if (s === 'validating') return 'validating';
 	if (s === 'ready') return 'ready';
 	if (s === 'completed' || s === 'done') return 'completed';
@@ -282,7 +282,7 @@ function normalizeStatus(
 	// Infer from tasks if status is ambiguous
 	if (missionTasks.some((t) => t.status === 'executing')) return 'executing';
 	if (missionTasks.every((t) => t.status === 'completed') && missionTasks.length > 0) return 'completed';
-	return 'ready';
+	return 'incoming';
 }
 
 function missionSortComparator(a: UnifiedMission, b: UnifiedMission): number {

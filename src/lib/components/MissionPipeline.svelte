@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { missions } from '$lib/stores/missions';
+	import { missions, selectedMissionId } from '$lib/stores/missions';
 	import type { UnifiedMission } from '$lib/stores/missions';
 	import MissionPipelineCard from './MissionPipelineCard.svelte';
 
@@ -34,7 +34,7 @@
 			<div class="column-body">
 				{#if col.missions.length > 0}
 					{#each col.missions as mission (mission.missionId)}
-						<MissionPipelineCard {mission} />
+						<MissionPipelineCard {mission} onaction={() => selectedMissionId.set(mission.missionId)} />
 					{/each}
 				{:else}
 					<div class="column-empty">
