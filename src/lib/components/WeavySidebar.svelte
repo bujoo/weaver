@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { isTauri } from '$lib/ws';
+  import { missions } from '$lib/stores/missions';
 
   // ── Robot Poses ────────────────────────────────────────────────────
 
@@ -128,7 +129,8 @@
     }
   }
 
-  function scrollToBottom() {
+  async function scrollToBottom() {
+    await tick();
     if (messagesEnd) {
       messagesEnd.scrollIntoView({ behavior: 'smooth' });
     }
@@ -256,29 +258,62 @@
     setMood('thinking', 3000);
 
     const lower = text.toLowerCase();
-    if (lower.startsWith('push p') || lower.startsWith('start p')) {
-      const phaseMatch = text.match(/p(\d+)/i);
-      if (phaseMatch) {
-        const phaseId = `P${phaseMatch[1]}`;
-        messages = [...messages, {
-          id: `weavy-${Date.now()}`,
-          timestamp: Date.now(),
-          role: 'weavy',
-          content: `Got it! Pushing phase ${phaseId} to the active session...`,
-        }];
-        setMood('working');
-        scrollToBottom();
-        return;
-      }
-    }
-
+    const reply = handleChat(lower, text);
     messages = [...messages, {
       id: `weavy-${Date.now()}`,
       timestamp: Date.now(),
       role: 'weavy',
-      content: `I'll handle that once the conductor is fully wired. For now, I'm watching Claude Code sessions and logging decisions.`,
+      content: reply,
     }];
     scrollToBottom();
+  }
+
+  function handleChat(lower: string, _original: string): string {
+    const missionList = $missions;
+    setMood('thinking', 3000);
+
+    // Mission queries
+    if (lower.includes('mission') || lower.includes('what are') || lower.includes('status')) {
+      if (missionList.length === 0) {
+        return 'No missions loaded yet. Make sure MQTT is connected and Brain has published a registry.';
+      }
+      const summary = missionList.map((m, i) =>
+        `${i + 1}. ${m.title} (${m.status}) -- ${m.phaseCount} phases, ${m.todoCount} todos`
+      ).join('\n');
+      return `Here are the current missions:\n\n${summary}`;
+    }
+
+    // Push phase
+    if (lower.startsWith('push p') || lower.startsWith('start p')) {
+      const phaseMatch = lower.match(/p(\d+)/i);
+      if (phaseMatch) {
+        setMood('working');
+        return `Got it! Pushing phase P${phaseMatch[1]} to the active session... (conductor wiring pending)`;
+      }
+    }
+
+    // Help
+    if (lower.includes('help') || lower === '?') {
+      return 'I can help with:\n- "missions" or "status" -- show current missions\n- "push P1" -- push a phase to Claude Code\n- "what phase" -- show active phase\n- Ask me anything about the current work!';
+    }
+
+    // Phase queries
+    if (lower.includes('phase') || lower.includes('current')) {
+      if (missionList.length > 0) {
+        const m = missionList[0];
+        return `Working on: ${m.title}\nPhases: ${m.phaseCount} total\nTodos: ${m.todoCount}\nStatus: ${m.status}`;
+      }
+      return 'No active mission. Waiting for Brain to assign work.';
+    }
+
+    // Greeting
+    if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
+      setMood('happy', 3000);
+      return 'Hey there! Ready to help with your missions. Ask me about current status or tell me to push a phase.';
+    }
+
+    // Default
+    return `I heard you. Once the conductor is fully wired to Bedrock, I'll be able to make smarter decisions. For now, try "missions" or "help".`;
   }
 
   function formatTime(ts: number): string {
