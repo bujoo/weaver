@@ -1040,6 +1040,7 @@ pub fn run() {
                 auth_token: token,
                 sessions_tx: sessions_tx.clone(),
                 notifications_tx: notifications_tx.clone(),
+                app_handle: Some(app.handle().clone()),
             });
             tauri::async_runtime::spawn(web_server::start_server(ws_state));
 

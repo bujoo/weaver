@@ -199,6 +199,39 @@ export async function initActivityListeners(): Promise<void> {
 			});
 		}
 	);
+
+	// claude-activity -> real-time Claude Code events from HTTP hooks & channel
+	listen<{ source?: string; event_type?: string; message?: string; detail?: string; mission_id?: string; todo_id?: string }>(
+		'claude-activity',
+		(event) => {
+			const p = event.payload ?? {};
+			addActivityEvent({
+				timestamp: Date.now(),
+				missionId: p.mission_id ?? '*',
+				todoId: p.todo_id,
+				source: (p.source as ActivityEvent['source']) ?? 'claude_code',
+				eventType: p.event_type ?? 'tool_use',
+				severity: 'info',
+				message: p.message ?? 'Claude Code activity',
+				detail: p.detail,
+			});
+		}
+	);
+
+	// mission-phases-updated -> mqtt / state_change
+	listen<{ mission_id: string }>(
+		'mission-phases-updated',
+		(event) => {
+			addActivityEvent({
+				timestamp: Date.now(),
+				missionId: event.payload?.mission_id ?? '*',
+				source: 'mqtt',
+				eventType: 'state_change',
+				severity: 'info',
+				message: 'Phase state updated',
+			});
+		}
+	);
 }
 
 // ── Demo Seed Data ─────────────────────────────────────────────────

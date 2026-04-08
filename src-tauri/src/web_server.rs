@@ -26,6 +26,7 @@ pub struct WsState {
     pub auth_token: String,
     pub sessions_tx: broadcast::Sender<String>,
     pub notifications_tx: broadcast::Sender<String>,
+    pub app_handle: Option<tauri::AppHandle>,
 }
 
 // ── Protocol types ──────────────────────────────────────────────────
@@ -157,13 +158,25 @@ async fn hook_session_start(Json(payload): Json<serde_json::Value>) -> StatusCod
     StatusCode::OK
 }
 
-async fn hook_tool_use(Json(payload): Json<serde_json::Value>) -> StatusCode {
+async fn hook_tool_use(
+    State(state): State<Arc<WsState>>,
+    Json(payload): Json<serde_json::Value>,
+) -> StatusCode {
     let tool = payload.get("tool_name").and_then(|v| v.as_str()).unwrap_or("?");
     // Only log non-trivial tools to avoid noise
     match tool {
         "Read" | "Glob" | "Grep" | "LS" => {} // skip noisy read-only tools
         _ => {
             crate::debug_log::log_info(&format!("[Hook] ToolUse: {}", tool));
+            // Emit to frontend activity feed
+            if let Some(app) = &state.app_handle {
+                let _ = app.emit("claude-activity", serde_json::json!({
+                    "source": "claude_code",
+                    "event_type": "tool_use",
+                    "message": format!("Tool: {}", tool),
+                    "detail": payload.get("tool_input").and_then(|v| v.as_str()).unwrap_or(""),
+                }));
+            }
         }
     }
     StatusCode::OK
@@ -178,11 +191,20 @@ async fn hook_stop(Json(payload): Json<serde_json::Value>) -> StatusCode {
     StatusCode::OK
 }
 
-async fn hook_task_completed(Json(payload): Json<serde_json::Value>) -> StatusCode {
-    crate::debug_log::log_info(&format!(
-        "[Hook] TaskCompleted: {}",
-        serde_json::to_string(&payload).unwrap_or_default()
-    ));
+async fn hook_task_completed(
+    State(state): State<Arc<WsState>>,
+    Json(payload): Json<serde_json::Value>,
+) -> StatusCode {
+    let subject = payload.get("task_subject").and_then(|v| v.as_str()).unwrap_or("?");
+    crate::debug_log::log_info(&format!("[Hook] TaskCompleted: {}", subject));
+    if let Some(app) = &state.app_handle {
+        let _ = app.emit("claude-activity", serde_json::json!({
+            "source": "claude_code",
+            "event_type": "task_completed",
+            "message": format!("Task completed: {}", subject),
+            "detail": serde_json::to_string(&payload).unwrap_or_default(),
+        }));
+    }
     StatusCode::OK
 }
 
@@ -206,7 +228,10 @@ async fn hook_session_end(Json(payload): Json<serde_json::Value>) -> StatusCode 
 // ── Weaver Channel Reply Endpoints ──────────────────────────────────
 // These receive POSTs from Claude Code via the weaver channel's reply tools.
 
-async fn channel_reply(Json(payload): Json<serde_json::Value>) -> StatusCode {
+async fn channel_reply(
+    State(state): State<Arc<WsState>>,
+    Json(payload): Json<serde_json::Value>,
+) -> StatusCode {
     let reply_type = payload.get("type").and_then(|v| v.as_str()).unwrap_or("?");
     let mission_id = payload.get("mission_id").and_then(|v| v.as_str()).unwrap_or("?");
     let message = payload.get("message").and_then(|v| v.as_str()).unwrap_or("");
@@ -217,10 +242,21 @@ async fn channel_reply(Json(payload): Json<serde_json::Value>) -> StatusCode {
         &mission_id[..8.min(mission_id.len())],
         &message[..100.min(message.len())],
     ));
+    if let Some(app) = &state.app_handle {
+        let _ = app.emit("claude-activity", serde_json::json!({
+            "source": "claude_code",
+            "event_type": "channel_reply",
+            "message": format!("[{}] {}", reply_type, message),
+            "mission_id": mission_id,
+        }));
+    }
     StatusCode::OK
 }
 
-async fn channel_todo_complete(Json(payload): Json<serde_json::Value>) -> StatusCode {
+async fn channel_todo_complete(
+    State(state): State<Arc<WsState>>,
+    Json(payload): Json<serde_json::Value>,
+) -> StatusCode {
     let todo_id = payload.get("todo_id").and_then(|v| v.as_str()).unwrap_or("?");
     let mission_id = payload.get("mission_id").and_then(|v| v.as_str()).unwrap_or("?");
     let summary = payload.get("summary").and_then(|v| v.as_str()).unwrap_or("");
@@ -231,6 +267,15 @@ async fn channel_todo_complete(Json(payload): Json<serde_json::Value>) -> Status
         &mission_id[..8.min(mission_id.len())],
         &summary[..120.min(summary.len())],
     ));
+    if let Some(app) = &state.app_handle {
+        let _ = app.emit("claude-activity", serde_json::json!({
+            "source": "claude_code",
+            "event_type": "todo_completed",
+            "message": format!("Todo {} completed: {}", todo_id, &summary[..80.min(summary.len())]),
+            "mission_id": mission_id,
+            "todo_id": todo_id,
+        }));
+    }
 
     // TODO: publish to MQTT brain/{ws}/status/{mid}/{tid}
     // TODO: emit Tauri event to dashboard

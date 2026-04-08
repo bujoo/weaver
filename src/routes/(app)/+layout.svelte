@@ -11,6 +11,7 @@
 	import { initRegistryListener } from '$lib/stores/workspace';
 	import { initializeTaskListeners } from '$lib/stores/tasks';
 	import { missions, selectedMissionId, startPhasePolling } from '$lib/stores/missions';
+	import { initActivityListeners } from '$lib/stores/activity';
 	import { registerShortcuts } from '$lib/shortcuts';
 	import MissionSidebar from '$lib/components/MissionSidebar.svelte';
 	import KeyboardShortcutOverlay from '$lib/components/KeyboardShortcutOverlay.svelte';
@@ -39,6 +40,7 @@
 			checkForUpdates();
 			startMqttPolling();
 			cleanupPhasePolling = startPhasePolling();
+			initActivityListeners();
 		}
 
 		cleanupShortcuts = registerShortcuts({
