@@ -95,6 +95,7 @@
     content: string;
     decision?: string;
     model?: string;
+    actions?: Array<{ label: string; command: string }>;
   }
 
   let messages = $state<WeavyMessage[]>([]);
@@ -259,12 +260,30 @@
 
     const lower = text.toLowerCase();
     const reply = await handleChat(lower, text);
-    messages = [...messages, {
-      id: `weavy-${Date.now()}`,
-      timestamp: Date.now(),
-      role: 'weavy',
-      content: reply,
-    }];
+
+    // Check for special action replies
+    if (reply.startsWith('sent_with_actions:')) {
+      const parts = reply.split(':');
+      const sessionName = parts[1];
+      const msgSent = parts.slice(2).join(':');
+      messages = [...messages, {
+        id: `weavy-${Date.now()}`,
+        timestamp: Date.now(),
+        role: 'weavy',
+        content: `Sent to ${sessionName}: "${msgSent}"`,
+        actions: [
+          { label: 'Open VS Code', command: '/open' },
+          { label: 'Watch Output', command: '/watch' },
+        ],
+      }];
+    } else {
+      messages = [...messages, {
+        id: `weavy-${Date.now()}`,
+        timestamp: Date.now(),
+        role: 'weavy',
+        content: reply,
+      }];
+    }
     scrollToBottom();
   }
 
@@ -328,6 +347,18 @@
     }
     if (lower === 'workspace' || lower === 'repos') {
       return handleOfflineWorkspace(invoke);
+    }
+    if (lower === 'open' || lower === 'vscode') {
+      if (!invoke) return 'Not available outside Tauri.';
+      const list = $missions;
+      if (list.length === 0) return 'No missions to open.';
+      const mid = list[0].missionId.slice(0, 8);
+      try {
+        const settings = await invoke('get_settings') as { workspaceMount: string };
+        const wsFile = `${settings.workspaceMount}/.worktrees/${mid}/mission.code-workspace`;
+        await invoke('open_workspace_cmd', { path: wsFile });
+        return `Opening VS Code workspace for ${list[0].title}...`;
+      } catch (e) { return `Could not open: ${e}`; }
     }
     if (lower === 'regenerate') {
       return handleOfflineRegenerate(invoke);
@@ -415,7 +446,7 @@
     const port = await findChannelPort(invoke);
     if (port) {
       const sent = await sendToChannel(port, { type: 'message', content: msg, mission_id: $missions[0]?.missionId ?? '' });
-      if (sent) { setMood('working'); xp += 5; return `Sent via channel: "${msg.slice(0, 80)}"`; }
+      if (sent) { setMood('working'); xp += 5; return `sent_with_actions:channel:${msg.slice(0, 80)}`; }
     }
 
     // Fallback: send directly via tmux
@@ -423,7 +454,8 @@
       try {
         await invoke('send_to_weaver_session', { sessionName: sessions[0].name, text: msg });
         setMood('working'); xp += 3;
-        return `Sent via tmux to ${sessions[0].name}: "${msg.slice(0, 80)}"`;
+        // Return message with action buttons
+        return `sent_with_actions:${sessions[0].name}:${msg.slice(0, 80)}`;
       } catch (e) {
         return `Failed to send: ${e}`;
       }
@@ -517,6 +549,13 @@
             <span class="decision-badge">{msg.decision}</span>
           {/if}
           <span class="msg-content">{msg.content}</span>
+          {#if msg.actions && msg.actions.length > 0}
+            <div class="msg-actions">
+              {#each msg.actions as action}
+                <button class="msg-action-btn" onclick={() => { input = action.command; sendMessage(); }} type="button">{action.label}</button>
+              {/each}
+            </div>
+          {/if}
           <span class="msg-meta">
             {formatTime(msg.timestamp)}
             {#if msg.model}
@@ -705,6 +744,28 @@
   .msg-content {
     display: block;
     word-wrap: break-word;
+  }
+
+  .msg-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+  }
+
+  .msg-action-btn {
+    font-family: var(--font-mono, monospace);
+    font-size: 10px;
+    padding: 3px 10px;
+    background: rgba(167, 139, 250, 0.1);
+    border: 1px solid rgba(167, 139, 250, 0.3);
+    color: #a78bfa;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .msg-action-btn:hover {
+    background: rgba(167, 139, 250, 0.2);
   }
 
   .msg-meta {
