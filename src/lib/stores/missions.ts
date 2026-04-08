@@ -20,6 +20,7 @@ export interface CachedPhase {
 	todo_count: number;
 	completed_count: number;
 	todos: CachedTodo[];
+	blocked_by?: string[];
 }
 
 /**
@@ -188,7 +189,7 @@ function buildUnifiedMission(
 	$availablePhases: AvailablePhase[],
 	$humanNeededPhases: HumanPhaseAlert[],
 	$sessions: Session[],
-	$cachedPhases: Record<string, Array<{ phase_id: string; name: string; order: number; status: string; todo_count: number; completed_count: number }>>
+	$cachedPhases: Record<string, Array<{ phase_id: string; name: string; order: number; status: string; todo_count: number; completed_count: number; blocked_by?: string[] }>>
 ): UnifiedMission {
 	// Tasks assigned to this mission
 	const missionTasks = $tasks.filter((t) => t.missionId === m.mission_id);
@@ -200,6 +201,7 @@ function buildUnifiedMission(
 		todoCount: p.todo_count,
 		status: p.status,
 		todos: p.todos ?? [],
+		blockedBy: p.blocked_by ?? [],
 	}));
 	const taskPhases = $availablePhases
 		.filter((p) => p.missionId === m.mission_id)

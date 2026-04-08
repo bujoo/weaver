@@ -37,6 +37,7 @@
 		todoCount: number;
 		status: string;
 		todos?: CachedTodo[];
+		blockedBy?: string[];
 	}
 
 	interface Props {
@@ -145,14 +146,23 @@
 			<div class="todo-separator"></div>
 
 			<!-- Todo items -->
-			{#each todos() as todo (todo.id)}
-				<TodoItem
-					{todo}
-					active={activeTodo?.id === todo.id}
-					{missionId}
-					phaseId={phase.phaseId}
-				/>
-			{/each}
+			{#if todos().length === 0 && phase.todoCount === 0}
+				<div class="phase-empty-state">
+					<span class="empty-text">Tasks not yet decomposed</span>
+					{#if phase.blockedBy && phase.blockedBy.length > 0}
+						<span class="empty-blocked">Blocked by: {phase.blockedBy.join(', ')}</span>
+					{/if}
+				</div>
+			{:else}
+				{#each todos() as todo (todo.id)}
+					<TodoItem
+						{todo}
+						active={activeTodo?.id === todo.id}
+						{missionId}
+						phaseId={phase.phaseId}
+					/>
+				{/each}
+			{/if}
 
 			<!-- Intervention controls for active phases -->
 			{#if statusClass === 'executing' && activeTodo}
@@ -351,5 +361,26 @@
 		height: 1px;
 		background: var(--border-muted);
 		margin: 0 var(--space-md);
+	}
+
+	.phase-empty-state {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 4px;
+		padding: var(--space-md) var(--space-lg);
+		color: var(--text-muted);
+	}
+
+	.empty-text {
+		font-family: var(--font-mono);
+		font-size: 11px;
+		letter-spacing: 0.04em;
+	}
+
+	.empty-blocked {
+		font-family: var(--font-mono);
+		font-size: 10px;
+		color: var(--task-queued);
 	}
 </style>

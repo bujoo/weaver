@@ -65,9 +65,18 @@ impl AssignmentHandler {
                         let _ = app.emit("mqtt-registry", &serde_json::to_value(&reg).unwrap_or_default());
                     }
                     Ok(MqttIncoming::PlanState(plan)) => {
-                        use tauri::Manager;
+                        use tauri::{Emitter, Manager};
+                        let mission_id = plan.mission_id.clone();
                         let cache: tauri::State<'_, Arc<Mutex<MissionStateCache>>> = app.state();
-                        cache.lock().await.store_plan(plan);
+                        let mut guard = cache.lock().await;
+                        // Decompose plan into phase/todo cache entries
+                        // (load_weaver_plan calls store_plan internally)
+                        let plan_json = serde_json::to_value(&plan).unwrap_or_default();
+                        let _ = guard.load_weaver_plan(&plan_json);
+                        drop(guard);
+                        let _ = app.emit("mission-phases-updated", serde_json::json!({
+                            "mission_id": mission_id
+                        }));
                     }
                     Ok(MqttIncoming::PhaseState(phase)) => {
                         use tauri::{Emitter, Manager};

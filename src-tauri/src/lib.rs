@@ -502,6 +502,7 @@ async fn get_mission_phases(
                 "todo_count": todo_count,
                 "completed_count": completed_count,
                 "todos": todo_list,
+                "blocked_by": p.get("blocked_by").cloned().unwrap_or(serde_json::json!([])),
             }));
         }
     } else {
@@ -525,6 +526,7 @@ async fn get_mission_phases(
                 "todo_count": if todo_list.is_empty() { p.todo_count as usize } else { todo_list.len() },
                 "completed_count": p.completed_count,
                 "todos": todo_list,
+                "blocked_by": p.blocked_by,
             }));
         }
     }
