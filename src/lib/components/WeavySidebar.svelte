@@ -437,6 +437,42 @@
       return 'Hey there! No missions loaded yet. Try "load fixture" to get started, or check "mqtt" status.';
     }
 
+    // ── Continue / Send to Claude Code session ──
+    if (lower.startsWith('continue') || lower.startsWith('send ') || lower.startsWith('tell claude') || lower.startsWith('push ') || lower.startsWith('next phase')) {
+      const sessions = invoke ? await invoke<Array<{ name: string }>>('list_weaver_sessions').catch(() => []) : [];
+      if (sessions.length === 0) return 'No active Claude Code session. Start one first.';
+
+      // Determine the message to send
+      let msg: string;
+      if (lower.startsWith('continue') || lower.startsWith('next phase')) {
+        msg = 'Continue with the next phase. Read .weaver/specs/ for the todo specs. Follow the phase-workflow skill.';
+      } else if (lower.startsWith('push p')) {
+        const phaseMatch = original.match(/p(\d+)/i);
+        const phaseId = phaseMatch ? `P${phaseMatch[1]}` : 'P0';
+        msg = `Execute Phase ${phaseId}. Read .weaver/specs/ for each todo spec. Complete all todos then call weaver_phase_complete.`;
+      } else {
+        msg = original.replace(/^(send |tell claude )/i, '');
+      }
+
+      // Try channel first (reliable, bidirectional)
+      const port = await findChannelPort(invoke);
+      if (port) {
+        const sent = await sendToChannel(port, {
+          type: lower.startsWith('push') ? 'assignment' : 'message',
+          content: msg,
+          mission_id: $missions[0]?.missionId ?? '',
+        });
+        if (sent) {
+          setMood('working');
+          xp += 5;
+          return `Sent to Claude via channel (port ${port}):\n"${msg.slice(0, 80)}${msg.length > 80 ? '...' : ''}"`;
+        }
+      }
+
+      // Channel not available -- inform user
+      return `Channel not available (session may not have the weaver plugin loaded).\n\nManual option:\ntmux send-keys -t ${sessions[0].name} "${msg.slice(0, 60)}" Enter`;
+    }
+
     // ── AI Response (via Bedrock if conductor enabled) ──
     if (invoke) {
       try {
@@ -451,6 +487,32 @@
 
     // ── Default ──
     return `I don't have a specific handler for that yet. Try "help" to see what I can do, or enable CONDUCTOR_ENABLED=1 for AI responses.`;
+  }
+
+  async function findChannelPort(invoke: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null): Promise<number | null> {
+    if (!invoke) return null;
+    try {
+      const port = await invoke('get_channel_port', { missionId: null }) as number | null;
+      if (!port) return null;
+      // Verify the channel is actually alive
+      const resp = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(1000) });
+      if (resp.ok) return port;
+    } catch { /* channel not responding */ }
+    return null;
+  }
+
+  async function sendToChannel(port: number, payload: Record<string, unknown>): Promise<boolean> {
+    try {
+      const resp = await fetch(`http://127.0.0.1:${port}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(3000),
+      });
+      return resp.ok;
+    } catch {
+      return false;
+    }
   }
 
   function formatTime(ts: number): string {

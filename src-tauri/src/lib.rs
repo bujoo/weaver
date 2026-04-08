@@ -737,6 +737,45 @@ async fn attach_weaver_session(session_name: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Find the active channel port for a mission workspace.
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn get_channel_port(mission_id: Option<String>) -> Result<Option<u16>, String> {
+    let mount = default_workspace_mount();
+    let worktrees = mount.join(".worktrees");
+
+    // If mission_id given, check that specific workspace
+    if let Some(mid) = &mission_id {
+        let short = if mid.len() > 8 { &mid[..8] } else { mid.as_str() };
+        let port_file = worktrees.join(short).join("weaver").join(".weaver").join("channel-port");
+        if port_file.exists() {
+            let port: u16 = std::fs::read_to_string(&port_file)
+                .map_err(|e| e.to_string())?
+                .trim()
+                .parse()
+                .map_err(|e: std::num::ParseIntError| e.to_string())?;
+            return Ok(Some(port));
+        }
+        return Ok(None);
+    }
+
+    // Otherwise scan all worktrees for any active channel
+    if let Ok(entries) = std::fs::read_dir(&worktrees) {
+        for entry in entries.flatten() {
+            let port_file = entry.path().join("weaver").join(".weaver").join("channel-port");
+            if port_file.exists() {
+                if let Ok(content) = std::fs::read_to_string(&port_file) {
+                    if let Ok(port) = content.trim().parse::<u16>() {
+                        return Ok(Some(port));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(None)
+}
+
 /// Read the current content of a weaver tmux session.
 #[cfg(not(mobile))]
 #[tauri::command]
@@ -1520,6 +1559,7 @@ pub fn run() {
             list_weaver_sessions,
             attach_weaver_session,
             read_weaver_session,
+            get_channel_port,
             get_workspace_status,
             clone_repo_cmd,
             create_worktree_cmd,
