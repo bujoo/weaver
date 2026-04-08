@@ -42,7 +42,7 @@ impl ConductorAgent {
         let config = self.config.clone();
         let decisions = self.decisions.clone();
 
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let cfg = config.lock().await.clone();
             let engine = ConductorEngine::new(cfg.clone());
             let executor = ActionExecutor::new(
