@@ -580,7 +580,7 @@ async fn kill_mission(
             let _ = client.clear_retained(&format!("weaver/{}/state/{}/todo/{}", ws, full_mid, tid)).await;
         }
 
-        // Notify Brain
+        // Notify Brain via MQTT (best-effort, Lambda may be frozen)
         let _ = client.publish_json(
             &format!("brain/{}/release/{}", ws, full_mid),
             &serde_json::json!({
@@ -591,6 +591,24 @@ async fn kill_mission(
             }),
         ).await;
     }
+
+    // Also notify Brain via HTTP API (reliable, wakes Lambda)
+    let saved = settings::load_settings();
+    let url = format!(
+        "{}/v1/mission/{}/weaver-plan/control",
+        saved.brain_api_url.trim_end_matches('/'),
+        full_mid
+    );
+    let http_client = reqwest::Client::new();
+    let _ = http_client
+        .post(&url)
+        .json(&serde_json::json!({
+            "action": "kill",
+            "reason": "Killed from Weaver UI",
+            "reset_statuses": false,
+        }))
+        .send()
+        .await;
 
     // Refresh frontend
     let _ = app.emit("mission-phases-updated", serde_json::json!({ "mission_id": full_mid }));
@@ -652,7 +670,6 @@ async fn take_mission(
 async fn start_mission_execution(
     mission_id: String,
     cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
-    mqtt_state: tauri::State<'_, Arc<Mutex<Option<mqtt::client::MqttClient>>>>,
 ) -> Result<String, String> {
     let full_mid = {
         let c = cache.lock().await;
@@ -660,24 +677,34 @@ async fn start_mission_execution(
             .unwrap_or_else(|| mission_id.clone())
     };
 
-    let mqtt_guard = mqtt_state.lock().await;
-    let client = mqtt_guard.as_ref().ok_or("MQTT not connected")?;
-    let ws = &client.config().workspace;
-    let iid = &client.config().instance_id;
+    // Call Brain HTTP API directly (not MQTT) to trigger execution.
+    // This wakes Lambda and avoids the frozen-subscriber problem.
+    let saved = settings::load_settings();
+    let url = format!(
+        "{}/v1/mission/{}/weaver-plan",
+        saved.brain_api_url.trim_end_matches('/'),
+        full_mid
+    );
 
-    let topic = format!("brain/{}/execute/{}", ws, full_mid);
-    let payload = serde_json::json!({
-        "mission_id": full_mid,
-        "instance_id": iid,
-        "workspace": ws,
-        "published_at": chrono::Utc::now().to_rfc3339(),
-    });
-    client.publish_json(&topic, &payload).await?;
+    let client = reqwest::Client::new();
+    let resp = client
+        .put(&url)
+        .json(&serde_json::json!({ "status": "executing" }))
+        .send()
+        .await
+        .map_err(|e| format!("Brain API call failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Brain API returned {}: {}", status, body));
+    }
+
     debug_log::log_info(&format!(
-        "[MQTT] Execute mission {} -> {}",
-        &full_mid[..8.min(full_mid.len())], topic
+        "[API] Execute mission {} via Brain API: {}",
+        &full_mid[..8.min(full_mid.len())], url
     ));
-    Ok(format!("Execute signal sent for mission {}", &full_mid[..8.min(full_mid.len())]))
+    Ok(format!("Execution triggered for mission {}", &full_mid[..8.min(full_mid.len())]))
 }
 
 /// Manually start execution of a phase by spawning Claude Code in tmux.
