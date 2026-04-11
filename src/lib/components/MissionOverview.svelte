@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import type { UnifiedMission } from '$lib/stores/missions';
 	import { cachedPhases } from '$lib/stores/missions';
-	import { workspaceStatus, refreshWorkspace } from '$lib/stores/workspace';
+	import { workspaceStatus, refreshWorkspace, registry } from '$lib/stores/workspace';
 	import { isTauri } from '$lib/ws';
 
 	interface Props {
@@ -66,7 +66,6 @@
 		return mission.repos.map((missionRepo) => {
 			const repoName = extractRepoName(missionRepo.repoUrl ?? missionRepo.repoId);
 			const wsRepo = workspace!.repos.find((r) => r.name === repoName);
-			// Find the worktree for this mission in this repo
 			const wt = wsRepo?.worktrees?.find(
 				(w: any) => w.branch === worktreeBranch || w.path?.includes(shortMid)
 			);
@@ -75,22 +74,45 @@
 				baseBranch: missionRepo.branch ?? 'main',
 				missionBranch: wt?.branch ?? worktreeBranch,
 				clean: wt ? (wt.clean ?? true) : (wsRepo?.clean ?? true),
+				hasWorktree: !!wt,
 			};
 		});
 	});
 
+	let workspaceReady = $derived(() => {
+		const repos = matchedRepos();
+		return repos.length > 0 && repos.every((r) => r.hasWorktree);
+	});
+
 	function extractRepoName(urlOrId: string): string {
 		if (!urlOrId) return 'unknown';
-		// Extract last segment from URL or path
 		const parts = urlOrId.replace(/\.git$/, '').split('/');
 		return parts[parts.length - 1] || urlOrId;
 	}
 
-
-	let claiming = $state(false);
+	let settingUp = $state(false);
+	let executing = $state(false);
+	let paused = $state(false);
 	let killing = $state(false);
-	let claimResult = $state('');
-	let killResult = $state('');
+	let actionResult = $state('');
+	let confirmKill = $state(false);
+
+	async function setupWorkspace() {
+		if (!isTauri() || settingUp) return;
+		settingUp = true;
+		actionResult = '';
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			const repoIds = mission.repos.map((r) => extractRepoName(r.repoUrl ?? r.repoId));
+			await invoke('setup_mission_cmd', { missionId: mission.missionId, repos: repoIds });
+			await refreshWorkspace();
+			actionResult = 'Workspace ready';
+		} catch (e) {
+			console.error('Failed to setup workspace:', e);
+			actionResult = `Setup error: ${e}`;
+		}
+		settingUp = false;
+	}
 
 	async function openWorkspace() {
 		if (!isTauri() || !workspace?.mountPath) return;
@@ -104,21 +126,49 @@
 		}
 	}
 
-	async function takeMission() {
-		if (!isTauri() || claiming) return;
-		claiming = true;
+	async function executeMission() {
+		if (!isTauri() || executing) return;
+		executing = true;
+		actionResult = '';
 		try {
 			const { invoke } = await import('@tauri-apps/api/core');
-			const result = await invoke<string>('take_mission', { missionId: mission.missionId });
-			claimResult = result;
+			await invoke('take_mission', { missionId: mission.missionId });
+			await invoke<string>('start_mission_execution', { missionId: mission.missionId });
+			// No optimistic update: state confirmation arrives via DynamoDB Stream -> MQTT
+			actionResult = 'Execution requested';
+			paused = false;
 		} catch (e) {
-			console.error('Failed to take mission:', e);
-			claimResult = `Error: ${e}`;
+			console.error('Failed to execute mission:', e);
+			actionResult = `Execute error: ${e}`;
 		}
-		claiming = false;
+		executing = false;
 	}
 
-	let confirmKill = $state(false);
+	async function pauseMission() {
+		if (!isTauri()) return;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			await invoke<string>('pause_mission', { missionId: mission.missionId });
+			paused = true;
+			actionResult = 'Mission paused';
+		} catch (e) {
+			console.error('Failed to pause mission:', e);
+			actionResult = `Pause error: ${e}`;
+		}
+	}
+
+	async function resumeMission() {
+		if (!isTauri()) return;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			await invoke<string>('resume_mission', { missionId: mission.missionId });
+			paused = false;
+			actionResult = 'Mission resumed';
+		} catch (e) {
+			console.error('Failed to resume mission:', e);
+			actionResult = `Resume error: ${e}`;
+		}
+	}
 
 	function requestKill() {
 		confirmKill = true;
@@ -128,13 +178,14 @@
 		if (!isTauri() || killing) return;
 		confirmKill = false;
 		killing = true;
+		actionResult = '';
 		try {
 			const { invoke } = await import('@tauri-apps/api/core');
 			const result = await invoke<string>('kill_mission', { missionId: mission.missionId });
-			killResult = result;
+			actionResult = result;
 		} catch (e) {
 			console.error('Failed to kill mission:', e);
-			killResult = `Error: ${e}`;
+			actionResult = `Kill error: ${e}`;
 		}
 		killing = false;
 	}
@@ -208,12 +259,28 @@
 			</div>
 			{#if isTauri()}
 				<div class="action-row">
-					<button class="workspace-btn" onclick={openWorkspace} type="button">
-						Open VS Code Workspace
-					</button>
-					<button class="action-btn take" onclick={takeMission} disabled={claiming} type="button">
-						{claiming ? 'Claiming...' : 'Take Mission'}
-					</button>
+					{#if workspaceReady()}
+						<button class="workspace-btn" onclick={openWorkspace} type="button">
+							Open VS Code Workspace
+						</button>
+					{:else}
+						<button class="workspace-btn setup" onclick={setupWorkspace} disabled={settingUp} type="button">
+							{settingUp ? 'Setting up...' : 'Setup Workspace'}
+						</button>
+					{/if}
+					{#if mission.status === 'executing' && !paused}
+						<button class="action-btn pause" onclick={pauseMission} type="button">
+							Pause Mission
+						</button>
+					{:else if paused}
+						<button class="action-btn execute" onclick={resumeMission} type="button">
+							Resume Mission
+						</button>
+					{:else}
+						<button class="action-btn execute" onclick={executeMission} disabled={!workspaceReady() || executing} type="button">
+							{executing ? 'Starting...' : 'Execute Mission'}
+						</button>
+					{/if}
 					{#if confirmKill}
 						<button class="action-btn kill confirm" onclick={killMission} disabled={killing} type="button">
 							{killing ? 'Killing...' : 'Confirm Kill'}
@@ -227,11 +294,8 @@
 						</button>
 					{/if}
 				</div>
-				{#if claimResult}
-					<span class="action-result claim">{claimResult}</span>
-				{/if}
-				{#if killResult}
-					<span class="action-result kill">{killResult}</span>
+				{#if actionResult}
+					<span class="action-result">{actionResult}</span>
 				{/if}
 			{/if}
 		{:else}
@@ -464,13 +528,33 @@
 		transition: background var(--transition-fast), border-color var(--transition-fast);
 	}
 
-	.action-btn.take {
+	.workspace-btn.setup {
+		border-color: var(--accent-amber);
+		color: var(--accent-amber);
+	}
+
+	.workspace-btn.setup:hover {
+		background: var(--accent-amber);
+		color: #000;
+	}
+
+	.action-btn.execute {
 		color: var(--accent-green);
 		border: 1px solid var(--accent-green);
 	}
 
-	.action-btn.take:hover {
+	.action-btn.execute:hover:not(:disabled) {
 		background: var(--accent-green);
+		color: #000;
+	}
+
+	.action-btn.pause {
+		color: var(--accent-amber);
+		border: 1px solid var(--accent-amber);
+	}
+
+	.action-btn.pause:hover {
+		background: var(--accent-amber);
 		color: #000;
 	}
 
@@ -508,14 +592,7 @@
 		font-family: var(--font-mono);
 		font-size: 11px;
 		margin-top: var(--space-xs);
-	}
-
-	.action-result.claim {
-		color: var(--accent-green);
-	}
-
-	.action-result.kill {
-		color: var(--accent-red, #ff4444);
+		color: var(--text-muted);
 	}
 
 	/* ── Quick Stats ──────────────────────────────────────────────── */

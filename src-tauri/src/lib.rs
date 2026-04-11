@@ -377,6 +377,15 @@ async fn get_mqtt_status(
 
 #[cfg(not(mobile))]
 #[tauri::command]
+async fn get_claimed_missions(
+    cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
+) -> Result<Vec<String>, String> {
+    let c = cache.lock().await;
+    Ok(c.get_claimed_mission_ids())
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
 async fn get_registry(
     state: tauri::State<'_, Arc<Mutex<Option<mqtt::types::WorkspaceRegistryMessage>>>>,
 ) -> Result<Option<serde_json::Value>, String> {
@@ -407,10 +416,11 @@ async fn accept_phase_cmd(
         "phase_id": phase_id,
         "published_at": chrono::Utc::now().to_rfc3339(),
     });
-    client.publish_json(&topic, &payload).await?;
+    // Fire-and-forget: UI never blocks; state confirmation arrives via DynamoDB Stream
+    client.publish_fire_and_forget(topic, &payload)?;
     debug_log::log_info(&format!(
-        "[MQTT] Accepted phase {}/{} -> {}",
-        mission_id, phase_id, topic
+        "[MQTT] Accepted phase {}/{} (fire-and-forget)",
+        mission_id, phase_id
     ));
     Ok(())
 }
@@ -580,16 +590,16 @@ async fn kill_mission(
             let _ = client.clear_retained(&format!("weaver/{}/state/{}/todo/{}", ws, full_mid, tid)).await;
         }
 
-        // Notify Brain via MQTT (best-effort, Lambda may be frozen)
-        let _ = client.publish_json(
-            &format!("brain/{}/release/{}", ws, full_mid),
+        // Fire-and-forget release notification to Brain
+        let _ = client.publish_fire_and_forget(
+            format!("brain/{}/release/{}", ws, full_mid),
             &serde_json::json!({
                 "mission_id": full_mid,
                 "instance_id": client.config().instance_id,
                 "reason": "manual_kill",
                 "published_at": chrono::Utc::now().to_rfc3339(),
             }),
-        ).await;
+        );
     }
 
     // Also notify Brain via HTTP API (reliable, wakes Lambda)
@@ -619,6 +629,100 @@ async fn kill_mission(
         &full_mid[..8.min(full_mid.len())], purge.phase_ids.len(), purge.todo_ids.len()))
 }
 
+/// Pause a running mission. Sends control message to Brain.
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn pause_mission(
+    mission_id: String,
+    cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
+    mqtt_state: tauri::State<'_, Arc<Mutex<Option<mqtt::client::MqttClient>>>>,
+) -> Result<String, String> {
+    let full_mid = {
+        let c = cache.lock().await;
+        c.resolve_mission_id(&mission_id)
+            .unwrap_or_else(|| mission_id.clone())
+    };
+
+    // Fire-and-forget pause control
+    let mqtt_guard = mqtt_state.lock().await;
+    if let Some(client) = mqtt_guard.as_ref() {
+        let ws = &client.config().workspace;
+        let _ = client.publish_fire_and_forget(
+            format!("weaver/{}/control/{}", ws, full_mid),
+            &serde_json::json!({
+                "action": "pause",
+                "mission_id": full_mid,
+                "published_at": chrono::Utc::now().to_rfc3339(),
+            }),
+        );
+    }
+
+    // Also notify via HTTP API
+    let saved = settings::load_settings();
+    let url = format!(
+        "{}/v1/mission/{}/weaver-plan/control",
+        saved.brain_api_url.trim_end_matches('/'),
+        full_mid
+    );
+    let http_client = reqwest::Client::new();
+    let _ = http_client
+        .post(&url)
+        .header("X-Workspace", &saved.workspace)
+        .json(&serde_json::json!({ "action": "pause" }))
+        .send()
+        .await;
+
+    debug_log::log_info(&format!("[API] Paused mission {}", &full_mid[..8.min(full_mid.len())]));
+    Ok(format!("Paused mission {}", &full_mid[..8.min(full_mid.len())]))
+}
+
+/// Resume a paused mission. Sends control message to Brain.
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn resume_mission(
+    mission_id: String,
+    cache: tauri::State<'_, Arc<Mutex<mqtt::state_cache::MissionStateCache>>>,
+    mqtt_state: tauri::State<'_, Arc<Mutex<Option<mqtt::client::MqttClient>>>>,
+) -> Result<String, String> {
+    let full_mid = {
+        let c = cache.lock().await;
+        c.resolve_mission_id(&mission_id)
+            .unwrap_or_else(|| mission_id.clone())
+    };
+
+    // Fire-and-forget resume control
+    let mqtt_guard = mqtt_state.lock().await;
+    if let Some(client) = mqtt_guard.as_ref() {
+        let ws = &client.config().workspace;
+        let _ = client.publish_fire_and_forget(
+            format!("weaver/{}/control/{}", ws, full_mid),
+            &serde_json::json!({
+                "action": "resume",
+                "mission_id": full_mid,
+                "published_at": chrono::Utc::now().to_rfc3339(),
+            }),
+        );
+    }
+
+    // Also notify via HTTP API
+    let saved = settings::load_settings();
+    let url = format!(
+        "{}/v1/mission/{}/weaver-plan/control",
+        saved.brain_api_url.trim_end_matches('/'),
+        full_mid
+    );
+    let http_client = reqwest::Client::new();
+    let _ = http_client
+        .post(&url)
+        .header("X-Workspace", &saved.workspace)
+        .json(&serde_json::json!({ "action": "resume" }))
+        .send()
+        .await;
+
+    debug_log::log_info(&format!("[API] Resumed mission {}", &full_mid[..8.min(full_mid.len())]));
+    Ok(format!("Resumed mission {}", &full_mid[..8.min(full_mid.len())]))
+}
+
 /// Take/claim a mission for this instance. Publishes claim to Brain.
 #[cfg(not(mobile))]
 #[tauri::command]
@@ -643,14 +747,14 @@ async fn take_mission(
         fmid
     };
 
-    // Publish claim to Brain
+    // Fire-and-forget claim to Brain: never blocks UI
     let mqtt_guard = mqtt_state.lock().await;
     if let Some(client) = mqtt_guard.as_ref() {
         let ws = &client.config().workspace;
         let iid = &client.config().instance_id;
 
-        let _ = client.publish_json(
-            &format!("brain/{}/claim/{}", ws, full_mid),
+        let _ = client.publish_fire_and_forget(
+            format!("brain/{}/claim/{}", ws, full_mid),
             &serde_json::json!({
                 "mission_id": full_mid,
                 "instance_id": iid,
@@ -658,7 +762,7 @@ async fn take_mission(
                 "workspace": ws,
                 "claimed_at": chrono::Utc::now().to_rfc3339(),
             }),
-        ).await;
+        );
     }
 
     let _ = app.emit("mission-phases-updated", serde_json::json!({ "mission_id": full_mid }));
@@ -1817,11 +1921,14 @@ pub fn run() {
             get_debug_logs,
             get_mqtt_status,
             get_registry,
+            get_claimed_missions,
             accept_phase_cmd,
             get_task_queue,
             get_mission_state,
             get_mission_phases,
             kill_mission,
+            pause_mission,
+            resume_mission,
             take_mission,
             start_mission_execution,
             start_phase_manually,

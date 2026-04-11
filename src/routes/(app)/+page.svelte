@@ -32,6 +32,7 @@
 	import { getConversation, stopSession, openSession } from '$lib/api';
 	import { isDemoMode, toggleDemoMode } from '$lib/demo';
 	import { isTauri } from '$lib/ws';
+	import { registry } from '$lib/stores/workspace';
 	import StatusBar from '$lib/components/StatusBar.svelte';
 	import SessionCard from '$lib/components/SessionCard.svelte';
 	import ExpandedCardOverlay from '$lib/components/ExpandedCardOverlay.svelte';
@@ -79,13 +80,13 @@
 		}
 	});
 
-	// Track accepted missions locally (before Brain confirms via MQTT)
-	let acceptedMissionIds = $state<Set<string>>(new Set());
+	// Track accepted/claimed missions -- persisted via Rust, loaded on mount
+	let claimedMissionIds = $state<Set<string>>(new Set());
 
 	// Check if selected mission is in an incoming/pre-accept state
 	let isPreAccept = $derived(
 		selected != null &&
-		!acceptedMissionIds.has(selected.missionId) &&
+		!claimedMissionIds.has(selected.missionId) &&
 		(selected.status === 'incoming' || selected.status === 'validating' || selected.status === 'ready')
 	);
 
@@ -119,6 +120,15 @@
 		initSupervisorListeners();
 
 		if (!isTauri()) return;
+
+		// Load persisted mission claims from Rust
+		import('@tauri-apps/api/core').then(({ invoke }) => {
+			invoke<string[]>('get_claimed_missions').then((ids) => {
+				if (ids && ids.length > 0) {
+					claimedMissionIds = new Set(ids);
+				}
+			}).catch(() => {});
+		});
 
 		let unlisten: (() => void) | null = null;
 		let timer: ReturnType<typeof setTimeout> | null = null;
@@ -506,7 +516,10 @@
 						<MissionAcceptFlow
 							mission={selected}
 							onaccept={() => {
-							if (selected) acceptedMissionIds.add(selected.missionId);
+							if (selected) {
+								claimedMissionIds.add(selected.missionId);
+								// No optimistic update: DynamoDB Stream confirms via MQTT
+							}
 							missionTab = 'overview';
 						}}
 							onreject={() => { selectedMissionId.set(null); }}
@@ -836,168 +849,8 @@
 		flex-direction: column;
 	}
 
-	.tab-placeholder {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: var(--space-3xl) 0;
-		font-family: var(--font-mono);
-		font-size: 13px;
-		color: var(--text-muted);
-	}
-
-	/* ── Sections (kept from old sessions view for active mode) ───── */
-	.sections-container {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-3xl);
-		max-width: 1200px;
-		margin: 0 auto;
-		width: 100%;
-	}
-
-	.system-section {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-md);
-	}
-
 	.system-status-container {
 		margin-top: var(--space-sm);
-	}
-
-	.project-section {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-xl);
-	}
-
-	.project-header {
-		display: flex;
-		align-items: center;
-		gap: var(--space-md);
-		padding-bottom: var(--space-md);
-		border-bottom: 1px solid var(--text-primary);
-		margin-bottom: var(--space-md);
-	}
-
-	.project-name {
-		font-family: var(--font-pixel);
-		font-size: 22px;
-		font-weight: 600;
-		color: var(--text-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
-		line-height: 1;
-	}
-
-	.project-count {
-		font-family: var(--font-pixel);
-		font-size: 18px;
-		font-weight: 500;
-		line-height: 1;
-		color: var(--text-secondary);
-	}
-
-	.status-groups {
-		display: flex;
-		flex-direction: row;
-		gap: var(--space-xl);
-		overflow-x: auto;
-		padding-bottom: var(--space-lg);
-	}
-
-	.status-group {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-md);
-		min-width: 350px;
-		max-width: 400px;
-		flex: 1;
-	}
-
-	.status-header {
-		display: flex;
-		align-items: center;
-		padding: var(--space-sm) var(--space-md);
-		background: rgba(255, 255, 255, 0.03);
-		border-left: 3px solid var(--border-default);
-		gap: var(--space-sm);
-	}
-
-	.status-header.attention { border-left-color: var(--status-permission); }
-	.status-header.idle { border-left-color: var(--status-input); }
-	.status-header.working { border-left-color: var(--status-working); }
-	.status-header.connecting { border-left-color: var(--status-connecting); }
-
-	.status-header.all-view {
-		background: transparent;
-		padding-left: 0;
-		margin-bottom: var(--space-md);
-		border-left: none;
-	}
-
-	.status-group.empty {
-		opacity: 0.5;
-	}
-
-	.status-group.empty .status-header {
-		background: transparent;
-		border-left-style: dashed;
-	}
-
-	.status-indicator {
-		width: 6px;
-		height: 6px;
-	}
-
-	.status-indicator.attention {
-		background: var(--status-permission);
-	}
-
-	.status-indicator.idle {
-		background: var(--status-input);
-	}
-
-	.status-indicator.working {
-		background: var(--status-working);
-	}
-
-	.status-indicator.connecting {
-		background: var(--status-connecting);
-	}
-
-	.status-title {
-		font-family: var(--font-mono);
-		font-size: 12px;
-		font-weight: 500;
-		color: var(--text-secondary);
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
-	}
-
-	.status-count {
-		font-family: var(--font-mono);
-		font-size: 12px;
-		color: var(--text-muted);
-	}
-
-	.session-grid {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-lg);
-	}
-
-	.header-spacer {
-		flex: 1;
-	}
-
-	.view-toggle {
-		display: flex;
-		gap: var(--space-xs);
-		background: rgba(255, 255, 255, 0.03);
-		padding: 2px;
-		border: 1px solid var(--border-default);
 	}
 
 	.toggle-btn {
@@ -1022,17 +875,6 @@
 		color: var(--text-primary);
 		background: rgba(255, 255, 255, 0.1);
 		border-color: var(--border-default);
-	}
-
-	.all-sessions-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-		gap: var(--space-lg);
-	}
-
-	.all-sessions-grid.compact {
-		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-		gap: var(--space-md);
 	}
 
 	.demo-toggle {
@@ -1096,46 +938,6 @@
 
 		.grid-container {
 			padding: var(--space-md);
-		}
-
-		.sections-container {
-			gap: var(--space-xl);
-		}
-
-		.project-header {
-			flex-wrap: wrap;
-			gap: var(--space-sm);
-		}
-
-		.project-name {
-			font-size: 16px;
-		}
-
-		.project-count {
-			font-size: 14px;
-		}
-
-		.status-groups {
-			flex-direction: column;
-			overflow-x: visible;
-			padding-bottom: 0;
-		}
-
-		.status-group {
-			min-width: 0;
-			max-width: 100%;
-		}
-
-		.all-sessions-grid {
-			grid-template-columns: 1fr;
-		}
-
-		.all-sessions-grid.compact {
-			grid-template-columns: 1fr;
-		}
-
-		.view-toggle {
-			padding: 1px;
 		}
 
 		.toggle-btn {

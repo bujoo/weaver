@@ -155,6 +155,24 @@ impl MqttClient {
             .map_err(|e| format!("MQTT clear retained error: {}", e))
     }
 
+    /// Fire-and-forget publish: spawns the publish in a separate task so the
+    /// caller never blocks waiting for the MQTT event loop to process the message.
+    /// State confirmation arrives back via DynamoDB Stream -> bridge -> MQTT.
+    pub fn publish_fire_and_forget<T: serde::Serialize + Send + 'static>(
+        &self,
+        topic: String,
+        payload: &T,
+    ) -> Result<(), String> {
+        let json = serde_json::to_vec(payload).map_err(|e| format!("JSON serialize error: {}", e))?;
+        let client = self.client.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = client.publish(&topic, QoS::AtLeastOnce, false, json).await {
+                eprintln!("[MQTT] Fire-and-forget publish failed for {}: {}", topic, e);
+            }
+        });
+        Ok(())
+    }
+
     pub fn config(&self) -> &MqttConfig {
         &self.config
     }
