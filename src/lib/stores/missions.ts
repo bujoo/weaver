@@ -92,7 +92,7 @@ export function startPhasePolling(): () => void {
 export interface UnifiedMission {
 	missionId: string;
 	title: string;
-	status: 'incoming' | 'validating' | 'ready' | 'executing' | 'completed' | 'failed';
+	status: 'incoming' | 'validating' | 'ready' | 'setup' | 'executing' | 'completed' | 'failed';
 	phaseCount: number;
 	todoCount: number;
 	completedPhases: number;
@@ -115,11 +115,12 @@ export const selectedMissionId: Writable<string | null> = writable(null);
  */
 const STATUS_PRIORITY: Record<string, number> = {
 	executing: 1,
-	ready: 2,
-	validating: 3,
-	incoming: 4,
-	completed: 5,
-	failed: 6,
+	setup: 2,
+	ready: 3,
+	validating: 4,
+	incoming: 5,
+	completed: 6,
+	failed: 7,
 };
 
 /**
@@ -275,6 +276,7 @@ function normalizeStatus(
 	if (s === 'incoming' || s === 'draft' || s === 'pending') return 'incoming';
 	if (s === 'validating') return 'validating';
 	if (s === 'ready') return 'ready';
+	if (s === 'setup' || s === 'preparing' || s === 'claimed') return 'setup';
 	if (s === 'completed' || s === 'done') return 'completed';
 	if (s === 'failed' || s === 'error') return 'failed';
 	if (s === 'executing' || s === 'active' || s === 'in_progress') return 'executing';

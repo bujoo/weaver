@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 /// Executes conductor decisions against the real system.
 pub struct ActionExecutor {
     mqtt: Arc<Mutex<Option<MqttClient>>>,
-    spawner: Arc<ClaudeCodeSpawner>,
+    _spawner: Arc<ClaudeCodeSpawner>,
     state_cache: Arc<Mutex<MissionStateCache>>,
     app: tauri::AppHandle,
 }
@@ -22,7 +22,7 @@ impl ActionExecutor {
     ) -> Self {
         Self {
             mqtt,
-            spawner,
+            _spawner: spawner,
             state_cache,
             app,
         }

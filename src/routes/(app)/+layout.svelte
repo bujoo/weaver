@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
@@ -17,6 +18,8 @@
 	import WeavySidebar from '$lib/components/WeavySidebar.svelte';
 	import KeyboardShortcutOverlay from '$lib/components/KeyboardShortcutOverlay.svelte';
 	import FuzzyMissionSearch from '$lib/components/FuzzyMissionSearch.svelte';
+
+	let { children }: { children: Snippet } = $props();
 
 	let showShortcuts = $state(false);
 	let showMissionSearch = $state(false);
@@ -90,7 +93,7 @@
 <div class="app-shell">
 	<MissionSidebar />
 	<main class="content">
-		<slot />
+		{@render children()}
 	</main>
 	<WeavySidebar />
 </div>

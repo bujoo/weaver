@@ -278,7 +278,6 @@ fn document_to_json(doc: &aws_smithy_types::Document) -> serde_json::Value {
                 aws_smithy_types::Number::PosInt(i) => serde_json::json!(*i),
                 aws_smithy_types::Number::NegInt(i) => serde_json::json!(*i),
                 aws_smithy_types::Number::Float(f) => serde_json::json!(*f),
-                _ => serde_json::Value::Null,
             }
         }
         aws_smithy_types::Document::String(s) => serde_json::Value::String(s.clone()),

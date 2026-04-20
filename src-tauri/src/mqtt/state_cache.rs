@@ -1,5 +1,6 @@
 use crate::mqtt::types::{PhaseStateMessage, PlanStateMessage, TodoStateMessage};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// Cache for retained MQTT state messages published by Brain.
 /// Stores plans, phases, and todos so the executor can look up
@@ -11,13 +12,38 @@ pub struct MissionStateCache {
     claims: HashMap<String, String>,              // mission_id -> instance_id
 }
 
+fn claims_path() -> PathBuf {
+    let config_dir = dirs::config_dir()
+        .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".config"));
+    config_dir.join("contexthub-weaver").join("claims.json")
+}
+
 impl MissionStateCache {
     pub fn new() -> Self {
+        let claims = Self::load_claims_from_disk();
         Self {
             plans: HashMap::new(),
             phases: HashMap::new(),
             todos: HashMap::new(),
-            claims: HashMap::new(),
+            claims,
+        }
+    }
+
+    fn load_claims_from_disk() -> HashMap<String, String> {
+        let path = claims_path();
+        match std::fs::read_to_string(&path) {
+            Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+            Err(_) => HashMap::new(),
+        }
+    }
+
+    fn persist_claims(&self) {
+        let path = claims_path();
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(json) = serde_json::to_string(&self.claims) {
+            let _ = std::fs::write(&path, json);
         }
     }
 
@@ -393,14 +419,16 @@ impl MissionStateCache {
         PurgeResult { phase_ids, todo_ids }
     }
 
-    /// Claim a mission for an instance.
+    /// Claim a mission for an instance. Persists to disk.
     pub fn claim_mission(&mut self, mission_id: &str, instance_id: &str) {
         self.claims.insert(mission_id.to_string(), instance_id.to_string());
+        self.persist_claims();
     }
 
-    /// Release a mission claim.
+    /// Release a mission claim. Persists to disk.
     pub fn release_mission(&mut self, mission_id: &str) {
         self.claims.remove(mission_id);
+        self.persist_claims();
     }
 
     /// Get the instance that claimed a mission.
