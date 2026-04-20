@@ -34,9 +34,11 @@
 <div
 	class="overlay-backdrop"
 	onclick={handleBackdropClick}
+	onkeydown={(e) => { if (e.key === 'Escape') onclose(); }}
 	role="dialog"
 	aria-modal="true"
 	aria-label="Keyboard shortcuts"
+	tabindex="-1"
 >
 	<div class="overlay-panel">
 		<div class="overlay-header">
@@ -71,7 +73,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: rgba(0, 0, 0, 0.8);
+		background: var(--bg-overlay);
 		animation: fade-in 100ms linear;
 	}
 

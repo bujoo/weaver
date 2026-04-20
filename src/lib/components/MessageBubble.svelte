@@ -140,12 +140,12 @@
 	}
 
 	.message-bubble:hover {
-		background: rgba(255, 255, 255, 0.02);
+		background: var(--bg-card-hover);
 	}
 
 	.message-bubble.user {
 		border-left: 2px solid var(--text-primary);
-		background: rgba(255, 255, 255, 0.01);
+		background: oklch(1 0 0 / 0.01);
 	}
 
 	.message-bubble.assistant {
@@ -154,18 +154,18 @@
 
 	.message-bubble.thinking {
 		border-left: 1px dashed var(--status-permission);
-		background: rgba(255, 102, 0, 0.03);
+		background: oklch(0.74 0.17 55 / 0.03);
 		opacity: 0.8;
 	}
 
 	.message-bubble.tool-use {
 		border-left: 1px solid var(--status-input);
-		background: rgba(0, 255, 136, 0.02);
+		background: oklch(0.74 0.18 155 / 0.02);
 	}
 
 	.message-bubble.tool-result {
 		border-left-color: var(--text-muted);
-		background: rgba(255, 255, 255, 0.01);
+		background: oklch(1 0 0 / 0.01);
 		opacity: 0.6;
 	}
 

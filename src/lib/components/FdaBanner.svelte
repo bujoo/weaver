@@ -59,8 +59,8 @@
 
 <style>
 	.banner {
-		background: rgba(255, 102, 0, 0.08);
-		border-bottom: 1px solid rgba(255, 102, 0, 0.2);
+		background: oklch(0.74 0.17 55 / 0.08);
+		border-bottom: 1px solid oklch(0.74 0.17 55 / 0.2);
 		padding: 12px 16px;
 	}
 
@@ -110,8 +110,8 @@
 	}
 
 	.banner-button {
-		background: rgba(255, 102, 0, 0.15);
-		border: 1px solid rgba(255, 102, 0, 0.3);
+		background: oklch(0.74 0.17 55 / 0.15);
+		border: 1px solid oklch(0.74 0.17 55 / 0.3);
 		color: var(--accent-amber);
 		padding: 6px 16px;
 		border-radius: 6px;
@@ -123,7 +123,7 @@
 	}
 
 	.banner-button:hover {
-		background: rgba(255, 102, 0, 0.25);
-		border-color: rgba(255, 102, 0, 0.5);
+		background: oklch(0.74 0.17 55 / 0.25);
+		border-color: oklch(0.74 0.17 55 / 0.5);
 	}
 </style>

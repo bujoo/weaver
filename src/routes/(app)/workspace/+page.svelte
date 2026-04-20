@@ -159,14 +159,14 @@
   .btn-refresh {
     font-family: var(--font-mono);
     font-size: 10px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     color: var(--text-secondary);
     padding: 3px 10px;
     cursor: pointer;
   }
 
-  .btn-refresh:hover { background: rgba(255, 255, 255, 0.1); }
+  .btn-refresh:hover { background: var(--bg-card-hover); }
   .btn-refresh:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .grid-container {
@@ -205,8 +205,8 @@
   .repo-card {
     display: block;
     width: 100%;
-    background: var(--bg-card, #111);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--bg-card);
+    border: 1px solid var(--border-muted);
     padding: 8px 12px;
     cursor: pointer;
     text-align: left;
@@ -214,7 +214,7 @@
     font: inherit;
   }
 
-  .repo-card:hover { border-color: rgba(255, 255, 255, 0.12); }
+  .repo-card:hover { border-color: var(--border-default); }
 
   .repo-header {
     display: flex;
@@ -259,8 +259,8 @@
     gap: 6px;
     padding: 6px 8px;
     font-size: 12px;
-    background: var(--bg-card, #111);
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    background: var(--bg-card);
+    border: 1px solid var(--border-muted);
   }
 
   .tool-dot {

@@ -111,9 +111,11 @@
 <div
 	class="overlay-backdrop"
 	onclick={handleBackdropClick}
+	onkeydown={(e) => { if (e.key === 'Escape') onclose(); }}
 	role="dialog"
 	aria-modal="true"
 	aria-label="Jump to mission"
+	tabindex="-1"
 >
 	<div class="search-panel">
 		<div class="search-header">
@@ -165,7 +167,7 @@
 		align-items: flex-start;
 		justify-content: center;
 		padding-top: 20vh;
-		background: rgba(0, 0, 0, 0.8);
+		background: var(--bg-overlay);
 		animation: fade-in 100ms linear;
 	}
 

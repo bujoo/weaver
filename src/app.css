@@ -61,50 +61,55 @@
 	font-display: swap;
 }
 
-/* CSS Variables - Vercel Noir */
+/* CSS Variables - ContextHub Suite */
 :root {
-	/* Color Palette - True Black OLED */
-	--bg-base: #000000;
-	--bg-elevated: #0a0a0a;
-	--bg-card: #111111;
-	--bg-card-hover: #1a1a1a;
-	--bg-overlay: rgba(0, 0, 0, 0.95);
+	/* Color Palette - Dark Purple Base */
+	--bg-base: #0b0a1e;
+	--bg-elevated: #11102a;
+	--bg-card: #17163a;
+	--bg-card-hover: #1e1d4a;
+	--bg-overlay: rgba(11, 10, 30, 0.95);
 
-	/* Text Colors - High Contrast */
-	--text-primary: #ffffff;
-	--text-secondary: #888888;
-	--text-muted: #666666;
+	/* Text Colors - Warm White */
+	--text-primary: #e8e6ff;
+	--text-secondary: #a9a7c7;
+	--text-muted: #6e6b91;
 
-	/* Status Colors - Sharp & Clear */
-	--status-working: #7928ca;
-	--status-working-glow: rgba(121, 40, 202, 0.25);
-	--status-permission: #ff6600;
-	--status-permission-glow: rgba(255, 102, 0, 0.25);
-	--status-input: #00ff88;
-	--status-input-glow: rgba(0, 255, 136, 0.2);
-	--status-connecting: #666666;
-	--status-connecting-glow: rgba(102, 102, 102, 0.15);
+	/* Character Accent Colors (OKLCH) */
+	--weavy: oklch(0.74 0.18 155);
+	--weavy-glow: oklch(0.74 0.18 155 / 0.2);
+	--weavy-subtle: oklch(0.74 0.18 155 / 0.08);
 
-	/* Accent Colors - Minimal Palette */
-	--accent-blue: #0070f3;
-	--accent-green: #00ff88;
-	--accent-amber: #ff6600;
-	--accent-red: #ff4444;
-	--accent-purple: #7928ca;
-	--accent-pink: #ff69b4;
+	/* Status Colors - Character-Mapped */
+	--status-working: oklch(0.72 0.15 290);
+	--status-working-glow: oklch(0.72 0.15 290 / 0.25);
+	--status-permission: oklch(0.74 0.17 55);
+	--status-permission-glow: oklch(0.74 0.17 55 / 0.25);
+	--status-input: oklch(0.74 0.18 155);
+	--status-input-glow: oklch(0.74 0.18 155 / 0.2);
+	--status-connecting: #6e6b91;
+	--status-connecting-glow: rgba(110, 107, 145, 0.15);
+
+	/* Accent Colors - Character System */
+	--accent-blue: oklch(0.74 0.14 215);
+	--accent-green: oklch(0.74 0.18 155);
+	--accent-amber: oklch(0.74 0.17 55);
+	--accent-red: oklch(0.65 0.2 25);
+	--accent-purple: oklch(0.72 0.15 290);
+	--accent-pink: oklch(0.7 0.18 340);
 
 	/* Task Status Colors */
-	--task-queued: #444444;
-	--task-preparing: #0070f3;
-	--task-executing: #7928ca;
-	--task-completed: #00ff88;
-	--task-failed: #ff4444;
+	--task-queued: #3d3a5c;
+	--task-preparing: oklch(0.74 0.14 215);
+	--task-executing: oklch(0.72 0.15 290);
+	--task-completed: oklch(0.74 0.18 155);
+	--task-failed: oklch(0.65 0.2 25);
 
-	/* Borders - Sharp & Thin */
-	--border-default: #333333;
-	--border-muted: #222222;
-	--border-focus: #ffffff;
-	--border-glow: rgba(255, 255, 255, 0.1);
+	/* Borders - Subtle & Soft */
+	--border-default: rgba(255, 255, 255, 0.14);
+	--border-muted: rgba(255, 255, 255, 0.08);
+	--border-focus: oklch(0.74 0.18 155);
+	--border-glow: rgba(255, 255, 255, 0.08);
 
 	/* Spacing */
 	--space-xs: 4px;
@@ -115,45 +120,49 @@
 	--space-2xl: 32px;
 	--space-3xl: 48px;
 
-	/* Radii - Sharp Corners */
-	--radius-sm: 0;
-	--radius-md: 0;
-	--radius-lg: 0;
-	--radius-xl: 0;
-	--radius-2xl: 0;
+	/* Radii - Rounded */
+	--radius-sm: 6px;
+	--radius-md: 10px;
+	--radius-lg: 16px;
+	--radius-xl: 24px;
+	--radius-2xl: 999px;
 
-	/* Shadows - Minimal */
-	--shadow-sm: none;
-	--shadow-card: none;
-	--shadow-card-hover: 0 0 0 1px var(--border-focus);
-	--shadow-overlay: 0 0 0 1px var(--border-default);
+	/* Shadows - Subtle Depth */
+	--shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+	--shadow-card: 0 4px 12px rgba(0, 0, 0, 0.2);
+	--shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.08);
+	--shadow-overlay: 0 20px 50px rgba(0, 0, 0, 0.5);
 	--shadow-glow-blue: 0 0 20px var(--status-working-glow);
 	--shadow-glow-amber: 0 0 20px var(--status-permission-glow);
 	--shadow-glow-green: 0 0 20px var(--status-input-glow);
 
+	/* Glassmorphism */
+	--glass-card-gradient: linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+	--bg-gradient: radial-gradient(ellipse 80% 60% at 50% -20%, oklch(0.74 0.18 155 / 0.06), transparent 70%);
+
 	/* Typography */
 	--font-sans: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
-	--font-mono: 'Geist Mono', 'SF Mono', Monaco, monospace;
+	--font-mono: 'Geist Mono', 'JetBrains Mono', 'IBM Plex Mono', monospace;
 	--font-pixel: 'Geist Pixel Square', var(--font-mono);
 	--font-pixel-grid: 'Geist Pixel Grid', var(--font-mono);
 
 	/* Transitions */
-	--transition-fast: 100ms linear;
-	--transition-normal: 150ms linear;
-	--transition-slow: 250ms linear;
-	--transition-spring: 200ms linear;
+	--transition-fast: 120ms ease;
+	--transition-normal: 200ms ease;
+	--transition-slow: 350ms ease;
+	--transition-spring: 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
 
 	/* Sidebar */
 	--sidebar-width: 220px;
 
 	/* Mission status */
 	--mission-active: var(--status-working);
-	--mission-incoming: #0070f3;
+	--mission-incoming: var(--accent-blue);
 	--mission-completed: var(--accent-green);
 	--mission-failed: var(--accent-red);
 
-	/* Supervisor (for later phases) */
-	--supervisor-info: #0070f3;
+	/* Supervisor */
+	--supervisor-info: var(--accent-blue);
 	--supervisor-action: var(--accent-amber);
 	--supervisor-escalation: var(--accent-red);
 
@@ -210,20 +219,26 @@ code, pre, kbd, samp {
 	font-size: 0.9em;
 }
 
-/* Scrollbars - Hidden for immersive feel */
+/* Scrollbars - Thin, themed */
 ::-webkit-scrollbar {
-	display: none;
+	width: 6px;
+	height: 6px;
 }
-
-* {
-	scrollbar-width: none;
-	-ms-overflow-style: none;
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+::-webkit-scrollbar-thumb {
+	background: rgba(255, 255, 255, 0.08);
+	border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+	background: var(--text-muted);
 }
 
 /* Selection */
 ::selection {
-	background-color: var(--text-primary);
-	color: var(--bg-base);
+	background: oklch(0.74 0.18 155 / 0.4);
+	color: #fff;
 }
 
 /* Focus Styles */
@@ -367,8 +382,9 @@ input, textarea, select {
 
 /* Panel utility */
 .panel {
-	background: var(--bg-card);
+	background: var(--glass-card-gradient), var(--bg-card);
 	border: 1px solid var(--border-default);
+	border-radius: var(--radius-md);
 }
 
 /* ── Mobile Responsive ─────────────────────────────────────────────── */

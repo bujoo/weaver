@@ -79,8 +79,8 @@
 
 <style>
 	.prompt-input {
-		border-top: 1px solid #e5e7eb;
-		background: white;
+		border-top: 1px solid var(--border-default);
+		background: var(--bg-elevated);
 		padding: 16px 20px;
 	}
 
@@ -93,33 +93,35 @@
 	textarea {
 		flex: 1;
 		padding: 12px 16px;
-		border: 1px solid #d1d5db;
-		border-radius: 8px;
+		border: 1px solid var(--border-default);
+		border-radius: var(--radius-md);
 		font-size: 14px;
 		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 		resize: none;
 		max-height: 200px;
 		overflow-y: auto;
 		transition: border-color 0.2s;
+		background: var(--bg-card);
+		color: var(--text-primary);
 	}
 
 	textarea:focus {
 		outline: none;
-		border-color: #3b82f6;
+		border-color: var(--weavy);
 	}
 
 	textarea:disabled {
-		background: #f9fafb;
-		color: #9ca3af;
+		background: var(--bg-base);
+		color: var(--text-muted);
 		cursor: not-allowed;
 	}
 
 	.send-button {
 		padding: 12px 16px;
-		background: #3b82f6;
-		color: white;
+		background: var(--weavy);
+		color: var(--bg-base);
 		border: none;
-		border-radius: 8px;
+		border-radius: var(--radius-md);
 		cursor: pointer;
 		transition: background-color 0.2s;
 		display: flex;
@@ -128,11 +130,13 @@
 	}
 
 	.send-button:hover:not(:disabled) {
-		background: #2563eb;
+		background: var(--weavy);
+		filter: brightness(1.15);
 	}
 
 	.send-button:disabled {
-		background: #d1d5db;
+		background: var(--border-default);
+		color: var(--text-muted);
 		cursor: not-allowed;
 	}
 </style>

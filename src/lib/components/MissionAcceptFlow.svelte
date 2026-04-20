@@ -580,7 +580,7 @@
 
 	.accept-btn.secondary:hover {
 		background: var(--accent-green);
-		color: #000;
+		color: var(--bg-base);
 	}
 
 	.accept-btn.danger {
@@ -590,7 +590,7 @@
 
 	.accept-btn.danger:hover {
 		background: var(--accent-red);
-		color: #000;
+		color: var(--bg-base);
 	}
 
 	.reject-section {

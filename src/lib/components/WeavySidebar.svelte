@@ -101,7 +101,7 @@
   let messages = $state<WeavyMessage[]>([]);
   let input = $state('');
   let isExpanded = $state(true);
-  let messagesEnd: HTMLElement | undefined;
+  let messagesEnd: HTMLElement | undefined = $state();
 
   let mood = $state<Mood>('idle');
   let currentPose = $state<RobotPose>({ left: '', eyes: '[-_-]', right: '' });
@@ -603,8 +603,8 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    background: var(--bg-surface, #0a0a0f);
-    border-left: 1px solid var(--border-muted, rgba(255, 255, 255, 0.06));
+    background: var(--bg-surface);
+    border-left: 1px solid var(--border-muted);
     position: relative;
     transition: width 0.2s, min-width 0.2s;
   }
@@ -620,8 +620,8 @@
     top: 12px;
     width: 20px;
     height: 28px;
-    background: var(--bg-surface, #0a0a0f);
-    border: 1px solid var(--border-muted, rgba(255, 255, 255, 0.06));
+    background: var(--bg-surface);
+    border: 1px solid var(--border-muted);
     border-right: none;
     color: var(--text-muted);
     font-size: 14px;
@@ -634,20 +634,20 @@
 
   .toggle-btn:hover {
     color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.04);
+    background: oklch(1 0 0 / 0.04);
   }
 
   /* Robot Avatar */
   .weavy-avatar {
     text-align: center;
     padding: 16px 8px 12px;
-    border-bottom: 1px solid var(--border-muted, rgba(255, 255, 255, 0.06));
+    border-bottom: 1px solid var(--border-muted);
   }
 
   .robot-pose {
     font-family: var(--font-mono, monospace);
     font-size: 22px;
-    color: #a78bfa;
+    color: var(--weavy);
     letter-spacing: 0;
     line-height: 1;
     transition: color 0.3s;
@@ -656,11 +656,11 @@
   }
 
   .robot-pose.happy {
-    color: #4ade80;
+    color: var(--weavy);
   }
 
   .robot-pose.alert {
-    color: #f87171;
+    color: var(--accent-red);
     animation: pulse 1s infinite;
   }
 
@@ -687,14 +687,14 @@
   .xp-bar {
     width: 75%;
     height: 3px;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--border-muted);
     border-radius: 2px;
     overflow: hidden;
   }
 
   .xp-fill {
     height: 100%;
-    background: linear-gradient(90deg, #a78bfa, #c4b5fd);
+    background: linear-gradient(90deg, oklch(0.64 0.18 155), var(--weavy));
     transition: width 0.5s ease;
     border-radius: 2px;
   }
@@ -727,20 +727,20 @@
   }
 
   .message.weavy {
-    background: rgba(167, 139, 250, 0.08);
-    border-left: 2px solid #a78bfa;
-    color: var(--text-primary, #e0e0e0);
+    background: var(--weavy-subtle);
+    border-left: 2px solid var(--weavy);
+    color: var(--text-primary);
   }
 
   .message.user {
-    background: rgba(96, 165, 250, 0.08);
-    border-left: 2px solid #60a5fa;
-    color: var(--text-primary, #e0e0e0);
+    background: oklch(0.74 0.14 215 / 0.08);
+    border-left: 2px solid var(--accent-blue);
+    color: var(--text-primary);
   }
 
   .message.system {
-    background: rgba(255, 255, 255, 0.02);
-    border-left: 2px solid rgba(255, 255, 255, 0.1);
+    background: oklch(1 0 0 / 0.02);
+    border-left: 2px solid var(--border-default);
     color: var(--text-muted);
     font-size: 10px;
   }
@@ -751,8 +751,8 @@
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: #a78bfa;
-    background: rgba(167, 139, 250, 0.15);
+    color: var(--weavy);
+    background: oklch(0.74 0.18 155 / 0.15);
     padding: 1px 6px;
     border-radius: 2px;
     margin-bottom: 4px;
@@ -774,15 +774,15 @@
     font-family: var(--font-mono, monospace);
     font-size: 10px;
     padding: 3px 10px;
-    background: rgba(167, 139, 250, 0.1);
-    border: 1px solid rgba(167, 139, 250, 0.3);
-    color: #a78bfa;
+    background: oklch(0.74 0.18 155 / 0.1);
+    border: 1px solid oklch(0.74 0.18 155 / 0.3);
+    color: var(--weavy);
     cursor: pointer;
     transition: background 0.15s;
   }
 
   .msg-action-btn:hover {
-    background: rgba(167, 139, 250, 0.2);
+    background: var(--weavy-glow);
   }
 
   .msg-meta {
@@ -797,22 +797,22 @@
   .model-tag {
     font-size: 8px;
     padding: 0 4px;
-    border: 1px solid rgba(167, 139, 250, 0.3);
+    border: 1px solid oklch(0.74 0.18 155 / 0.3);
     border-radius: 2px;
-    color: #a78bfa;
+    color: var(--weavy);
   }
 
   /* Input */
   .input-area {
     padding: 8px;
-    border-top: 1px solid var(--border-muted, rgba(255, 255, 255, 0.06));
+    border-top: 1px solid var(--border-muted);
   }
 
   .weavy-input {
     width: 100%;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: var(--text-primary, #e0e0e0);
+    background: oklch(1 0 0 / 0.04);
+    border: 1px solid var(--border-muted);
+    color: var(--text-primary);
     font-family: var(--font-mono, monospace);
     font-size: 11px;
     padding: 8px 10px;
@@ -820,8 +820,8 @@
   }
 
   .weavy-input:focus {
-    border-color: #a78bfa;
-    background: rgba(167, 139, 250, 0.04);
+    border-color: var(--weavy);
+    background: var(--weavy-subtle);
   }
 
   .weavy-input::placeholder {

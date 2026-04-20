@@ -385,7 +385,7 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-sm);
-		background: rgba(255, 255, 255, 0.04);
+		background: var(--bg-elevated);
 		border: 1px solid var(--border-default);
 		padding: var(--space-xs) var(--space-md);
 		cursor: pointer;

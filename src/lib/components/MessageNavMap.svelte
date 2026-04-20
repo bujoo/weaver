@@ -162,7 +162,7 @@
 	}
 
 	.nav-item-descriptive:hover {
-		background: rgba(255, 255, 255, 0.03);
+		background: var(--bg-card-hover);
 		border-color: var(--border-muted);
 	}
 

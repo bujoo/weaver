@@ -35,7 +35,7 @@
 
 <button class="task-card" class:expanded onclick={onexpand}>
   <div class="task-header">
-    <span class="status-dot" style="background: {statusColors[task.status] || '#444'}"></span>
+    <span class="status-dot" style="background: {statusColors[task.status] || 'var(--task-queued)'}"></span>
     <span class="phase-name">{task.phaseName}</span>
     <span class="todo-count">{completedCount}/{task.todos.length}</span>
     <span class="status-label">{task.status}</span>
@@ -57,7 +57,7 @@
                   ? 'var(--task-executing)'
                   : todoStatus === 'failed'
                     ? 'var(--task-failed)'
-                    : '#333'}"
+                    : 'var(--border-default)'}"
             ></span>
             <span class="todo-id">{todoId}</span>
             <span class="todo-status">{todoStatus}</span>
@@ -72,8 +72,8 @@
   .task-card {
     display: block;
     width: 100%;
-    background: var(--bg-card, #111);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--bg-card);
+    border: 1px solid var(--border-muted);
     padding: 0;
     cursor: pointer;
     text-align: left;
@@ -83,7 +83,7 @@
   }
 
   .task-card:hover {
-    border-color: rgba(255, 255, 255, 0.12);
+    border-color: var(--border-default);
   }
 
   .task-header {
@@ -130,7 +130,7 @@
 
   .task-body {
     padding: 0 12px 12px;
-    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    border-top: 1px solid var(--border-muted);
   }
 
   .mission-id {

@@ -661,7 +661,7 @@
 		top: 100%;
 		right: 0;
 		margin-top: 2px;
-		background: var(--bg-card, var(--bg-surface));
+		background: var(--bg-card);
 		border: 1px solid var(--border-default);
 		z-index: 10;
 		display: flex;
@@ -682,7 +682,7 @@
 	}
 
 	.scale-option:hover {
-		background: rgba(255, 255, 255, 0.1);
+		background: var(--bg-card-hover);
 		color: var(--text-primary);
 	}
 
@@ -747,7 +747,7 @@
 	.rect {
 		width: 100%;
 		height: 100%;
-		background: rgba(255, 255, 255, 0.05);
+		background: var(--border-muted);
 		border-radius: 1px;
 	}
 
@@ -886,7 +886,7 @@
 		bottom: 100%;
 		left: 50%;
 		transform: translateX(-50%);
-		background: var(--bg-card, var(--bg-surface));
+		background: var(--bg-card);
 		border: 1px solid var(--border-default);
 		padding: 4px var(--space-sm);
 		white-space: nowrap;
@@ -1028,7 +1028,7 @@
 
 	.option-btn:hover {
 		color: var(--text-primary);
-		background: rgba(255, 255, 255, 0.1);
+		background: var(--bg-card-hover);
 	}
 
 	.distance-btn {

@@ -109,7 +109,7 @@
 
 	.bar-btn.apply:hover {
 		background: var(--accent-green);
-		color: #000;
+		color: var(--bg-base);
 	}
 
 	.bar-btn.dismiss {

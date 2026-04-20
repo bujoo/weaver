@@ -259,7 +259,7 @@
 	.toggle-pill.active {
 		background: var(--accent-green);
 		border-color: var(--accent-green);
-		color: #000;
+		color: var(--bg-base);
 	}
 
 	.toggle-pill.autopilot.active {
@@ -416,7 +416,7 @@
 
 	.action-btn.primary:hover {
 		background: var(--accent-green);
-		color: #000;
+		color: var(--bg-base);
 	}
 
 	.action-btn.danger {
@@ -426,7 +426,7 @@
 
 	.action-btn.danger:hover {
 		background: var(--accent-red);
-		color: #000;
+		color: var(--bg-base);
 	}
 
 	/* ── Interventions ───────────────────────────────────────────── */

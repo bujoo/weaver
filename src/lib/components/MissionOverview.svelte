@@ -505,7 +505,7 @@
 	}
 
 	.workspace-btn:hover {
-		background: rgba(255, 255, 255, 0.06);
+		background: var(--bg-card-hover);
 		border-color: var(--text-secondary);
 	}
 
@@ -535,7 +535,7 @@
 
 	.workspace-btn.setup:hover {
 		background: var(--accent-amber);
-		color: #000;
+		color: var(--bg-base);
 	}
 
 	.action-btn.execute {
@@ -545,7 +545,7 @@
 
 	.action-btn.execute:hover:not(:disabled) {
 		background: var(--accent-green);
-		color: #000;
+		color: var(--bg-base);
 	}
 
 	.action-btn.pause {
@@ -555,22 +555,22 @@
 
 	.action-btn.pause:hover {
 		background: var(--accent-amber);
-		color: #000;
+		color: var(--bg-base);
 	}
 
 	.action-btn.kill {
-		color: var(--accent-red, #ff4444);
-		border: 1px solid var(--accent-red, #ff4444);
+		color: var(--accent-red);
+		border: 1px solid var(--accent-red);
 	}
 
 	.action-btn.kill:hover {
-		background: var(--accent-red, #ff4444);
-		color: #000;
+		background: var(--accent-red);
+		color: var(--bg-base);
 	}
 
 	.action-btn.kill.confirm {
-		background: var(--accent-red, #ff4444);
-		color: #000;
+		background: var(--accent-red);
+		color: var(--bg-base);
 	}
 
 	.action-btn.cancel {

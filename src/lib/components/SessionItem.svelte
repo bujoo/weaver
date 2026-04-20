@@ -14,15 +14,15 @@
 	function getStatusColor(status: SessionStatus): string {
 		switch (status) {
 			case SessionStatus.Working:
-				return '#3b82f6'; // blue
+				return 'var(--accent-blue)';
 			case SessionStatus.NeedsAttention:
-				return '#f97316'; // orange
+				return 'var(--accent-amber)';
 			case SessionStatus.WaitingForInput:
-				return '#22c55e'; // green
+				return 'var(--accent-green)';
 			case SessionStatus.Connecting:
-				return '#3b82f6'; // blue (same as working)
+				return 'var(--accent-blue)';
 			default:
-				return '#9ca3af';
+				return 'var(--text-muted)';
 		}
 	}
 
@@ -74,9 +74,9 @@
 		align-items: flex-start;
 		gap: 10px;
 		padding: 12px;
-		border: 1px solid #e5e7eb;
-		border-radius: 6px;
-		background: white;
+		border: 1px solid var(--border-default);
+		border-radius: var(--radius-sm);
+		background: var(--bg-card);
 		cursor: pointer;
 		transition: all 0.2s;
 		width: 100%;
@@ -84,13 +84,13 @@
 	}
 
 	.session-item:hover {
-		background: #f9fafb;
-		border-color: #d1d5db;
+		background: var(--bg-card-hover);
+		border-color: var(--border-default);
 	}
 
 	.session-item.selected {
-		background: #eff6ff;
-		border-color: #3b82f6;
+		background: var(--weavy-subtle);
+		border-color: var(--weavy);
 	}
 
 	.status-indicator {
@@ -118,23 +118,23 @@
 
 	.session-name {
 		font-weight: 600;
-		color: #111827;
+		color: var(--text-primary);
 	}
 
 	.git-branch {
-		color: #6b7280;
+		color: var(--text-secondary);
 		font-size: 12px;
 	}
 
 	.time-since {
 		margin-left: auto;
-		color: #9ca3af;
+		color: var(--text-muted);
 		font-size: 11px;
 		white-space: nowrap;
 	}
 
 	.first-prompt {
-		color: #4b5563;
+		color: var(--text-secondary);
 		font-size: 13px;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -142,7 +142,7 @@
 	}
 
 	.message-count {
-		color: #9ca3af;
+		color: var(--text-muted);
 		font-size: 11px;
 	}
 </style>

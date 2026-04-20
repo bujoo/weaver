@@ -16,15 +16,17 @@
 		incoming: 'var(--mission-incoming)',
 		validating: 'var(--mission-incoming)',
 		ready: 'var(--accent-amber)',
+		setup: 'var(--accent-amber)',
 		executing: 'var(--mission-active)',
 		completed: 'var(--mission-completed)',
 		failed: 'var(--mission-failed)',
 	};
 
 	const statusLabels: Record<string, string> = {
-		incoming: 'INCOMING',
-		validating: 'VALIDATING',
-		ready: 'READY',
+		incoming: 'RECEIVED',
+		validating: 'VALIDATED',
+		ready: 'ACCEPTED',
+		setup: 'SETUP',
 		executing: 'EXECUTING',
 		completed: 'COMPLETED',
 		failed: 'FAILED',
@@ -44,8 +46,9 @@
 		incoming: 0,
 		validating: 1,
 		ready: 2,
-		executing: 4, // all 5 stages (0-4) should be filled
-		completed: 5, // all done
+		setup: 3,
+		executing: 4,
+		completed: 5,
 		failed: -1,
 	};
 
@@ -68,7 +71,7 @@
 			</svg>
 		</button>
 		<h1 class="mission-title">{mission.title}</h1>
-		<span class="status-badge" style="background: {statusColor}; color: #000;">
+		<span class="status-badge" style="background: {statusColor}; color: var(--bg-base);">
 			{statusLabel}
 		</span>
 	</div>

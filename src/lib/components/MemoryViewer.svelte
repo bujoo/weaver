@@ -233,12 +233,12 @@
 	}
 
 	.project-item:hover {
-		background: rgba(255, 255, 255, 0.03);
+		background: var(--bg-card-hover);
 		color: var(--text-primary);
 	}
 
 	.project-item.selected {
-		background: rgba(255, 255, 255, 0.08);
+		background: var(--bg-card);
 		color: var(--text-primary);
 		border-left: 2px solid var(--accent);
 	}
@@ -291,7 +291,7 @@
 		width: 100%;
 		margin-top: var(--space-sm);
 		padding: var(--space-sm) var(--space-md);
-		background: rgba(255, 255, 255, 0.03);
+		background: var(--bg-elevated);
 		border: 1px solid var(--border-default);
 		border-radius: 6px;
 		cursor: pointer;
@@ -300,7 +300,7 @@
 
 	.claude-cmd:hover {
 		border-color: var(--text-secondary);
-		background: rgba(255, 255, 255, 0.05);
+		background: var(--bg-card-hover);
 	}
 
 	.cmd-text {
@@ -376,7 +376,7 @@
 	}
 
 	.markdown-body :global(code) {
-		background: rgba(255, 255, 255, 0.06);
+		background: var(--bg-elevated);
 		padding: 2px 5px;
 		border-radius: 3px;
 		font-size: 12px;
@@ -400,7 +400,7 @@
 		font-size: 11px;
 		color: var(--text-muted);
 		border-bottom: 1px solid var(--border-default);
-		background: rgba(255, 255, 255, 0.02);
+		background: var(--bg-elevated);
 	}
 
 	.markdown-body :global(pre) {
@@ -455,6 +455,6 @@
 
 	.markdown-body :global(th) {
 		font-weight: 600;
-		background: rgba(255, 255, 255, 0.03);
+		background: var(--bg-elevated);
 	}
 </style>

@@ -179,7 +179,7 @@
 		justify-content: center;
 		padding: var(--space-md);
 		border: 1px solid var(--border-muted);
-		background: #000;
+		background: var(--bg-base);
 	}
 
 	.qr-image {

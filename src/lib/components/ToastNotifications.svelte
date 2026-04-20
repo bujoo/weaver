@@ -26,8 +26,8 @@
 	}
 
 	.toast {
-		background: var(--bg-elevated, #1a1a2e);
-		border: 1px solid var(--status-input, #f5a623);
+		background: var(--bg-elevated);
+		border: 1px solid var(--status-input);
 		padding: 12px 16px;
 		animation: toast-in 0.3s ease-out;
 	}
@@ -44,10 +44,10 @@
 	}
 
 	.toast-title {
-		font-family: var(--font-pixel, monospace);
+		font-family: var(--font-pixel);
 		font-size: 12px;
 		font-weight: 600;
-		color: var(--text-primary, #fff);
+		color: var(--text-primary);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		margin-bottom: 4px;
@@ -57,9 +57,9 @@
 	}
 
 	.toast-body {
-		font-family: var(--font-mono, monospace);
+		font-family: var(--font-mono);
 		font-size: 12px;
-		color: var(--text-secondary, #aaa);
+		color: var(--text-secondary);
 		line-height: 1.4;
 	}
 </style>

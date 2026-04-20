@@ -28,17 +28,17 @@
 	// Full tower height at 1:1 zoom
 	const towerHeightPx = $derived(totalGrainRows * GRAIN_SIZE);
 
-	// Colors
-	const AMBER = '#ff6600';
-	const AMBER_DIM = 'rgba(255, 102, 0, 0.3)';
-	const TEXT_PRIMARY = '#ffffff';
-	const TEXT_MUTED = '#666666';
-	const BORDER = '#333333';
-	const BG = '#000000';
+	// Colors (read from CSS vars at mount, fallback to suite defaults)
+	let AMBER = '#e08a3e';
+	let AMBER_DIM = 'rgba(224, 138, 62, 0.3)';
+	let TEXT_PRIMARY = '#e8e6ff';
+	let TEXT_MUTED = '#6e6b91';
+	let BORDER = 'rgba(255, 255, 255, 0.14)';
+	let BG = '#0b0a1e';
 
 	// Font families matching CSS design tokens
 	const FONT_PIXEL = "'Geist Pixel Square', 'Geist Mono', 'SF Mono', Monaco, monospace";
-	const FONT_MONO = "'Geist Mono', 'SF Mono', Monaco, monospace";
+	const FONT_MONO = "'Geist Mono', 'JetBrains Mono', 'IBM Plex Mono', monospace";
 
 	// ── Formatting ───────────────────────────────────────────────
 	function formatTokenCount(n: number): string {
@@ -97,9 +97,9 @@
 			// Don't draw if below canvas
 			if (y > h) continue;
 
-			// Grain color: slightly vary brightness for texture
+			// Grain color: slightly vary brightness for texture (oxy orange)
 			const brightness = 0.8 + (((i * 7) % 13) / 13) * 0.2;
-			ctx.fillStyle = `rgba(255, ${Math.round(102 * brightness)}, 0, ${0.7 + brightness * 0.3})`;
+			ctx.fillStyle = `rgba(224, ${Math.round(138 * brightness)}, ${Math.round(62 * brightness)}, ${0.7 + brightness * 0.3})`;
 
 			// Draw grain as a small rect with 1px gap for visibility when zoomed in
 			const gap = zoom > 2 ? 1 : 0;
@@ -254,7 +254,7 @@
 				const flashScale = 1 + (1 - flashAlpha) * 0.3;
 				ctx.save();
 				ctx.font = `bold 16px ${FONT_PIXEL}`;
-				ctx.fillStyle = `rgba(255, 102, 0, ${flashAlpha})`;
+				ctx.fillStyle = `rgba(224, 138, 62, ${flashAlpha})`;
 				ctx.textAlign = 'center';
 				ctx.textBaseline = 'top';
 				ctx.translate(w / 2, 60);
@@ -597,6 +597,7 @@
 		color: var(--accent-amber);
 		background: none;
 		border: 1px solid var(--accent-amber);
+		border-radius: var(--radius-sm);
 		padding: 4px 16px;
 		cursor: pointer;
 		transition: background 0.15s, color 0.15s;

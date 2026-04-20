@@ -208,14 +208,14 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: var(--text-muted, #666);
+    color: var(--text-muted);
     margin-bottom: 12px;
   }
 
   section {
     margin-bottom: 24px;
     padding-bottom: 24px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--border-muted);
   }
 
   .field-row {
@@ -235,15 +235,15 @@
   label {
     display: block;
     font-size: 11px;
-    color: var(--text-muted, #666);
+    color: var(--text-muted);
     margin-bottom: 4px;
   }
 
   input {
     width: 100%;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: var(--text-primary, #fff);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-muted);
+    color: var(--text-primary);
     padding: 6px 8px;
     font-size: 13px;
     font-family: inherit;
@@ -252,7 +252,7 @@
 
   input:focus {
     outline: none;
-    border-color: rgba(255, 255, 255, 0.2);
+    border-color: var(--border-default);
   }
 
   input.mono {
@@ -271,23 +271,23 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--accent-red, #ff4444);
+    background: var(--accent-red);
   }
 
   .status-dot.connected {
-    background: var(--accent-green, #00ff88);
+    background: var(--accent-green);
   }
 
   .status-text {
     font-size: 11px;
-    color: var(--text-muted, #666);
+    color: var(--text-muted);
   }
 
   .btn-connect,
   .btn-save {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: var(--text-primary, #fff);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    color: var(--text-primary);
     padding: 6px 16px;
     font-size: 12px;
     cursor: pointer;
@@ -295,7 +295,7 @@
 
   .btn-connect:hover,
   .btn-save:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--bg-card-hover);
   }
 
   .btn-connect:disabled,
@@ -312,17 +312,17 @@
 
   .message {
     font-size: 12px;
-    color: var(--accent-green, #00ff88);
+    color: var(--accent-green);
   }
 
   .message.error {
-    color: var(--accent-amber, #ff6600);
+    color: var(--accent-amber);
   }
 
   .browser-warning {
-    background: rgba(255, 102, 0, 0.1);
-    border: 1px solid rgba(255, 102, 0, 0.2);
-    color: var(--accent-amber, #ff6600);
+    background: oklch(0.74 0.17 55 / 0.1);
+    border: 1px solid oklch(0.74 0.17 55 / 0.2);
+    color: var(--accent-amber);
     padding: 8px 12px;
     font-size: 12px;
     margin-bottom: 20px;

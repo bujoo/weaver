@@ -8,6 +8,7 @@
 	let incoming = $derived(allMissions.filter((m) => m.status === 'incoming'));
 	let validating = $derived(allMissions.filter((m) => m.status === 'validating'));
 	let ready = $derived(allMissions.filter((m) => m.status === 'ready'));
+	let setup = $derived(allMissions.filter((m) => m.status === 'setup'));
 	let executing = $derived(allMissions.filter((m) => m.status === 'executing'));
 
 	interface Column {
@@ -17,9 +18,10 @@
 	}
 
 	let columns: Column[] = $derived([
-		{ key: 'incoming', label: 'INCOMING', missions: incoming },
-		{ key: 'validating', label: 'VALIDATING', missions: validating },
-		{ key: 'ready', label: 'READY', missions: ready },
+		{ key: 'incoming', label: 'RECEIVED', missions: incoming },
+		{ key: 'validating', label: 'VALIDATED', missions: validating },
+		{ key: 'ready', label: 'ACCEPTED', missions: ready },
+		{ key: 'setup', label: 'SETUP', missions: setup },
 		{ key: 'executing', label: 'EXECUTING', missions: executing },
 	]);
 </script>
@@ -49,7 +51,7 @@
 <style>
 	.pipeline {
 		display: grid;
-		grid-template-columns: repeat(4, 1fr);
+		grid-template-columns: repeat(5, 1fr);
 		gap: 0;
 		width: 100%;
 		min-height: 180px;

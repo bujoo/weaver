@@ -182,7 +182,7 @@
 		display: flex;
 		flex-direction: column;
 		background: var(--bg-base);
-		border-right: 1px solid rgba(255, 255, 255, 0.06);
+		border-right: 1px solid var(--border-muted);
 		height: 100vh;
 		overflow: hidden;
 	}
@@ -255,7 +255,7 @@
 
 	.sidebar-divider {
 		height: 1px;
-		background: rgba(255, 255, 255, 0.06);
+		background: var(--border-muted);
 		margin: 8px 12px;
 		flex-shrink: 0;
 	}
@@ -341,7 +341,7 @@
 		display: flex;
 		align-items: center;
 		padding: 8px 12px;
-		border-top: 1px solid rgba(255, 255, 255, 0.06);
+		border-top: 1px solid var(--border-muted);
 		gap: 8px;
 		flex-shrink: 0;
 	}

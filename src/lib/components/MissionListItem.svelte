@@ -142,7 +142,7 @@
 	.progress-bar {
 		flex: 1;
 		height: 2px;
-		background: rgba(255, 255, 255, 0.06);
+		background: var(--border-muted);
 		min-width: 20px;
 	}
 
@@ -162,7 +162,7 @@
 		font-weight: 600;
 		color: var(--text-primary);
 		background: var(--bg-card-hover);
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		border: 1px solid var(--border-default);
 		flex-shrink: 0;
 	}
 
@@ -185,10 +185,10 @@
 	}
 
 	.mission-item.attention {
-		background: rgba(255, 102, 0, 0.04);
+		background: oklch(0.74 0.17 55 / 0.04);
 	}
 
 	.mission-item.attention:hover {
-		background: rgba(255, 102, 0, 0.08);
+		background: oklch(0.74 0.17 55 / 0.08);
 	}
 </style>

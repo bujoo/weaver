@@ -73,7 +73,7 @@
 	}
 
 	.todo-item.active {
-		background: rgba(121, 40, 202, 0.04);
+		background: oklch(0.72 0.15 290 / 0.04);
 	}
 
 	.todo-row {

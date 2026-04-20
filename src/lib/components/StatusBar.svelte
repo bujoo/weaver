@@ -181,7 +181,7 @@
 	.rect {
 		width: 100%;
 		height: 100%;
-		background: rgba(255, 255, 255, 0.05); /* Slightly darker base */
+		background: var(--border-muted);
 		border-radius: 1px;
 		opacity: 1; /* Normal visibility by default */
 		transition: background-color 0.4s, box-shadow 0.4s;

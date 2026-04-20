@@ -32,8 +32,8 @@
 
 <style>
 	.banner {
-		background: rgba(255, 255, 255, 0.05);
-		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		background: var(--border-muted);
+		border-bottom: 1px solid var(--border-default);
 		padding: 12px 16px;
 	}
 
@@ -56,19 +56,19 @@
 	.banner-title {
 		font-size: 14px;
 		font-weight: 500;
-		color: rgba(255, 255, 255, 0.9);
+		color: var(--text-primary);
 		margin-bottom: 2px;
 	}
 
 	.banner-description {
 		font-size: 12px;
-		color: rgba(255, 255, 255, 0.6);
+		color: var(--text-muted);
 	}
 
 	.banner-button {
-		background: rgba(255, 255, 255, 0.1);
-		border: 1px solid rgba(255, 255, 255, 0.2);
-		color: rgba(255, 255, 255, 0.9);
+		background: var(--bg-card-hover);
+		border: 1px solid var(--border-default);
+		color: var(--text-primary);
 		padding: 6px 16px;
 		border-radius: 6px;
 		font-size: 13px;
@@ -79,8 +79,8 @@
 	}
 
 	.banner-button:hover:not(:disabled) {
-		background: rgba(255, 255, 255, 0.15);
-		border-color: rgba(255, 255, 255, 0.3);
+		background: var(--bg-card);
+		border-color: var(--text-muted);
 	}
 
 	.banner-button:disabled {

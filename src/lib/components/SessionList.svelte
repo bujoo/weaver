@@ -42,7 +42,7 @@
 		display: flex;
 		flex-direction: column;
 		height: 100%;
-		background: #fafafa;
+		background: var(--bg-base);
 	}
 
 	.list-header {
@@ -50,20 +50,20 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 16px 20px;
-		border-bottom: 1px solid #e5e7eb;
-		background: white;
+		border-bottom: 1px solid var(--border-default);
+		background: var(--bg-elevated);
 	}
 
 	.list-header h2 {
 		margin: 0;
 		font-size: 18px;
 		font-weight: 600;
-		color: #111827;
+		color: var(--text-primary);
 	}
 
 	.session-count {
-		background: #e5e7eb;
-		color: #6b7280;
+		background: var(--border-default);
+		color: var(--text-secondary);
 		font-size: 12px;
 		font-weight: 600;
 		padding: 2px 8px;
@@ -94,13 +94,13 @@
 
 	.empty-state p {
 		margin: 0;
-		color: #6b7280;
+		color: var(--text-secondary);
 		font-size: 14px;
 	}
 
 	.empty-hint {
 		margin-top: 8px;
 		font-size: 12px;
-		color: #9ca3af;
+		color: var(--text-muted);
 	}
 </style>

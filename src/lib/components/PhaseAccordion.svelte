@@ -106,7 +106,8 @@
 </script>
 
 <div class="phase-accordion" class:expanded>
-	<button class="phase-header" onclick={ontoggle} type="button">
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="phase-header" onclick={ontoggle} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ontoggle(); } }} role="button" tabindex="0">
 		<div class="phase-title-row">
 			<svg
 				class="chevron"
@@ -137,7 +138,7 @@
 			<span class="phase-progress">{completedCount}/{phase.todoCount}</span>
 			<span class="status-badge {statusClass}">{statusLabel}</span>
 		</div>
-	</button>
+	</div>
 
 	{#if expanded}
 		<div class="phase-body">
@@ -239,8 +240,8 @@
 		font-family: var(--font-mono);
 		font-size: 11px;
 		font-weight: 700;
-		color: #a78bfa;
-		background: rgba(167, 139, 250, 0.1);
+		color: var(--accent-purple);
+		background: oklch(0.72 0.15 290 / 0.1);
 		padding: 1px 6px;
 		border-radius: 2px;
 		letter-spacing: 0.02em;
@@ -282,20 +283,20 @@
 	.status-badge.done {
 		color: var(--accent-green);
 		border-color: var(--accent-green);
-		background: rgba(0, 255, 136, 0.06);
+		background: oklch(0.74 0.18 155 / 0.06);
 	}
 
 	.status-badge.executing {
 		color: var(--accent-purple);
 		border-color: var(--accent-purple);
-		background: rgba(121, 40, 202, 0.08);
+		background: oklch(0.72 0.15 290 / 0.08);
 		animation: pulse-glow 2s ease-in-out infinite;
 	}
 
 	.status-badge.queued {
 		color: var(--task-queued);
 		border-color: var(--task-queued);
-		background: rgba(68, 68, 68, 0.1);
+		background: oklch(0.72 0.15 290 / 0.04);
 	}
 
 	.btn-start {
@@ -313,7 +314,7 @@
 
 	.btn-start:hover {
 		background: var(--accent-green);
-		color: #000;
+		color: var(--bg-base);
 	}
 
 	.btn-start:disabled {
@@ -329,7 +330,7 @@
 		padding: 2px 8px;
 		border: 1px solid var(--accent-purple);
 		color: var(--accent-purple);
-		background: rgba(121, 40, 202, 0.08);
+		background: oklch(0.72 0.15 290 / 0.08);
 	}
 
 	.phase-body {

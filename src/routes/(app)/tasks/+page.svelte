@@ -78,7 +78,7 @@
   }
 
   .action-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--bg-card-hover);
     border-color: var(--text-secondary);
   }
 
@@ -88,6 +88,6 @@
   }
 
   .action-btn.primary:hover {
-    background: rgba(var(--accent-green-rgb, 0, 255, 136), 0.08);
+    background: oklch(0.74 0.18 155 / 0.08);
   }
 </style>

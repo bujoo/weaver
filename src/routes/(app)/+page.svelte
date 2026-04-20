@@ -868,12 +868,12 @@
 
 	.toggle-btn:hover {
 		color: var(--text-secondary);
-		background: rgba(255, 255, 255, 0.05);
+		background: var(--border-muted);
 	}
 
 	.toggle-btn.active {
 		color: var(--text-primary);
-		background: rgba(255, 255, 255, 0.1);
+		background: var(--bg-card-hover);
 		border-color: var(--border-default);
 	}
 
@@ -886,12 +886,12 @@
 
 	.demo-toggle:hover {
 		color: var(--accent-amber);
-		background: rgba(255, 102, 0, 0.1);
+		background: oklch(0.74 0.17 55 / 0.1);
 	}
 
 	.demo-toggle.active {
 		background: var(--accent-amber);
-		color: #000;
+		color: var(--bg-base);
 		border-color: var(--accent-amber);
 	}
 
@@ -911,7 +911,7 @@
 
 	.mobile-connect-btn:hover {
 		color: var(--accent-blue);
-		background: rgba(0, 112, 243, 0.1);
+		background: oklch(0.74 0.14 215 / 0.1);
 	}
 
 	.mobile-label {
